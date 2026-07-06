@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+.streamlit/secrets.toml
+# 원본 BI export (대용량/사내자료) — 시드 CSV만 커밋
+*.xlsx
