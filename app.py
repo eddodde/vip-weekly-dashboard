@@ -8,8 +8,10 @@ VIP 주간 실적 대시보드 (LF CRM/VIP)
 """
 import io
 import re
+import numpy as np
 import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="VIP 주간 실적", page_icon="📊", layout="wide")
 
@@ -271,11 +273,9 @@ def fmt(metric, v):
         return "-"
     if metric in ("유입율", "CR", "상품CR"):
         return f"{v*100:.1f}%"
-    if metric == "일평균거래액":
-        return f"{v/1e8:.2f}억"
-    if metric == "일평균객단가":
-        return f"{v:,.0f}"
-    if metric in ("일평균고객수", "DAU", "유효회원수", "상품UV"):
+    if metric == "일평균거래액":       # 엑셀과 동일: 백만원 정수 (558 = 5.58억)
+        return f"{v/1e6:,.0f}"
+    if metric in ("일평균객단가", "일평균고객수", "DAU", "유효회원수", "상품UV"):
         return f"{v:,.0f}"
     return f"{v:,.1f}"
 
@@ -284,7 +284,7 @@ def fmt_delta(metric, v):
     if v is None or pd.isna(v):
         return "-"
     if metric == "일평균거래액":
-        return f"{v/1e8:+.2f}억"
+        return f"{v/1e6:+,.0f}"
     if metric in ("유입율", "CR", "상품CR"):
         return f"{v*100:+.1f}%p"
     return f"{v:+,.0f}"
@@ -298,6 +298,15 @@ def yoy(cur, prev):
 
 def yoy_str(r):
     return "—" if r is None or pd.isna(r) else f"{r*100:+.1f}%"
+
+
+def yoy_disp(r):
+    """엑셀 표기: 음수=빨강 △X.X%, 양수=검정 X.X%, 결측=—. 반환 (텍스트, css)."""
+    if r is None or pd.isna(r):
+        return "—", ""
+    if r < 0:
+        return f"△{abs(r)*100:.1f}%", YOY_NEG
+    return f"{r*100:.1f}%", ""
 
 
 def week_pretty(lbl):
@@ -415,9 +424,9 @@ def perf_table(grain, cur_periods, prev_periods, pretty):
     for p in cur_periods:
         cells = []
         for _, met in PERF_ROWS:
-            r = yoy(V(grain, "overall", met, "TOTAL", "", CUR, p), V(grain, "overall", met, "TOTAL", "", PREV, p))
-            sty = "" if r is None else (YOY_NEG if r < 0 else YOY_POS)
-            cells.append(f'<td class="grpyoy" style="{sty}">{yoy_str(r)}</td>')
+            txt, sty = yoy_disp(yoy(V(grain, "overall", met, "TOTAL", "", CUR, p),
+                                    V(grain, "overall", met, "TOTAL", "", PREV, p)))
+            cells.append(f'<td class="grpyoy" style="{sty}">{txt}</td>')
         byoy.append((pretty(p), cells))
     for p in prev_periods:
         cells = []
@@ -439,9 +448,9 @@ def channel_table(metric, wk_periods):
     for p in wk_periods:
         cells = []
         for _, s1 in CH_ROWS:
-            r = yoy(V("week", "overall", metric, s1, "", CUR, p), V("week", "overall", metric, s1, "", PREV, p))
-            sty = "" if r is None else (YOY_NEG if r < 0 else YOY_POS)
-            cells.append(f'<td class="grpyoy" style="{sty}">{yoy_str(r)}</td>')
+            txt, sty = yoy_disp(yoy(V("week", "overall", metric, s1, "", CUR, p),
+                                    V("week", "overall", metric, s1, "", PREV, p)))
+            cells.append(f'<td class="grpyoy" style="{sty}">{txt}</td>')
         byoy.append((week_pretty(p), cells))
     for p in wk_periods:
         b2025.append((week_pretty(p), [f'<td class="grp2025">{fmt(metric, V("week","overall",metric,s1,"",PREV,p))}</td>' for _, s1 in CH_ROWS]))
@@ -483,8 +492,7 @@ def product_table(metric, wk):
                 f'<th class="grp2025">{PREV}년</th><th class="grpyoy">전년비</th><th>증감</th></tr>')
     for i, rl in enumerate(rows):
         rr, bold = ryoy[i]
-        sty = "" if rr is None else (YOY_NEG if rr < 0 else YOY_POS)
-        ytxt = yoy_str(rr)
+        ytxt, sty = yoy_disp(rr)
         if bold:
             ytxt = f"<b>{ytxt}</b>"
         html.append(f'<tr><td class="rowh">{rl}</td><td class="grp2026">{r26[i]}</td>'
@@ -494,16 +502,91 @@ def product_table(metric, wk):
     return "".join(html)
 
 
+# ----------------------------------------------------------------------------- charts
+SALES = "일평균거래액"
+BLUE_CUR, BLUE_PREV, GREY = "#1f3b73", "#9db8e0", "#9aa0a6"
+CH_LINE = {"직접": "#1f3b73", "광고": "#4f7cc0", "EP": "#86a6db", "PUSH": "#c0392b"}
+
+
+def _m(v):  # 원 → 백만원 (None-safe)
+    return None if v is None or pd.isna(v) else v / 1e6
+
+
+def _fig(title, x, series, trend=None, ypct=False):
+    fig = go.Figure()
+    for name, (y, color, dash) in series.items():
+        fig.add_trace(go.Scatter(x=x, y=y, name=name, mode="lines+markers",
+                                 line=dict(color=color, width=2, dash=dash),
+                                 marker=dict(size=5), connectgaps=True))
+    if trend is not None:
+        xs = [i for i, v in enumerate(trend) if v is not None]
+        ys = [v for v in trend if v is not None]
+        if len(xs) >= 2:
+            a, b = np.polyfit(xs, ys, 1)
+            fig.add_trace(go.Scatter(x=x, y=[a * i + b for i in range(len(x))], name="선형",
+                                     mode="lines", line=dict(color=GREY, width=1, dash="dot")))
+    fig.update_layout(title=dict(text=title, font=dict(size=13)), height=300,
+                      margin=dict(t=38, b=28, l=8, r=8), plot_bgcolor="white",
+                      legend=dict(orientation="h", y=-0.18, font=dict(size=10)))
+    fig.update_xaxes(showgrid=False, tickfont=dict(size=9))
+    fig.update_yaxes(showgrid=True, gridcolor="#eee", tickfont=dict(size=9))
+    if ypct:
+        fig.update_yaxes(tickformat=".0%", zeroline=True, zerolinecolor="#333")
+    return fig
+
+
+def chart_daily():
+    dp = periods("day", "overall", SALES, "TOTAL", "", CUR)[-14:]
+    y26 = [_m(V("day", "overall", SALES, "TOTAL", "", CUR, p)) for p in dp]
+    y25 = [_m(V("day", "overall", SALES, "TOTAL", "", PREV, p)) for p in dp]
+    return _fig("일자별 거래액 트렌드", dp,
+                {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}": (y25, BLUE_PREV, "solid")}, trend=y26)
+
+
+def chart_monthly():
+    mp = [f"{m}월" for m in range(1, 13)]
+    y26 = [_m(V("month", "overall", SALES, "TOTAL", "", CUR, p)) for p in mp]
+    y25 = [_m(V("month", "overall", SALES, "TOTAL", "", PREV, p)) for p in mp]
+    return _fig(f"{PREV}·{CUR}년 월별 거래액 트렌드", [month_pretty(p) for p in mp],
+                {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}": (y25, BLUE_PREV, "solid")})
+
+
+def chart_weekly(wkp):
+    x = [week_pretty(p) for p in wkp]
+    y26 = [_m(V("week", "overall", SALES, "TOTAL", "", CUR, p)) for p in wkp]
+    y25 = [_m(V("week", "overall", SALES, "TOTAL", "", PREV, p)) for p in wkp]
+    return _fig("주차별 거래액 트렌드", x,
+                {f"{CUR}년": (y26, BLUE_CUR, "solid"), f"{PREV}년": (y25, BLUE_PREV, "solid")}, trend=y26)
+
+
+def chart_channel_yoy(wkp):
+    x = [week_pretty(p) for p in wkp]
+    series = {}
+    for ch, color in CH_LINE.items():
+        y = [yoy(V("week", "overall", SALES, ch, "", CUR, p), V("week", "overall", SALES, ch, "", PREV, p))
+             for p in wkp]
+        series[ch] = (y, color, "solid")
+    return _fig("주차별·채널별 거래액 전년비", x, series, ypct=True)
+
+
 # ============================================================================= RENDER
 st.markdown(TABLE_CSS, unsafe_allow_html=True)
 
 wk_all = periods("week", "overall", "일평균거래액", "TOTAL", "", CUR)
 latest_wk = wk_all[-1] if wk_all else None
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} 마감 CRM_VIP 실적")
-st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계")
+st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 (거래액 단위: 백만원)")
 
-nwk = st.slider("주차 표시 개수", 5, 16, 5, help="주차별·채널별 표에 보여줄 최근 주차 수 (엑셀 기본 5주)")
+nwk = st.slider("주차 표시 개수", 5, 16, 5, help="주차·채널 표/차트에 보여줄 최근 주차 수 (엑셀 기본 5주)")
 wk_periods = wk_all[-nwk:]
+
+# ---- 1) 거래액 트렌드 ----
+st.header("1) 거래액 트렌드")
+cc = st.columns(4)
+cc[0].plotly_chart(chart_daily(), use_container_width=True)
+cc[1].plotly_chart(chart_monthly(), use_container_width=True)
+cc[2].plotly_chart(chart_weekly(wk_periods), use_container_width=True)
+cc[3].plotly_chart(chart_channel_yoy(wk_periods), use_container_width=True)
 
 # ---- 2) 월별 ----
 st.header("2) 월별")
