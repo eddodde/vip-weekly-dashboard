@@ -8,6 +8,7 @@ VIP 주간 실적 대시보드 (LF CRM/VIP)
 """
 import io
 import re
+import datetime
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -367,6 +368,43 @@ def periods(grain, perspective, metric, seg1, seg2, year):
     return out
 
 
+# --- 일자별/월별 MTD를 위한 날짜 유틸 (daily period_sort = YYYYMMDD) ---
+_DAY = df[(df.grain == "day") & (df.perspective == "overall")].copy()
+if not _DAY.empty:
+    _DAY["ps"] = _DAY["period_sort"].astype(str)
+    _DAY["mo"] = _DAY["ps"].str[4:6].astype(int)
+    _DAY["dy"] = _DAY["ps"].str[6:8].astype(int)
+
+
+def last_daily_date():
+    if _DAY.empty:
+        return None
+    y = int(_DAY["year"].max())
+    ps = _DAY[_DAY.year == y]["ps"].max()
+    return datetime.date(int(ps[:4]), int(ps[4:6]), int(ps[6:8]))
+
+
+def dmean(metric, year, mo, max_day=None):
+    """일자별(overall,TOTAL) 월내 평균. max_day 지정 시 그 날짜까지(MTD)."""
+    if _DAY.empty:
+        return None
+    d = _DAY[(_DAY.metric == metric) & (_DAY.seg1 == "TOTAL") & (_DAY.year == year) & (_DAY.mo == mo)]
+    if max_day is not None:
+        d = d[d.dy <= max_day]
+    return d["value"].mean() if len(d) else None
+
+
+def month_value(metric, year, mo, max_day=None):
+    """월 지표값(레벨=일평균, 객단가=거래액/고객수, CR=고객수/DAU). max_day=MTD."""
+    if metric == "일평균객단가":
+        s, c = dmean("일평균거래액", year, mo, max_day), dmean("일평균고객수", year, mo, max_day)
+        return s / c if (s is not None and c) else None
+    if metric == "CR":
+        c, da = dmean("일평균고객수", year, mo, max_day), dmean("DAU", year, mo, max_day)
+        return c / da if (c is not None and da) else None
+    return dmean(metric, year, mo, max_day)
+
+
 YOY_POS = "color:#1f5fbf;font-weight:600"   # 신장(+) 파랑
 YOY_NEG = "color:#c0392b;font-weight:600"   # 역신장(−) 빨강
 
@@ -379,26 +417,37 @@ TABLE_CSS = """
 .sumtbl .grp2026{background:#eaf1fb;}
 .sumtbl .grpyoy{background:#fff4ec;}
 .sumtbl .grp2025{background:#f4f4f4;}
+.sumtbl .curcol{font-weight:700;box-shadow:inset 0 0 0 2px #1f5fbf;}
 .sumwrap{overflow-x:auto;border:1px solid #e6e6e6;border-radius:6px;}
+.insight{background:#f0f6ff;border-left:4px solid #1f5fbf;border-radius:4px;
+  padding:8px 14px 8px 16px;margin:2px 0 12px;font-size:13.5px;line-height:1.7;}
+.insight ul{margin:0;padding-left:18px;}
+.insight li{margin:2px 0;}
+.insight .imp{color:#1f5fbf;font-weight:600;}
 </style>
 """
 
 
-def render_block_table(row_labels, blocks):
-    """blocks = list of (group_title, group_css, [(col_label, [cell_html per row]) ...])."""
+def render_insight(bullets):
+    if not bullets:
+        return
+    lis = "".join(f"<li>{b}</li>" for b in bullets)
+    st.markdown(f'<div class="insight"><ul>{lis}</ul></div>', unsafe_allow_html=True)
+
+
+def render_block_table(row_labels, blocks, bold_label=None):
+    """blocks = list of (group_title, group_css, [(col_label, [cell_html per row]) ...]).
+    bold_label: 해당 라벨의 열(헤더)을 강조(현재 월/주차)."""
     html = ['<div class="sumwrap"><table class="sumtbl">']
-    # header row 1: group titles
     html.append('<tr><th class="rowh" rowspan="2">구분</th>')
     for title, gcss, cols in blocks:
         html.append(f'<th colspan="{len(cols)}" class="{gcss}">{title}</th>')
-    html.append('</tr>')
-    # header row 2: column labels
-    html.append('<tr>')
+    html.append('</tr><tr>')
     for title, gcss, cols in blocks:
         for cl, _ in cols:
-            html.append(f'<th class="{gcss}">{cl}</th>')
+            cur = " curcol" if bold_label and cl == bold_label else ""
+            html.append(f'<th class="{gcss}{cur}">{cl}</th>')
     html.append('</tr>')
-    # body
     for i, rl in enumerate(row_labels):
         html.append(f'<tr><td class="rowh">{rl}</td>')
         for title, gcss, cols in blocks:
@@ -413,49 +462,95 @@ PERF_ROWS = [("거래액", "일평균거래액"), ("고객수", "일평균고객
              ("유입률", "유입율"), ("CR", "CR"), ("객단가", "일평균객단가")]
 
 
-def perf_table(grain, cur_periods, prev_periods, pretty):
+def _td(css, inner, cur, style=""):
+    stattr = f' style="{style}"' if style else ""
+    return f'<td class="{css}{" curcol" if cur else ""}"{stattr}>{inner}</td>'
+
+
+def perf_table(grain, cur_periods, prev_periods, pretty, bold_period=None):
     """월별/주차별 실적표: rows=지표, blocks=[2026 | 전년비 | 2025]. 전년비는 cur_periods 기준."""
     b2026, byoy, b2025 = [], [], []
     for p in cur_periods:
-        cells = []
-        for _, met in PERF_ROWS:
-            cells.append(f'<td class="grp2026">{fmt(met, V(grain,"overall",met,"TOTAL","",CUR,p))}</td>')
-        b2026.append((pretty(p), cells))
+        cur = (p == bold_period)
+        b2026.append((pretty(p), [_td("grp2026", fmt(met, V(grain, "overall", met, "TOTAL", "", CUR, p)), cur)
+                                  for _, met in PERF_ROWS]))
     for p in cur_periods:
+        cur = (p == bold_period)
         cells = []
         for _, met in PERF_ROWS:
             txt, sty = yoy_disp(yoy(V(grain, "overall", met, "TOTAL", "", CUR, p),
                                     V(grain, "overall", met, "TOTAL", "", PREV, p)))
-            cells.append(f'<td class="grpyoy" style="{sty}">{txt}</td>')
+            cells.append(_td("grpyoy", txt, cur, sty))
         byoy.append((pretty(p), cells))
     for p in prev_periods:
-        cells = []
-        for _, met in PERF_ROWS:
-            cells.append(f'<td class="grp2025">{fmt(met, V(grain,"overall",met,"TOTAL","",PREV,p))}</td>')
-        b2025.append((pretty(p), cells))
+        b2025.append((pretty(p), [_td("grp2025", fmt(met, V(grain, "overall", met, "TOTAL", "", PREV, p)), False)
+                                  for _, met in PERF_ROWS]))
     blocks = [(f"{CUR}년", "grp2026", b2026), ("전년비", "grpyoy", byoy), (f"{PREV}년", "grp2025", b2025)]
-    return render_block_table([r for r, _ in PERF_ROWS], blocks)
+    return render_block_table([r for r, _ in PERF_ROWS], blocks,
+                              bold_label=pretty(bold_period) if bold_period else None)
 
 
 CH_ROWS = [("TTL", "TOTAL"), ("직접", "직접"), ("광고", "광고"), ("EP", "EP"), ("PUSH", "PUSH"), ("제휴", "제휴")]
 
 
-def channel_table(metric, wk_periods):
+def channel_table(metric, wk_periods, bold_period=None):
     """채널별 표(단일 지표): rows=채널, blocks=[2026 | 전년비 | 2025], 3블록 동일 주차 라벨."""
     b2026, byoy, b2025 = [], [], []
     for p in wk_periods:
-        b2026.append((week_pretty(p), [f'<td class="grp2026">{fmt(metric, V("week","overall",metric,s1,"",CUR,p))}</td>' for _, s1 in CH_ROWS]))
+        cur = (p == bold_period)
+        b2026.append((week_pretty(p), [_td("grp2026", fmt(metric, V("week", "overall", metric, s1, "", CUR, p)), cur)
+                                       for _, s1 in CH_ROWS]))
     for p in wk_periods:
+        cur = (p == bold_period)
         cells = []
         for _, s1 in CH_ROWS:
             txt, sty = yoy_disp(yoy(V("week", "overall", metric, s1, "", CUR, p),
                                     V("week", "overall", metric, s1, "", PREV, p)))
-            cells.append(f'<td class="grpyoy" style="{sty}">{txt}</td>')
+            cells.append(_td("grpyoy", txt, cur, sty))
         byoy.append((week_pretty(p), cells))
     for p in wk_periods:
-        b2025.append((week_pretty(p), [f'<td class="grp2025">{fmt(metric, V("week","overall",metric,s1,"",PREV,p))}</td>' for _, s1 in CH_ROWS]))
+        b2025.append((week_pretty(p), [_td("grp2025", fmt(metric, V("week", "overall", metric, s1, "", PREV, p)), False)
+                                      for _, s1 in CH_ROWS]))
     blocks = [(f"{CUR}년", "grp2026", b2026), ("전년비", "grpyoy", byoy), (f"{PREV}년", "grp2025", b2025)]
-    return render_block_table([r for r, _ in CH_ROWS], blocks)
+    return render_block_table([r for r, _ in CH_ROWS], blocks,
+                              bold_label=week_pretty(bold_period) if bold_period else None)
+
+
+def monthly_table(cur_months, cutoff_day):
+    """월별 실적표. cur_months=올해 표시할 월번호(마지막=당월 MTD). 2025는 전월 1~12 전체.
+    전년비: 완료월=전월마감 대비, 당월=전년 동월 MTD 대비. 당월 열 강조."""
+    cur_mo = cur_months[-1]
+
+    def cur_lbl(mo):
+        return f"{mo}월(~{cutoff_day}일)" if mo == cur_mo else f"{mo}월"
+
+    b2026, byoy, b2025 = [], [], []
+    for mo in cur_months:
+        is_cur = (mo == cur_mo)
+        maxd = cutoff_day if is_cur else None
+        cells = []
+        for _, met in PERF_ROWS:
+            v = month_value(met, CUR, mo, maxd) if is_cur else V("month", "overall", met, "TOTAL", "", CUR, f"{mo}월")
+            cells.append(_td("grp2026", fmt(met, v), is_cur))
+        b2026.append((cur_lbl(mo), cells))
+    for mo in cur_months:
+        is_cur = (mo == cur_mo)
+        maxd = cutoff_day if is_cur else None
+        cells = []
+        for _, met in PERF_ROWS:
+            if is_cur:
+                c, p = month_value(met, CUR, mo, maxd), month_value(met, PREV, mo, maxd)
+            else:
+                c = V("month", "overall", met, "TOTAL", "", CUR, f"{mo}월")
+                p = V("month", "overall", met, "TOTAL", "", PREV, f"{mo}월")
+            txt, sty = yoy_disp(yoy(c, p))
+            cells.append(_td("grpyoy", txt, is_cur, sty))
+        byoy.append((cur_lbl(mo), cells))
+    for mo in range(1, 13):
+        b2025.append((f"{mo}월", [_td("grp2025", fmt(met, V("month", "overall", met, "TOTAL", "", PREV, f"{mo}월")), False)
+                                 for _, met in PERF_ROWS]))
+    blocks = [(f"{CUR}년", "grp2026", b2026), ("전년비", "grpyoy", byoy), (f"{PREV}년", "grp2025", b2025)]
+    return render_block_table([r for r, _ in PERF_ROWS], blocks, bold_label=cur_lbl(cur_mo))
 
 
 CATS_ORDER = ["골프", "남성", "여성", "슈즈", "잡화", "스포츠", "명품", "아웃도어", "리빙", "뷰티", "키즈"]
@@ -536,18 +631,34 @@ def _fig(title, x, series, trend=None, ypct=False):
 
 
 def chart_daily():
-    dp = periods("day", "overall", SALES, "TOTAL", "", CUR)[-14:]
-    y26 = [_m(V("day", "overall", SALES, "TOTAL", "", CUR, p)) for p in dp]
-    y25 = [_m(V("day", "overall", SALES, "TOTAL", "", PREV, p)) for p in dp]
-    return _fig("일자별 거래액 트렌드", dp,
-                {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}": (y25, BLUE_PREV, "solid")}, trend=y26)
+    """직전 완료주까지 월~일 14일(2주). 전년은 전년동요일(=날짜-364일, 요일 정렬)."""
+    last = last_daily_date()
+    if last is None:
+        return _fig("일자별 거래액 트렌드(전년동요일)", [], {})
+    end = last - datetime.timedelta(days=(last.weekday() + 1) % 7)  # 최근 일요일
+    start = end - datetime.timedelta(days=13)                       # 그 2주 전 월요일
+    days = [start + datetime.timedelta(days=i) for i in range(14)]
+    x = [f"{d.month}/{d.day}" for d in days]
+    y26 = [_m(V("day", "overall", SALES, "TOTAL", "", CUR, f"{d.month}/{d.day}")) for d in days]
+    y25 = []
+    for d in days:
+        d0 = d - datetime.timedelta(days=364)
+        y25.append(_m(V("day", "overall", SALES, "TOTAL", "", PREV, f"{d0.month}/{d0.day}")))
+    return _fig("일자별 거래액 트렌드(전년동요일)", x,
+                {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}(동요일)": (y25, BLUE_PREV, "solid")}, trend=y26)
 
 
 def chart_monthly():
-    mp = [f"{m}월" for m in range(1, 13)]
-    y26 = [_m(V("month", "overall", SALES, "TOTAL", "", CUR, p)) for p in mp]
-    y25 = [_m(V("month", "overall", SALES, "TOTAL", "", PREV, p)) for p in mp]
-    return _fig(f"{PREV}·{CUR}년 월별 거래액 트렌드", [month_pretty(p) for p in mp],
+    last = last_daily_date()
+    cm, cd = (last.month, last.day) if last else (None, None)
+    y26, y25 = [], []
+    for mo in range(1, 13):
+        if mo == cm:  # 당월은 MTD 일평균(일평균이라 비교 가능)
+            y26.append(_m(month_value(SALES, CUR, mo, cd)))
+        else:
+            y26.append(_m(V("month", "overall", SALES, "TOTAL", "", CUR, f"{mo}월")))
+        y25.append(_m(V("month", "overall", SALES, "TOTAL", "", PREV, f"{mo}월")))
+    return _fig(f"{PREV}·{CUR}년 월별 거래액 트렌드", [f"{m}월" for m in range(1, 13)],
                 {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}": (y25, BLUE_PREV, "solid")})
 
 
@@ -569,6 +680,84 @@ def chart_channel_yoy(wkp):
     return _fig("주차별·채널별 거래액 전년비", x, series, ypct=True)
 
 
+# ----------------------------------------------------------------------------- insights (분석형)
+DRIVER_IMPL = {"DAU": "트래픽(방문) 회복이 최우선 레버 — 미방문 리텐션·출석 유도",
+               "CR": "전환 개선이 핵심 — 장바구니·보유쿠폰·최근본상품 소구",
+               "객단가": "객단가 방어/상향 — 고관여 세그 고단가 믹스·번들"}
+
+
+def _pct(r):
+    return yoy_disp(r)[0]
+
+
+def _insight_sales(g, unit_label):
+    """거래액=DAU×CR×객단가 분해로 주동인·방어요인·시사점 도출(단순 현상 나열 X). g=지표→전년비."""
+    sales = g("일평균거래액")
+    comp = {"DAU": g("DAU"), "CR": g("CR"), "객단가": g("일평균객단가")}
+    comp = {k: v for k, v in comp.items() if v is not None}
+    if sales is None or not comp:
+        return []
+    neg = sales < 0
+    main = (min if neg else max)(comp, key=comp.get)
+    drags = [k for k in comp if (comp[k] < 0) == neg and k != main]     # main과 같은 방향(추가 동인)
+    defend = [k for k in comp if (comp[k] > 0) == neg]                  # sales와 반대 방향(상쇄 요인)
+    b = [f"{unit_label} 거래액 <b>{_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>가 "
+         f"{'하락' if neg else '신장'} 주도" + (f", {drags[0]}({_pct(comp[drags[0]])})도 동반" if drags else "")]
+    if defend:
+        b.append(("상쇄" if neg else "상충") + " 요인: " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
+    b.append(f'<span class="imp">→ {DRIVER_IMPL.get(main, "")}</span>')
+    return b
+
+
+def insight_perf(grain, period, unit_label):
+    g = lambda m: yoy(V(grain, "overall", m, "TOTAL", "", CUR, period),
+                      V(grain, "overall", m, "TOTAL", "", PREV, period))
+    return _insight_sales(g, unit_label)
+
+
+def insight_month(mo, cutoff, is_cur, unit_label):
+    maxd = cutoff if is_cur else None
+    g = lambda m: yoy(month_value(m, CUR, mo, maxd), month_value(m, PREV, mo, maxd))
+    return _insight_sales(g, unit_label)
+
+
+def insight_channel(period):
+    ttl_prev = V("week", "overall", SALES, "TOTAL", "", PREV, period)
+    dch = {}
+    for _, ch in CH_ROWS[1:]:
+        c, p = V("week", "overall", SALES, ch, "", CUR, period), V("week", "overall", SALES, ch, "", PREV, period)
+        if c is not None and p is not None:
+            dch[ch] = c - p
+    if not dch or not ttl_prev:
+        return []
+    worst = min(dch, key=dch.get)
+    best = max(dch, key=dch.get)
+    share = abs(dch[worst]) / ttl_prev * 100
+    b = [f"거래액 감소의 최대 진원지는 <b>{worst}</b> (Δ{dch[worst]/1e6:+,.0f}백만, TTL의 {share:.0f}% 규모), "
+         f"반면 <b>{best}</b>는 Δ{dch[best]/1e6:+,.0f}백만으로 방어/신장"]
+    b.append(f'<span class="imp">→ {worst} 트래픽·전환 회복이 최우선, {best} 효율 채널은 확대 여지</span>')
+    return b
+
+
+def insight_product(wk):
+    items = []
+    for ye in YEONG:
+        for ca in CATS_ORDER:
+            c = V("week", "product", SALES, ye, ca, CUR, wk)
+            p = V("week", "product", SALES, ye, ca, PREV, wk)
+            if c is not None and p is not None:
+                items.append((f"영업{ye[-1]} {ca}", ca, c - p, yoy(c, p)))
+    if not items:
+        return []
+    items.sort(key=lambda t: t[2])
+    w = items[:2]
+    bst = items[-1]
+    b = [f"상품 하락은 <b>{w[0][0]}({_pct(w[0][3])})·{w[1][0]}({_pct(w[1][3])})</b>가 주도 "
+         f"(합 Δ{(w[0][2]+w[1][2])/1e6:+,.0f}백만), <b>{bst[0]}({_pct(bst[3])})</b>는 호조"]
+    b.append(f'<span class="imp">→ {w[0][1]} 반등책 우선, {bst[1]} 모멘텀 확대</span>')
+    return b
+
+
 # ============================================================================= RENDER
 st.markdown(TABLE_CSS, unsafe_allow_html=True)
 
@@ -577,11 +766,15 @@ latest_wk = wk_all[-1] if wk_all else None
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} 마감 CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 (거래액 단위: 백만원)")
 
-nwk = st.slider("주차 표시 개수", 5, 16, 5, help="주차·채널 표/차트에 보여줄 최근 주차 수 (엑셀 기본 5주)")
-wk_periods = wk_all[-nwk:]
+wk_periods = wk_all[-5:]                       # 엑셀과 동일하게 최근 5주 고정
+cutoff = last_daily_date().day if last_daily_date() else None
+cur_months = [int(p[:-1]) for p in periods("month", "overall", "일평균거래액", "TOTAL", "", CUR)]
+if cutoff and (not cur_months or cur_months[-1] != last_daily_date().month):
+    cur_months.append(last_daily_date().month)  # 당월(MTD) 추가
 
 # ---- 1) 거래액 트렌드 ----
 st.header("1) 거래액 트렌드")
+render_insight(insight_perf("week", latest_wk, f"최신주({week_pretty(latest_wk)})"))
 cc = st.columns(4)
 cc[0].plotly_chart(chart_daily(), use_container_width=True)
 cc[1].plotly_chart(chart_monthly(), use_container_width=True)
@@ -590,28 +783,31 @@ cc[3].plotly_chart(chart_channel_yoy(wk_periods), use_container_width=True)
 
 # ---- 2) 월별 ----
 st.header("2) 월별")
-mcur = periods("month", "overall", "일평균거래액", "TOTAL", "", CUR)
-mprev = [f"{m}월" for m in range(1, 13)]  # 전년은 항상 1~12월(손상/결측 월은 '-')
-st.markdown(perf_table("month", mcur, mprev, month_pretty), unsafe_allow_html=True)
+cur_mo = cur_months[-1] if cur_months else None
+render_insight(insight_month(cur_mo, cutoff, True, f"당월({cur_mo}월~{cutoff}일 MTD)") if cur_mo else [])
+st.caption(f"전년비 — 완료월: 전년 동월 **마감** 대비 / 당월({cur_mo}월~{cutoff}일): 전년 동월 **동일기간(MTD)** 대비")
+st.markdown(monthly_table(cur_months, cutoff), unsafe_allow_html=True)
 
 # ---- 3) 주차별 ----
 st.header("3) 주차별")
-st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty), unsafe_allow_html=True)
+render_insight(insight_perf("week", latest_wk, f"최신주({week_pretty(latest_wk)})"))
+st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty, bold_period=latest_wk), unsafe_allow_html=True)
 
 # ---- 4) 주차별·채널별 ----
 st.header("4) 주차별·채널별")
+render_insight(insight_channel(latest_wk))
 for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("③ CR", "CR")]:
     st.subheader(tag)
-    st.markdown(channel_table(met, wk_periods), unsafe_allow_html=True)
+    st.markdown(channel_table(met, wk_periods, bold_period=latest_wk), unsafe_allow_html=True)
 
 # ---- 5) 상품별 ----
 if not df[df.perspective == "product"].empty:
     st.header("5) 상품별 (e-영업 × 카테고리)")
     pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
-    default_ix = len(pwk_all) - 1
-    sel = st.selectbox("주차 선택", pwk_all[::-1], index=0,
-                       format_func=week_pretty) if pwk_all else None
+    sel = pwk_all[-1] if pwk_all else None
     if sel:
+        render_insight(insight_product(sel))
+        st.caption(f"기준: {week_pretty(sel)}")
         st.subheader("① 거래액")
         st.markdown(product_table("일평균거래액", sel), unsafe_allow_html=True)
         st.subheader("② 상품UV")
@@ -620,11 +816,10 @@ if not df[df.perspective == "product"].empty:
 with st.expander("ℹ️ 표 읽는 법 / 데이터"):
     st.markdown(
         f"- 각 표는 **구분 × [{CUR}년 | 전년비 | {PREV}년]** 구조로 엑셀 Summary 2.실적과 동일합니다.\n"
-        "- **전년비**: 같은 월/주차 라벨을 올해 vs 전년으로 계산. <span style='color:#1f5fbf'>파랑=신장(+)</span> / "
-        "<span style='color:#c0392b'>빨강=역신장(−)</span>.\n"
-        "- 거래액=일평균거래액(억), 고객수·DAU=일평균, 유입률·CR=%. (유효회원수는 Summary처럼 숨김)\n"
-        "- **월별은 깨끗한 일자별에서 집계**(손상 많은 월별 export 대체).\n"
-        "- ⚠️ 원본 데이터에 **2025년 9월말~10월** 손상 구간(유효회원수·DAU·거래액이 ~2배)이 있어 자동 제외했습니다. "
-        "해당 구간·전년비는 '—'로 표시됩니다(현재연도 2026은 정상).\n"
+        "- **전년비**: 같은 월/주차 라벨을 올해 vs 전년으로 계산. 음수 <span style='color:#c0392b'>빨강 △</span>, 양수 검정.\n"
+        "- 거래액=일평균거래액 **백만원**, 고객수·DAU=일평균, 유입률·CR=%. (유효회원수는 Summary처럼 숨김)\n"
+        "- **월별은 깨끗한 일자별에서 집계**. 당월은 MTD(~집계일)이며 파란 테두리로 강조. 최신 주차도 동일 강조.\n"
+        "- 일자별 차트는 **직전 완료주까지 월~일 14일**, 전년은 **전년동요일**(날짜−364일) 비교.\n"
+        "- ⚠️ 원본에 **2025년 9월말~10월** 손상 구간(유효회원수·DAU·거래액 ~2배)이 있어 자동 제외 → 해당 구간·전년비 '—'(2026은 정상).\n"
         "- 목표 대비 달성율(2-1)·행사별(2-6)은 원본 6종에 데이터가 없어 제외(목표 파일 주시면 추가).",
         unsafe_allow_html=True)
