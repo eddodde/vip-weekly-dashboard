@@ -411,6 +411,72 @@ def month_value(metric, year, mo, max_day=None):
     return dmean(metric, year, mo, max_day)
 
 
+def dv(year, mo, day, metric="일평균거래액"):
+    """특정 일자 값(overall, TOTAL)."""
+    if _DAY.empty:
+        return None
+    r = _DAY[(_DAY.metric == metric) & (_DAY.seg1 == "TOTAL") & (_DAY.year == year) & (_DAY.mo == mo) & (_DAY.dy == day)]
+    return r["value"].iloc[0] if len(r) else None
+
+
+# ----------------------------------------------------------------------------- events (가변탭 행사 캘린더)
+EVENTS_CSV = "data/events.csv"
+
+
+@st.cache_data(show_spinner=False)
+def load_events():
+    try:
+        e = pd.read_csv(EVENTS_CSV, encoding="utf-8-sig")
+        e["d"] = pd.to_datetime(e["date"]).dt.date
+        e["major"] = e["text"].str.contains(r"전관행사|L\+DAY|슈퍼세일|앵콜|정기세일", regex=True, na=False)
+        return e
+    except Exception:
+        return pd.DataFrame(columns=["year", "date", "text", "d", "major"])
+
+
+EVENTS = load_events()
+
+
+def _evname(t):
+    """'[전관행사] L+DAY (7/8 ...)' → 'L+DAY' 로 축약."""
+    t = re.sub(r"\[[^\]]*\]", "", str(t))
+    t = re.split(r"[(\*※]", t)[0]
+    return t.strip()
+
+
+def upcoming_major(last_date, horizon=16):
+    """전년 동기(−364일) 기준 앞으로 horizon일 내 반복될 주요 행사 [(이름, 전년일자, 올해추정일자)]."""
+    if EVENTS.empty or last_date is None:
+        return []
+    lo = last_date - datetime.timedelta(days=364)
+    hi = lo + datetime.timedelta(days=horizon)
+    e = EVENTS[(EVENTS.major) & (EVENTS.d > lo) & (EVENTS.d <= hi)].sort_values("d")
+    out, seen = [], set()
+    for _, r in e.iterrows():
+        nm = _evname(r["text"])
+        if not nm or nm in seen:
+            continue
+        seen.add(nm)
+        out.append((nm, r["d"], r["d"] + datetime.timedelta(days=364)))
+    return out
+
+
+def event_lift(pd0, span=3):
+    """전년 행사 효과: 행사기간(pd0~+span일) 일평균거래액 vs 직전 7일 대비."""
+    def avg(lo, hi):
+        vals = []
+        d = lo
+        while d <= hi:
+            v = dv(d.year, d.month, d.day)
+            if v is not None:
+                vals.append(v)
+            d += datetime.timedelta(days=1)
+        return sum(vals) / len(vals) if vals else None
+    ev = avg(pd0, pd0 + datetime.timedelta(days=span - 1))
+    base = avg(pd0 - datetime.timedelta(days=7), pd0 - datetime.timedelta(days=1))
+    return (ev / base - 1) if (ev and base) else None
+
+
 YOY_POS = "color:#1f5fbf;font-weight:600"   # 신장(+) 파랑
 YOY_NEG = "color:#c0392b;font-weight:600"   # 역신장(−) 빨강
 
@@ -684,11 +750,15 @@ def chart_monthly():
     xlab = [f"{m}월" for m in range(1, 13)]
     fig = _fig(f"{PREV}·{CUR}년 월별 거래액 트렌드", xlab,
                {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}": (y25, BLUE_PREV, "solid")})
-    # 당월 예상 마감(전망) 마커
+    # 당월 예상 마감(전망) 마커 — 호버 시 근거
     fc = forecast_month(cm, cd) if cm else None
     if fc:
+        ht = (f"{cm}월 예상마감 {fc['daily']/1e6:,.0f}백만<br>"
+              f"근거: {cm}/1~{cd} 실적 + 잔여 {fc['rem']}일 전년 동월 실적×MTD수준"
+              + (f"<br>전년 반복행사: {', '.join(fc['events'][:2])}" if fc["events"] else "") + "<extra></extra>")
         fig.add_trace(go.Scatter(x=[xlab[cm - 1]], y=[fc["daily"] / 1e6], name="예상마감",
-                                 mode="markers", marker=dict(symbol="star", size=12, color="#ED7D31")))
+                                 mode="markers", marker=dict(symbol="star", size=13, color="#ED7D31"),
+                                 hovertemplate=ht))
     return fig
 
 
@@ -755,25 +825,26 @@ def _next_prevweek(period):
 
 
 def forecast_month(mo, cutoff):
-    """당월 예상 마감: 전년 '월내 잔여일' 패턴에 올해 MTD 수준을 반영해 월 일평균/총액/전년비 추정."""
+    """당월 예상 마감. 잔여일은 '전년 동요일(−364)' 실적으로 채우고(반복 행사·주말 자동 반영),
+    올해 MTD 수준(전년 동기比)만큼 스케일. → 행사 일자가 1~2일 달라도 요일 기준으로 정렬됨."""
     if not cutoff or _DAY.empty:
         return None
     dim = calendar.monthrange(CUR, mo)[1]
     if cutoff >= dim:
         return None
-
     def s(year, lo, hi):
-        d = _DAY[(_DAY.metric == "일평균거래액") & (_DAY.seg1 == "TOTAL") & (_DAY.year == year)
-                 & (_DAY.mo == mo) & (_DAY.dy >= lo) & (_DAY.dy <= hi)]
-        return d["value"].sum()
+        return sum(v for v in (dv(year, mo, d) for d in range(lo, hi + 1)) if v is not None)
     mtd26, mtd25, rem25 = s(CUR, 1, cutoff), s(PREV, 1, cutoff), s(PREV, cutoff + 1, dim)
-    if not mtd25:
+    if mtd25 <= 0:
         return None
-    proj_total = mtd26 + rem25 * (mtd26 / mtd25)   # 잔여일은 전년 패턴×올해 MTD 수준
+    # 잔여일은 전년 동월 실적(반복 행사 포함)에 올해 MTD 수준(전년비 ratio)을 반영.
+    # 월 단위 집계라 행사가 1~2일 이동해도 총액 영향은 미미 → 전년비는 MTD와 일관(=ratio−1).
+    ratio = mtd26 / mtd25
+    proj_total = mtd26 + rem25 * ratio
     proj_daily = proj_total / dim
-    full25 = month_value(SALES, PREV, mo)
-    return dict(daily=proj_daily, total=proj_total, dim=dim,
-                yoy=(proj_daily / full25 - 1 if full25 else None))
+    ev = [nm for nm, _, cd in upcoming_major(datetime.date(CUR, mo, cutoff), horizon=dim - cutoff)]
+    return dict(daily=proj_daily, total=proj_total, dim=dim, ratio=ratio, rem=dim - cutoff,
+                yoy=ratio - 1, events=ev)
 
 
 def insight_trend(wk_all):
@@ -800,6 +871,13 @@ def insight_trend(wk_all):
             b.append(f"{lead}차주({week_pretty(nw)}) {a/1e6:,.0f}→{c/1e6:,.0f}백만(<b>{_pct(seas)}</b>)로 "
                      f"{'반등' if seas > 0 else '추가 둔화'} "
                      f'→ <span class="imp">올해도 같은 계절 패턴이면 차주 {tail}</span>')
+    up = upcoming_major(last_daily_date(), horizon=10)
+    if up:
+        nm, pd0, cd0 = up[0]
+        lift = event_lift(pd0)
+        liftxt = f" — 전년 해당 행사기간 거래액 직전주 대비 <b>{_pct(lift)}</b>" if lift is not None else ""
+        b.append(f"차주 <b>{nm}</b>(전년 {pd0.month}/{pd0.day}, 매년 반복) 예정{liftxt} "
+                 f'→ <span class="imp">행사 모멘텀으로 반등 유도, 사전 알림·고관여 타겟팅 준비</span>')
     return b
 
 
@@ -820,8 +898,33 @@ def insight_month(mo, cutoff, is_cur, unit_label):
     if is_cur:
         fc = forecast_month(mo, cutoff)
         if fc and fc["yoy"] is not None:
-            b.insert(len(b) - 1, f"현 추세·전년 월내 패턴 반영 시 <b>{mo}월 예상 마감</b> 일평균 "
-                                 f"<b>{fc['daily']/1e6:,.0f}백만</b>(전년비 {_pct(fc['yoy'])}), 월 거래액 약 {fc['total']/1e8:,.0f}억")
+            evtxt = f" (잔여기간 {', '.join(fc['events'][:2])} 등 전년 반복 행사 포함)" if fc["events"] else ""
+            b.insert(len(b) - 1, f"<b>{mo}월 예상 마감</b> 일평균 <b>{fc['daily']/1e6:,.0f}백만</b>"
+                                 f"(전년비 {_pct(fc['yoy'])}, 월 거래액 약 {fc['total']/1e8:,.0f}억){evtxt}")
+    return b
+
+
+def insight_dau(period):
+    """'DAU 견인 필요'(누구나 아는 얘기)를 넘어: 지속성·주도 채널·행사 무관 구조성까지."""
+    rows = []
+    for _, ch in CH_ROWS[1:]:
+        c, p = V("week", "overall", "DAU", ch, "", CUR, period), V("week", "overall", "DAU", ch, "", PREV, period)
+        if c is not None and p is not None:
+            rows.append((ch, c - p, yoy(c, p)))
+    if not rows:
+        return []
+    worst = min(rows, key=lambda r: r[1])
+    wa = periods("week", "overall", "DAU", "TOTAL", "", CUR)
+    cons = 0
+    for pp in reversed(wa):
+        r = yoy(V("week", "overall", "DAU", "TOTAL", "", CUR, pp), V("week", "overall", "DAU", "TOTAL", "", PREV, pp))
+        if r is not None and r < 0:
+            cons += 1
+        else:
+            break
+    b = [f"DAU 전년비 <b>{cons}주 연속</b> 역신장(단기 이슈 아닌 구조적 하락) — "
+         f"감소는 <b>{worst[0]} 채널</b>이 주도({_pct(worst[2])})"]
+    b.append('<span class="imp">→ 행사성 일시 유입이 아닌 <b>상시 방문 기반</b>(미방문 VIP 리텐션·앱 재방문 유도) 회복이 관건</span>')
     return b
 
 
@@ -893,26 +996,34 @@ def final_direction(wk_all, cur_mo, cutoff):
     nw = _next_prevweek(period)
     seas = yoy(_wk_sales(PREV, nw), _wk_sales(PREV, period)) if nw else None
 
+    up = upcoming_major(last_daily_date(), horizon=10)
+
     diag, now, nxt = [], [], []
+    # 진단: 거래액 동인 + DAU 구조성(비반복 인사이트)
     if sales is not None and main:
-        diag.append(f"거래액 전년비 <b>{_pct(sales)}</b>의 핵심 동인은 <b>{main}({_pct(comp[main])})</b>, "
-                    f"객단가 등 구매단가는 방어 중 — <b>{main}(트래픽/전환) 회복이 반등의 관건</b>")
-    if seas is not None:
-        diag.append(f"전년 동기 계절 패턴상 차주는 {'반등' if seas > 0 else '둔화'} 국면({_pct(seas)}) — "
-                    f"{'회복 시점과 맞물려 액션 효과 극대화 가능' if seas > 0 else '계절 역풍 감안한 방어 필요'}")
+        diag.append(f"거래액 전년비 <b>{_pct(sales)}</b> — 핵심 동인은 <b>{main}({_pct(comp[main])})</b>, "
+                    f"객단가·전환 단가는 방어 중")
+    diag += insight_dau(period)     # DAU 지속성·주도채널·상시방문 구조
+    # 금주 액션
     if main:
         now.append(f"<b>{main} 회복</b> — {DRIVER_ACTION.get(main, '')}")
     now.append(f"구매전환 방어 — {DRIVER_ACTION['CR']}")
     if own_worst:
         now.append(f"자사 부진 <b>{own_worst}</b> 구매전환(시크릿 혜택·기획전) + 성장 카테고리 소구로 자사 비중 확대")
+    if up:
+        now.append(f"차주 <b>{up[0][0]}</b>(전년 {up[0][1].month}/{up[0][1].day} 반복) 사전 알림톡·고관여 타겟 준비")
     # 차주 정량 전망
     if sales is not None and main and comp[main] < 0:
         half = comp[main] / 2
         scen = sales - half                      # main 갭 절반 회복 시(YoY 가법 근사)
-        extra = " (전년 계절 반등 국면 가세 시 추가 개선)" if (seas and seas > 0) else ""
-        nxt.append(f"현 추세 지속 시 차주 거래액 전년비 <b>{_pct(sales)}</b> 수준 예상")
-        nxt.append(f"금주 액션으로 <b>{main} 갭 절반 회복({_pct(comp[main])}→{_pct(comp[main]-half)})</b> 시 "
-                   f"차주 거래액 <b>{_pct(sales)} → {_pct(scen)}</b>로 역신장 폭 축소 기대{extra}")
+        ev_txt = ""
+        if up:
+            lift = event_lift(up[0][1])
+            if lift is not None and lift > 0:
+                ev_txt = f" + 차주 {up[0][0]}(전년 거래액 +{lift*100:.0f}%) 반복 모멘텀"
+        nxt.append(f"현 추세 지속 시 차주 거래액 전년비 <b>{_pct(sales)}</b> 수준")
+        nxt.append(f"금주 액션으로 <b>{main} 갭 절반 회복({_pct(comp[main])}→{_pct(comp[main]-half)})</b>{ev_txt} 가세 시 "
+                   f"차주 거래액 <b>{_pct(sales)} → {_pct(scen)}</b>로 역신장 폭 축소 기대")
     nxt.append("중기: 자사(영업1·2) 성장 카테고리 전환 확대로 자사 브랜드 매출 비중 강화")
     return diag, now, nxt
 
@@ -945,6 +1056,16 @@ cc[3].plotly_chart(chart_channel_yoy(wk_periods), use_container_width=True)
 st.header("2) 월별")
 cur_mo = cur_months[-1] if cur_months else None
 render_insight(insight_month(cur_mo, cutoff, True, f"당월({cur_mo}월~{cutoff}일 MTD)") if cur_mo else [])
+fc = forecast_month(cur_mo, cutoff) if cur_mo else None
+if fc and fc["yoy"] is not None:
+    basis = (f"근거: {cur_mo}월 1~{cutoff}일 실적 + 잔여 {fc['rem']}일은 전년 동월 같은 일자 실적에 "
+             f"올해 MTD 수준(전년비 {fc['ratio']*100-100:+.0f}%)을 반영해 추정. "
+             f"전년 대비 행사 컨텐츠 동일·일자만 1~2일 이동 가정(월 총액 영향 미미)"
+             + (f". 잔여기간 전년 반복 행사: {', '.join(fc['events'][:3])}" if fc["events"] else "") + ".")
+    m1, m2, m3 = st.columns(3)
+    m1.metric(f"{cur_mo}월 예상 마감 (일평균)", f"{fc['daily']/1e6:,.0f}백만", yoy_str(fc['yoy']), help=basis)
+    m2.metric("예상 월 거래액", f"{fc['total']/1e8:,.0f}억", help=basis)
+    m3.metric(f"MTD(~{cutoff}일) 전년비", yoy_str(fc['ratio'] - 1), help="집계일까지 누적 전년 동기 대비")
 st.caption(f"전년비 — 완료월: 전년 동월 **마감** 대비 / 당월({cur_mo}월~{cutoff}일): 전년 동월 **동일기간(MTD)** 대비")
 st.markdown(monthly_table(cur_months, cutoff), unsafe_allow_html=True)
 
