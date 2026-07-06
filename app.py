@@ -8,6 +8,7 @@ VIP 주간 실적 대시보드 (LF CRM/VIP)
 """
 import io
 import re
+import calendar
 import datetime
 import numpy as np
 import pandas as pd
@@ -452,7 +453,8 @@ def render_block_table(row_labels, blocks, bold_label=None):
     html.append('</tr><tr>')
     for title, gcss, cols in blocks:
         for cl, _ in cols:
-            cur = " curcol" if bold_label and cl == bold_label else ""
+            # 현재 열 강조는 올해·전년비 블록만 (전년 2025 블록은 참조용 → 강조 안 함)
+            cur = " curcol" if (bold_label and cl == bold_label and gcss != "grp2025") else ""
             html.append(f'<th class="{gcss}{cur}">{cl}</th>')
     html.append('</tr>')
     last = len(row_labels) - 1
@@ -571,42 +573,42 @@ PARTNER = ["e-영업3", "e-영업4"]    # 입점(수수료 구조)
 WD = ["월", "화", "수", "목", "금", "토", "일"]  # datetime weekday(Mon=0)
 
 
-def product_table(metric, wk):
-    """상품별 표: rows=영업>카테고리, cols=[26년 | 25년 | 전년비 | 증감]. 단일 주차."""
-    rows, r26, r25, ryoy, rdlt = [], [], [], [], []
-    for ye in YEONG:
-        # 영업 소계
-        c = V("week", "product", metric, ye, "TOTAL", CUR, wk)
-        p = V("week", "product", metric, ye, "TOTAL", PREV, wk)
-        rows.append(f"<b>{ye}</b>")
-        r26.append(("<b>" + fmt(metric, c) + "</b>") if c is not None else "-")
-        r25.append(("<b>" + fmt(metric, p) + "</b>") if p is not None else "-")
-        rr = yoy(c, p)
-        ryoy.append((rr, True))
-        rdlt.append(fmt_delta(metric, (c - p) if (c is not None and p is not None) else None))
-        cats = [ca for ca in CATS_ORDER
-                if V("week", "product", metric, ye, ca, CUR, wk) is not None
-                or V("week", "product", metric, ye, ca, PREV, wk) is not None]
-        for ca in cats:
-            c = V("week", "product", metric, ye, ca, CUR, wk)
-            p = V("week", "product", metric, ye, ca, PREV, wk)
-            rows.append("&nbsp;&nbsp;" + ca)
-            r26.append(fmt(metric, c))
-            r25.append(fmt(metric, p))
-            ryoy.append((yoy(c, p), False))
-            rdlt.append(fmt_delta(metric, (c - p) if (c is not None and p is not None) else None))
-    # build table
-    html = [TABLE_CSS, '<div class="sumwrap"><table class="sumtbl">']
-    html.append(f'<tr><th class="rowh">구분</th><th class="grp2026">{CUR}년</th>'
-                f'<th class="grp2025">{PREV}년</th><th class="grpyoy">전년비</th><th>증감</th></tr>')
-    for i, rl in enumerate(rows):
-        rr, bold = ryoy[i]
-        ytxt, sty = yoy_disp(rr)
+PROD_METRICS = [("거래액(백만)", "일평균거래액"), ("상품UV", "상품UV")]
+
+
+def product_table(wk):
+    """상품별 통합표: rows=영업>카테고리, cols=거래액[26년|전년비] · 상품UV[26년|전년비]. 단일 주차."""
+    def cellpair(met, ye, ca, bold):
+        c = V("week", "product", met, ye, ca, CUR, wk)
+        p = V("week", "product", met, ye, ca, PREV, wk)
+        v = fmt(met, c)
+        txt, sty = yoy_disp(yoy(c, p))
         if bold:
-            ytxt = f"<b>{ytxt}</b>"
-        html.append(f'<tr><td class="rowh">{rl}</td><td class="grp2026">{r26[i]}</td>'
-                    f'<td class="grp2025">{r25[i]}</td><td class="grpyoy" style="{sty}">{ytxt}</td>'
-                    f'<td>{rdlt[i]}</td></tr>')
+            v, txt = f"<b>{v}</b>", f"<b>{txt}</b>"
+        return (f'<td class="grp2026">{v}</td>', f'<td class="grpyoy" style="{sty}">{txt}</td>')
+
+    body = []
+    for ye in YEONG:
+        cells = []
+        for _, met in PROD_METRICS:
+            cells += list(cellpair(met, ye, "TOTAL", True))
+        body.append((f"<b>{ye}</b>", cells))
+        cats = [ca for ca in CATS_ORDER
+                if V("week", "product", "일평균거래액", ye, ca, CUR, wk) is not None
+                or V("week", "product", "일평균거래액", ye, ca, PREV, wk) is not None]
+        for ca in cats:
+            cells = []
+            for _, met in PROD_METRICS:
+                cells += list(cellpair(met, ye, ca, False))
+            body.append(("&nbsp;&nbsp;" + ca, cells))
+    html = ['<div class="sumwrap"><table class="sumtbl">']
+    html.append('<tr><th class="rowh" rowspan="2">구분</th>'
+                f'<th colspan="2" class="grp2026">거래액(백만)</th>'
+                f'<th colspan="2" class="grpyoy">상품UV</th></tr>')
+    html.append(f'<tr><th class="grp2026">{CUR}년</th><th class="grp2026">전년비</th>'
+                f'<th class="grpyoy">{CUR}년</th><th class="grpyoy">전년비</th></tr>')
+    for rl, cells in body:
+        html.append(f'<tr><td class="rowh">{rl}</td>' + "".join(cells) + '</tr>')
     html.append('</table></div>')
     return "".join(html)
 
@@ -679,8 +681,15 @@ def chart_monthly():
         else:
             y26.append(_m(V("month", "overall", SALES, "TOTAL", "", CUR, f"{mo}월")))
         y25.append(_m(V("month", "overall", SALES, "TOTAL", "", PREV, f"{mo}월")))
-    return _fig(f"{PREV}·{CUR}년 월별 거래액 트렌드", [f"{m}월" for m in range(1, 13)],
-                {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}": (y25, BLUE_PREV, "solid")})
+    xlab = [f"{m}월" for m in range(1, 13)]
+    fig = _fig(f"{PREV}·{CUR}년 월별 거래액 트렌드", xlab,
+               {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}": (y25, BLUE_PREV, "solid")})
+    # 당월 예상 마감(전망) 마커
+    fc = forecast_month(cm, cd) if cm else None
+    if fc:
+        fig.add_trace(go.Scatter(x=[xlab[cm - 1]], y=[fc["daily"] / 1e6], name="예상마감",
+                                 mode="markers", marker=dict(symbol="star", size=12, color="#ED7D31")))
+    return fig
 
 
 def chart_weekly(wkp):
@@ -702,9 +711,12 @@ def chart_channel_yoy(wkp):
 
 
 # ----------------------------------------------------------------------------- insights (분석형)
-DRIVER_IMPL = {"DAU": "트래픽(방문) 회복이 최우선 레버 — 미방문 리텐션·출석 유도",
-               "CR": "전환 개선이 핵심 — 장바구니·보유쿠폰·최근본상품 소구",
-               "객단가": "객단가 방어/상향 — 고관여 세그 고단가 믹스·번들"}
+# 섹션 인사이트엔 '핵심 레버'만(짧게). 상세 액션(전술)은 최하단 종합 방향성에서만 노출.
+DRIVER_LEVER = {"DAU": "방문(DAU) 회복이 핵심 레버", "CR": "구매전환(CR) 개선이 핵심 레버",
+                "객단가": "객단가 방어·상향이 핵심 레버"}
+DRIVER_ACTION = {"DAU": "최근 미방문 VIP 자동화 문자·출석체크·개인화 추천으로 재방문 유도",
+                 "CR": "장바구니·보유쿠폰·최근 본 상품 리마인드로 전환 유도",
+                 "객단가": "고관여 세그 고단가 상품 소구·번들·기획전으로 객단가 상향"}
 
 
 def _pct(r):
@@ -712,7 +724,7 @@ def _pct(r):
 
 
 def _insight_sales(g, unit_label):
-    """거래액=DAU×CR×객단가 분해로 주동인·방어요인·시사점 도출(단순 현상 나열 X). g=지표→전년비."""
+    """거래액=DAU×CR×객단가 분해로 주동인·상쇄요인·핵심레버 도출(단순 현상 나열 X). g=지표→전년비."""
     sales = g("일평균거래액")
     comp = {"DAU": g("DAU"), "CR": g("CR"), "객단가": g("일평균객단가")}
     comp = {k: v for k, v in comp.items() if v is not None}
@@ -720,13 +732,13 @@ def _insight_sales(g, unit_label):
         return []
     neg = sales < 0
     main = (min if neg else max)(comp, key=comp.get)
-    drags = [k for k in comp if (comp[k] < 0) == neg and k != main]     # main과 같은 방향(추가 동인)
-    defend = [k for k in comp if (comp[k] > 0) == neg]                  # sales와 반대 방향(상쇄 요인)
+    drags = [k for k in comp if (comp[k] < 0) == neg and k != main]
+    defend = [k for k in comp if (comp[k] > 0) == neg]
     b = [f"{unit_label} 거래액 <b>{_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>가 "
          f"{'하락' if neg else '신장'} 주도" + (f", {drags[0]}({_pct(comp[drags[0]])})도 동반" if drags else "")]
     if defend:
         b.append(("상쇄" if neg else "상충") + " 요인: " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
-    b.append(f'<span class="imp">→ {DRIVER_IMPL.get(main, "")}</span>')
+    b.append(f'<span class="imp">→ {DRIVER_LEVER.get(main, "")}</span>')
     return b
 
 
@@ -742,8 +754,30 @@ def _next_prevweek(period):
     return None
 
 
+def forecast_month(mo, cutoff):
+    """당월 예상 마감: 전년 '월내 잔여일' 패턴에 올해 MTD 수준을 반영해 월 일평균/총액/전년비 추정."""
+    if not cutoff or _DAY.empty:
+        return None
+    dim = calendar.monthrange(CUR, mo)[1]
+    if cutoff >= dim:
+        return None
+
+    def s(year, lo, hi):
+        d = _DAY[(_DAY.metric == "일평균거래액") & (_DAY.seg1 == "TOTAL") & (_DAY.year == year)
+                 & (_DAY.mo == mo) & (_DAY.dy >= lo) & (_DAY.dy <= hi)]
+        return d["value"].sum()
+    mtd26, mtd25, rem25 = s(CUR, 1, cutoff), s(PREV, 1, cutoff), s(PREV, cutoff + 1, dim)
+    if not mtd25:
+        return None
+    proj_total = mtd26 + rem25 * (mtd26 / mtd25)   # 잔여일은 전년 패턴×올해 MTD 수준
+    proj_daily = proj_total / dim
+    full25 = month_value(SALES, PREV, mo)
+    return dict(daily=proj_daily, total=proj_total, dim=dim,
+                yoy=(proj_daily / full25 - 1 if full25 else None))
+
+
 def insight_trend(wk_all):
-    """최신주 전년비·전주비 + 전년 차주 계절성(선행 시그널)."""
+    """최신주 전년비·전주비 + 전년 동기 실측 패턴 근거의 차주 전망."""
     if not wk_all:
         return []
     period = wk_all[-1]
@@ -752,13 +786,20 @@ def insight_trend(wk_all):
     wowv = yoy(_wk_sales(CUR, period), _wk_sales(CUR, wk_all[-2])) if len(wk_all) >= 2 else None
     b.append(f"최신주({week_pretty(period)}) 거래액 전년비 <b>{_pct(yoyv)}</b>"
              + (f" · 전주비 <b>{_pct(wowv)}</b>" if wowv is not None else ""))
+    pw = periods("week", "overall", SALES, "TOTAL", "", PREV)
     nw = _next_prevweek(period)
-    if nw:
-        seas = yoy(_wk_sales(PREV, nw), _wk_sales(PREV, period))
-        if seas is not None:
-            up = seas > 0
-            b.append(f"전년 기준 <b>차주({week_pretty(nw)})</b>엔 거래액 {_pct(seas)} {'상승' if up else '하락'}(계절성) "
-                     f'→ <span class="imp">차주 {"수요 상승기, 공세적 운영 여력" if up else "수요 둔화 예상, 방어·효율 중심"}</span>')
+    if nw and period in pw:
+        i = pw.index(period)
+        a, c = _wk_sales(PREV, period), _wk_sales(PREV, nw)      # 전년 현주, 전년 차주
+        seas = yoy(c, a)
+        pmove = yoy(a, _wk_sales(PREV, pw[i - 1])) if i - 1 >= 0 else None
+        if a and c and seas is not None:
+            lead = (f"전년엔 {week_pretty(period)}까지 전주비 {_pct(pmove)}로 둔화했다가 "
+                    if (pmove is not None and pmove < 0) else "전년엔 ")
+            tail = "회복 여력" if seas > 0 else "약세 지속 가능성 대비"
+            b.append(f"{lead}차주({week_pretty(nw)}) {a/1e6:,.0f}→{c/1e6:,.0f}백만(<b>{_pct(seas)}</b>)로 "
+                     f"{'반등' if seas > 0 else '추가 둔화'} "
+                     f'→ <span class="imp">올해도 같은 계절 패턴이면 차주 {tail}</span>')
     return b
 
 
@@ -776,12 +817,17 @@ def insight_month(mo, cutoff, is_cur, unit_label):
         mom = yoy(month_value("일평균거래액", CUR, mo, maxd), month_value("일평균거래액", CUR, mo - 1, cutoff))
         if mom is not None:
             b.insert(1, f"전월비(동일기간 MTD) 거래액 <b>{_pct(mom)}</b>")
+    if is_cur:
+        fc = forecast_month(mo, cutoff)
+        if fc and fc["yoy"] is not None:
+            b.insert(len(b) - 1, f"현 추세·전년 월내 패턴 반영 시 <b>{mo}월 예상 마감</b> 일평균 "
+                                 f"<b>{fc['daily']/1e6:,.0f}백만</b>(전년비 {_pct(fc['yoy'])}), 월 거래액 약 {fc['total']/1e8:,.0f}억")
     return b
 
 
 def insight_channel(period):
-    """전년비 %만 보지 말 것 — 절대 기여액·비중으로 해석. 소규모 채널 과대해석 방지."""
-    tc, tp = V("week", "overall", SALES, "TOTAL", "", CUR, period), V("week", "overall", SALES, "TOTAL", "", PREV, period)
+    """비중(규모)을 반영해 실질 진원지·선전 채널만 짚음(방법론은 노출하지 않음)."""
+    tc = V("week", "overall", SALES, "TOTAL", "", CUR, period)
     rows = []
     for _, ch in CH_ROWS[1:]:
         c, p = V("week", "overall", SALES, ch, "", CUR, period), V("week", "overall", SALES, ch, "", PREV, period)
@@ -790,18 +836,20 @@ def insight_channel(period):
         rows.append((ch, c - p, (c / tc if tc else 0), yoy(c, p)))
     if not rows:
         return []
+    big = [r for r in rows if r[2] >= 0.05] or rows          # 규모 있는 채널 위주 해석
+    sw = sorted(big, key=lambda r: r[1])
     worst = min(rows, key=lambda r: r[1])
-    big = [r for r in rows if r[2] >= 0.05]         # 비중 5%+ = 규모 있는 채널
-    lift = max(big or rows, key=lambda r: r[1])
-    b = [f"감소 진원지: <b>{worst[0]}</b> Δ{worst[1]/1e6:+,.0f}백만 (비중 {worst[2]*100:.0f}%, 전년비 {_pct(worst[3])})"]
-    b.append(f"규모 있는 채널 중 <b>{lift[0]}</b>가 상대적 선전(Δ{lift[1]/1e6:+,.0f}백만, 비중 {lift[2]*100:.0f}%) — "
-             f"소규모 채널(EP·제휴)의 높은 전년비 %는 절대 기여가 작아 해석 주의")
-    b.append(f'<span class="imp">→ 비중 큰 {worst[0]} 회복이 실질 임팩트, {lift[0]}는 효율 유지·점진 확대</span>')
+    lift = sw[-1]
+    b = [f"<b>{worst[0]}</b>(비중 {worst[2]*100:.0f}%)가 거래액 감소를 주도 — Δ{worst[1]/1e6:+,.0f}백만, {_pct(worst[3])}"]
+    sec = [r for r in sw if r[1] < 0 and r[0] != worst[0]]
+    b.append((f"규모 채널 {sec[0][0]}({_pct(sec[0][3])})도 부진, " if sec else "")
+             + f"<b>{lift[0]}</b>(비중 {lift[2]*100:.0f}%, {_pct(lift[3])})는 상대적 선전")
+    b.append(f'<span class="imp">→ 비중 큰 {worst[0]} 회복이 전체 반등의 관건</span>')
     return b
 
 
 def insight_product(wk):
-    """액션은 수수료 없는 자사(영업1·2) 우선. 입점(3·4)은 참고."""
+    """자사(영업1·2) 중심으로 부진·견조 카테고리를 짚음."""
     recs = []
     for ye in YEONG:
         for ca in CATS_ORDER:
@@ -817,48 +865,56 @@ def insight_product(wk):
     if own:
         ow = min(own, key=lambda r: r[3])
         ob = max(own, key=lambda r: r[3])
-        b.append(f"자사(영업1·2) 중 <b>{ow[2]}</b> 부진({_pct(ow[4])}) / <b>{ob[2]}</b> 호조({_pct(ob[4])})")
-        b.append(f'<span class="imp">→ 수수료 없는 자사 우선 액션: {ow[1]} 반등(시크릿 혜택·기획전), '
-                 f'{ob[1]} 확대. 입점(영업3·4)은 판매해도 수수료 부담 → 참고만</span>')
+        b.append(f"자사(영업1·2): <b>{ow[2]}</b> 부진({_pct(ow[4])}) / <b>{ob[2]}</b> 견조({_pct(ob[4])})")
+        b.append(f'<span class="imp">→ 자사 {ow[1]} 반등이 우선, {ob[1]} 성장 모멘텀 유지</span>')
     return b
 
 
 def final_direction(wk_all, cur_mo, cutoff):
-    """금주·차주 방향성 자동 제시(핵심 동인·자사 카테고리·전년 차주 계절성 종합)."""
+    """진단 → 금주 액션 → 차주 정량 전망(핵심동인 회복 시나리오)."""
     if not wk_all:
-        return [], []
+        return [], [], []
     period = wk_all[-1]
-    g = lambda m: yoy(_wk_sales(CUR, period) if m == SALES else V("week", "overall", m, "TOTAL", "", CUR, period),
+    g = lambda m: yoy(V("week", "overall", m, "TOTAL", "", CUR, period),
                       V("week", "overall", m, "TOTAL", "", PREV, period))
-    comp = {k: g(k) for k in ("DAU", "CR", "일평균객단가")}
+    sales = g("일평균거래액")
+    comp = {"DAU": g("DAU"), "CR": g("CR"), "객단가": g("일평균객단가")}
     comp = {k: v for k, v in comp.items() if v is not None}
     main = min(comp, key=comp.get) if comp else None
-    main_nm = {"DAU": "DAU", "CR": "CR", "일평균객단가": "객단가"}.get(main, main)
-    own_worst = None
+    # 자사 부진 카테고리
     orecs = []
     for ye in OWN:
         for ca in CATS_ORDER:
             c = V("week", "product", SALES, ye, ca, CUR, period)
             p = V("week", "product", SALES, ye, ca, PREV, period)
             if c is not None and p is not None:
-                orecs.append((ca, c - p))
-    if orecs:
-        own_worst = min(orecs, key=lambda r: r[1])[0]
+                orecs.append((ca, c - p, yoy(c, p)))
+    own_worst = min(orecs, key=lambda r: r[1])[0] if orecs else None
     nw = _next_prevweek(period)
     seas = yoy(_wk_sales(PREV, nw), _wk_sales(PREV, period)) if nw else None
-    now, nxt = [], []
-    if main:
-        now.append(f"<b>{main_nm}</b>: {DRIVER_IMPL.get(main, '')}")
-    now.append("구매효율(CR·객단가) 방어 — 장바구니·보유쿠폰·최근본상품 리텐션")
-    if own_worst:
-        now.append(f"자사 브랜드 부진 카테고리 <b>{own_worst}</b> 구매전환 액션(시크릿 혜택·기획전)")
+
+    diag, now, nxt = [], [], []
+    if sales is not None and main:
+        diag.append(f"거래액 전년비 <b>{_pct(sales)}</b>의 핵심 동인은 <b>{main}({_pct(comp[main])})</b>, "
+                    f"객단가 등 구매단가는 방어 중 — <b>{main}(트래픽/전환) 회복이 반등의 관건</b>")
     if seas is not None:
-        if seas > 0:
-            nxt.append(f"전년 차주 계절성 <b>{_pct(seas)}</b>(수요 상승기) → 공세적 물량·프로모션으로 신장 극대화")
-        else:
-            nxt.append(f"전년 차주 계절성 <b>{_pct(seas)}</b>(수요 둔화) → 효율 중심·고관여 타겟 방어 운영")
-    nxt.append("자사(영업1·2) 성장 카테고리 중심 구매전환 확대, 입점 의존 최소화")
-    return now, nxt
+        diag.append(f"전년 동기 계절 패턴상 차주는 {'반등' if seas > 0 else '둔화'} 국면({_pct(seas)}) — "
+                    f"{'회복 시점과 맞물려 액션 효과 극대화 가능' if seas > 0 else '계절 역풍 감안한 방어 필요'}")
+    if main:
+        now.append(f"<b>{main} 회복</b> — {DRIVER_ACTION.get(main, '')}")
+    now.append(f"구매전환 방어 — {DRIVER_ACTION['CR']}")
+    if own_worst:
+        now.append(f"자사 부진 <b>{own_worst}</b> 구매전환(시크릿 혜택·기획전) + 성장 카테고리 소구로 자사 비중 확대")
+    # 차주 정량 전망
+    if sales is not None and main and comp[main] < 0:
+        half = comp[main] / 2
+        scen = sales - half                      # main 갭 절반 회복 시(YoY 가법 근사)
+        extra = " (전년 계절 반등 국면 가세 시 추가 개선)" if (seas and seas > 0) else ""
+        nxt.append(f"현 추세 지속 시 차주 거래액 전년비 <b>{_pct(sales)}</b> 수준 예상")
+        nxt.append(f"금주 액션으로 <b>{main} 갭 절반 회복({_pct(comp[main])}→{_pct(comp[main]-half)})</b> 시 "
+                   f"차주 거래액 <b>{_pct(sales)} → {_pct(scen)}</b>로 역신장 폭 축소 기대{extra}")
+    nxt.append("중기: 자사(영업1·2) 성장 카테고리 전환 확대로 자사 브랜드 매출 비중 강화")
+    return diag, now, nxt
 
 
 # ============================================================================= RENDER
@@ -911,21 +967,19 @@ if not df[df.perspective == "product"].empty:
     sel = pwk_all[-1] if pwk_all else None
     if sel:
         render_insight(insight_product(sel))
-        st.caption(f"기준: {week_pretty(sel)}")
-        st.subheader("① 거래액")
-        st.markdown(product_table("일평균거래액", sel), unsafe_allow_html=True)
-        st.subheader("② 상품UV")
-        st.markdown(product_table("상품UV", sel), unsafe_allow_html=True)
+        st.caption(f"기준: {week_pretty(sel)} · 거래액과 상품UV 통합")
+        st.markdown(product_table(sel), unsafe_allow_html=True)
 
-# ---- 종합 방향성 (금주 / 차주) ----
-st.header("✅ 종합 방향성")
-now_b, nxt_b = final_direction(wk_all, cur_mo, cutoff)
+# ---- 종합 방향성 (진단 → 금주 / 차주) ----
+st.header("✅ 종합 방향성 및 전망")
+diag_b, now_b, nxt_b = final_direction(wk_all, cur_mo, cutoff)
+render_insight(diag_b)
 d1, d2 = st.columns(2)
 with d1:
-    st.markdown("**금주**")
+    st.markdown("**금주 액션**")
     render_insight(now_b)
 with d2:
-    st.markdown("**차주**")
+    st.markdown("**차주 전망**")
     render_insight(nxt_b)
 
 with st.expander("ℹ️ 표 읽는 법 / 데이터"):
