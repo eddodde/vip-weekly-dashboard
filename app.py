@@ -1,38 +1,27 @@
 # -*- coding: utf-8 -*-
 """
 VIP 주간 실적 대시보드 (LF CRM/VIP)
+주간회의 엑셀 'Summary' 시트 2.실적 양식을 그대로 재현 — 수기 입력만 자동화.
+표 구조: 구분(지표/채널/카테고리) × [2026년 | 전년비 | 2025년]
 - 시드: data/perf_long.csv (convert.ps1 산출, tidy long)
-- 사이드바에서 원본 BI export xlsx(전체관점/상품관점 · 일/주/월) 업로드 시 즉시 재파싱
-- 섹션: 핵심 KPI / 월별 / 주차별 / 채널별 / 상품별  (Summary 시트 2.실적 미러링)
+- 사이드바에서 원본(또는 update.ps1이 만든 CSV) 업로드 시 즉시 재계산
 """
 import io
 import re
 import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="VIP 주간 실적 대시보드", page_icon="📈", layout="wide")
+st.set_page_config(page_title="VIP 주간 실적", page_icon="📊", layout="wide")
 
 SEED_CSV = "data/perf_long.csv"
-
-LEVEL_METRICS = ["일평균거래액", "일평균고객수", "DAU", "유효회원수", "일평균객단가"]
-RATE_METRICS = ["유입율", "CR"]
-SHARE_METRICS = ["거래액비중", "고객비중"]
-CHANNEL_ORDER = ["직접", "광고", "EP", "PUSH", "제휴", "브랜드광고", "미디어커머스"]
-PRODUCT_METRICS = ["일평균거래액", "일평균고객수", "일평균객단가", "상품UV", "상품CR"]
-CH_COLORS = {"직접": "#2E5EAA", "광고": "#5B9BD5", "EP": "#70AD47",
-             "PUSH": "#ED7D31", "제휴": "#A5A5A5", "브랜드광고": "#7030A0", "미디어커머스": "#C00000"}
 
 # ----------------------------------------------------------------------------- parsing
 def _year_of(x):
     if x is None:
         return None
     m = re.match(r"\s*(20\d{2})", str(x))
-    if m:
-        y = int(m.group(1))
-        if 2000 <= y <= 2100:
-            return y
+    if m and 2000 <= int(m.group(1)) <= 2100:
+        return int(m.group(1))
     return None
 
 
@@ -82,7 +71,7 @@ def _norm_seg(x):
 
 
 def parse_workbook(name, data):
-    """Parse one BI-export xlsx (bytes) into a list of tidy records. Mirrors convert.ps1."""
+    """Parse one BI-export xlsx (bytes) into tidy records. Mirrors convert.ps1."""
     from openpyxl import load_workbook
     wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     ws = wb.worksheets[0]
@@ -93,11 +82,10 @@ def parse_workbook(name, data):
     nrows = len(grid)
     ncols = max(len(r) for r in grid)
 
-    def cell(r, c):  # 1-based
+    def cell(r, c):
         row = grid[r - 1] if r - 1 < nrows else []
         return row[c - 1] if c - 1 < len(row) else None
 
-    # value-start col = first col on row1 with a year marker
     val_start = 0
     for c in range(1, ncols + 1):
         if _year_of(cell(1, c)) is not None:
@@ -106,7 +94,6 @@ def parse_workbook(name, data):
     if val_start == 0:
         return []
 
-    # year forward-fill + labels(row3)
     year_of, label_of = {}, {}
     cur = None
     for c in range(val_start, ncols + 1):
@@ -121,7 +108,6 @@ def parse_workbook(name, data):
         if label_of[c] is not None:
             grain = _grain(label_of[c])
             break
-
     perspective = "product" if (val_start - 1) >= 7 else "overall"
 
     out = []
@@ -162,39 +148,91 @@ TIDY_COLS = ["grain", "perspective", "year", "period", "period_sort",
              "seg1", "seg2", "metric", "value", "source"]
 DEDUP_KEY = ["grain", "perspective", "year", "period", "seg1", "seg2", "metric"]
 
+# 유효회원수는 55~59k로 안정적인 스냅샷 지표. 원본(일·주·월 전 export)의 2025-09말~10월
+# 구간은 이 값이 ~112k로 배증하는 데이터 손상이 있고, 같은 구간의 거래액/DAU도 함께 부풀려짐.
+# → 유효회원수(TOTAL)가 연중앙값의 1.5배를 넘는 (year,period)를 손상으로 보고 전 지표에서 제외.
+EFF_METRIC = "유효회원수"
+# 월별은 손상 많은 월별 export 대신 깨끗한 일자별에서 집계(레벨=일평균, 비율=구성요소로 재계산).
+MONTHLY_LEVEL = ["일평균거래액", "일평균고객수", "DAU", "유효회원수", "유입율"]
+
+
+def _corrupt_keys(df):
+    """손상 (grain,year,period): 유효회원수 또는 DAU(TOTAL)가 연중앙값의 1.5배를 넘는 구간.
+    유효회원수는 55~59k 고정이라 배증이 확실한 신호, DAU는 손상 구간 경계 주차 보완용."""
+    ck = set()
+    for met in (EFF_METRIC, "DAU"):
+        s = df[(df.perspective == "overall") & (df.metric == met) & (df.seg1 == "TOTAL")].copy()
+        if s.empty:
+            continue
+        s["med"] = s.groupby(["grain", "year"])["value"].transform("median")
+        bad = s[s["value"] > s["med"] * 1.5]
+        ck |= set(zip(bad.grain, bad.year, bad.period))
+    return ck
+
+
+def _drop_corrupt(df):
+    ck = _corrupt_keys(df)
+    if not ck:
+        return df, ck
+    keys = zip(df["grain"], df["year"], df["period"])
+    keep = [k not in ck for k in keys]
+    return df[keep].copy(), ck
+
+
+def derive_monthly(df):
+    """깨끗한 일자별(overall)에서 월별을 집계. 손상일 제외 후 유효일<20인 월은 생략(→ '—')."""
+    day = df[(df.grain == "day") & (df.perspective == "overall")].copy()
+    if day.empty:
+        return None
+    day["ym"] = day["period_sort"].astype(str).str[:6]
+    rows = []
+    for (yr, ym), g in day.groupby(["year", "ym"]):
+        if g[g.metric == "DAU"]["value"].count() < 20:
+            continue
+        mo = int(ym[4:6])
+        vals = {m: g[g.metric == m]["value"].mean() for m in MONTHLY_LEVEL}
+        cust, dau, sales = vals.get("일평균고객수"), vals.get("DAU"), vals.get("일평균거래액")
+        vals["일평균객단가"] = sales / cust if cust else None
+        vals["CR"] = cust / dau if dau else None
+        for m, v in vals.items():
+            if v is None or pd.isna(v):
+                continue
+            rows.append(dict(grain="month", perspective="overall", year=int(yr), period=f"{mo}월",
+                             period_sort=f"{yr}{mo:02d}00", seg1="TOTAL", seg2="",
+                             metric=m, value=float(v), source="derived_from_daily"))
+    return pd.DataFrame(rows) if rows else None
+
 
 def finalize(df):
-    """Normalize types and drop duplicate period/seg/metric rows (keep last vintage)."""
     if df is None or df.empty:
         return df
     df = df.copy()
     df["year"] = df["year"].astype(int)
     for c in ("seg1", "seg2"):
         df[c] = df[c].fillna("")
-    # overall: a blank channel means the whole aggregate — unify with "TOTAL" so the
-    # total-only files (seg1="") and the channel file (seg1="TOTAL") collapse to one row.
     ov = df["perspective"] == "overall"
     df.loc[ov & (df["seg1"] == ""), "seg1"] = "TOTAL"
     df = df.drop_duplicates(DEDUP_KEY, keep="last").reset_index(drop=True)
-    return df
+    df, _ = _drop_corrupt(df)
+    dm = derive_monthly(df)
+    if dm is not None and not dm.empty:
+        df = df[~((df.grain == "month") & (df.perspective == "overall"))]
+        df = pd.concat([df, dm], ignore_index=True)
+    return df.reset_index(drop=True)
 
 
 def _read_tidy_csv(name, data):
-    """Read an already-decrypted tidy long CSV (convert.ps1 산출)."""
     df = pd.read_csv(io.BytesIO(data), encoding="utf-8-sig")
-    missing = [c for c in ("grain", "perspective", "year", "period", "metric", "value") if c not in df.columns]
-    if missing:
-        raise ValueError(f"tidy CSV 컬럼 누락: {missing}")
+    need = [c for c in ("grain", "perspective", "year", "period", "metric", "value") if c not in df.columns]
+    if need:
+        raise ValueError(f"tidy CSV 컬럼 누락: {need}")
     for c in TIDY_COLS:
         if c not in df.columns:
             df[c] = ""
-    df["seg1"] = df["seg1"].fillna("")
-    df["seg2"] = df["seg2"].fillna("")
     return df[TIDY_COLS]
 
 
 def parse_uploads(files):
-    """Accept tidy CSV (primary, DRM-safe) and/or non-DRM xlsx. Returns combined DataFrame."""
     frames, recs, drm = [], [], []
     for f in files:
         low = f.name.lower()
@@ -210,11 +248,8 @@ def parse_uploads(files):
                 st.sidebar.error(f"파싱 실패: {f.name} — {e}")
     if drm:
         st.sidebar.warning(
-            "🔒 DRM 보호 파일이라 앱에서 직접 열 수 없습니다: "
-            + ", ".join(drm)
-            + "\n\n로컬에서 `update.ps1`(또는 convert.ps1)을 실행해 만든 "
-            + "`data/perf_long.csv`를 올려주세요. (Excel COM이 DRM을 복호화합니다)"
-        )
+            "🔒 DRM 보호(SCDSA) 파일이라 앱에서 직접 못 엽니다: " + ", ".join(drm)
+            + "\n\n로컬에서 `update.ps1` 실행 → `data/perf_long.csv` 를 올려주세요.")
     if recs:
         frames.append(pd.DataFrame(recs))
     if not frames:
@@ -227,23 +262,32 @@ def load_seed():
     try:
         return finalize(pd.read_csv(SEED_CSV, encoding="utf-8-sig"))
     except Exception:
-        return pd.DataFrame(columns=["grain", "perspective", "year", "period",
-                                     "period_sort", "seg1", "seg2", "metric", "value", "source"])
+        return pd.DataFrame(columns=TIDY_COLS)
 
 
-# ----------------------------------------------------------------------------- helpers
+# ----------------------------------------------------------------------------- formatting
 def fmt(metric, v):
     if v is None or pd.isna(v):
         return "-"
-    if metric in RATE_METRICS or metric in SHARE_METRICS or metric == "상품CR":
-        return f"{v*100:.2f}%"
+    if metric in ("유입율", "CR", "상품CR"):
+        return f"{v*100:.1f}%"
     if metric == "일평균거래액":
         return f"{v/1e8:.2f}억"
     if metric == "일평균객단가":
-        return f"{v:,.0f}원"
+        return f"{v:,.0f}"
     if metric in ("일평균고객수", "DAU", "유효회원수", "상품UV"):
         return f"{v:,.0f}"
     return f"{v:,.1f}"
+
+
+def fmt_delta(metric, v):
+    if v is None or pd.isna(v):
+        return "-"
+    if metric == "일평균거래액":
+        return f"{v/1e8:+.2f}억"
+    if metric in ("유입율", "CR", "상품CR"):
+        return f"{v*100:+.1f}%p"
+    return f"{v:+,.0f}"
 
 
 def yoy(cur, prev):
@@ -253,268 +297,251 @@ def yoy(cur, prev):
 
 
 def yoy_str(r):
-    if r is None:
-        return "—"
-    return f"{r*100:+.1f}%"
+    return "—" if r is None or pd.isna(r) else f"{r*100:+.1f}%"
 
 
-def ordered_periods(sub):
-    """unique period labels ordered by chronological sort (year-agnostic label)."""
-    tmp = sub.sort_values("period_sort")
-    seen, order = set(), []
-    for p in tmp["period"]:
-        if p not in seen:
-            seen.add(p)
-            order.append(p)
-    return order
+def week_pretty(lbl):
+    m = re.match(r"0?(\d{1,2})\D+?(\d{1,2})", str(lbl))
+    return f"{int(m.group(1))}월 {int(m.group(2))}주" if m else str(lbl)
+
+
+def month_pretty(lbl):
+    m = re.match(r"0?(\d{1,2})", str(lbl))
+    return f"{int(m.group(1))}월" if m else str(lbl)
 
 
 # ----------------------------------------------------------------------------- data load
-seed = load_seed()
 if "df" not in st.session_state:
-    st.session_state.df = seed
+    st.session_state.df = load_seed()
 
-st.sidebar.title("📈 VIP 주간 실적")
-st.sidebar.caption("Summary 시트 2.실적 기반 · 전체/상품관점")
+st.sidebar.title("📊 VIP 주간 실적")
+st.sidebar.caption("주간회의 'Summary' 시트 2.실적 양식")
 
 with st.sidebar.expander("🔄 데이터 업데이트", expanded=False):
     st.markdown(
-        "**주간 갱신**: 로컬에서 `update.ps1` 실행 → `data/perf_long.csv` 생성 → 아래에 업로드.\n\n"
-        "원본 BI export는 **DRM 보호(SCDSA)** 라 앱에서 직접 못 엽니다. "
-        "(비DRM xlsx는 바로 업로드 가능)"
-    )
+        "**주간 갱신**: 로컬에서 `update.ps1` 실행 → `data/perf_long.csv` 생성 → 아래 업로드.\n\n"
+        "원본 BI export는 **DRM(SCDSA)** 이라 앱에서 직접 못 엽니다. (비DRM xlsx는 바로 가능)")
     ups = st.file_uploader("CSV(권장) 또는 xlsx", type=["csv", "xlsx"], accept_multiple_files=True)
     if ups:
         newdf = parse_uploads(ups)
         if newdf is not None and not newdf.empty:
             st.session_state.df = newdf
-            load_seed.clear()
             st.success(f"{len(ups)}개 파일 · {len(newdf):,}행 반영")
     if st.button("시드 데이터로 되돌리기"):
+        load_seed.clear()
         st.session_state.df = load_seed()
 
 df = st.session_state.df
 if df is None or df.empty:
-    st.warning("데이터가 없습니다. 사이드바에서 원본 xlsx를 업로드하세요.")
+    st.warning("데이터가 없습니다. 사이드바에서 CSV/xlsx를 업로드하세요.")
     st.stop()
 
-CUR_YEAR = int(df["year"].max())
-PREV_YEAR = CUR_YEAR - 1
-
-st.sidebar.markdown("---")
-page = st.sidebar.radio("메뉴", ["🏠 핵심 KPI", "🗓️ 월별", "📅 주차별", "🔀 채널별", "🛍️ 상품별"])
-st.sidebar.markdown("---")
-st.sidebar.caption(f"기준연도 {CUR_YEAR} · 전년 {PREV_YEAR}")
+CUR = int(df["year"].max())
+PREV = CUR - 1
 
 
-def get(grain, metric, seg1="TOTAL", seg2="", perspective="overall"):
-    return df[(df.grain == grain) & (df.perspective == perspective) &
-              (df.metric == metric) & (df.seg1 == seg1) & (df.seg2 == seg2)]
+# ----------------------------------------------------------------------------- accessors
+def V(grain, perspective, metric, seg1, seg2, year, period):
+    q = df[(df.grain == grain) & (df.perspective == perspective) & (df.metric == metric)
+           & (df.seg1 == seg1) & (df.seg2 == seg2) & (df.year == year) & (df.period == period)]
+    return q["value"].iloc[0] if len(q) else None
 
 
-def how_to(text):
-    with st.expander("ℹ️ 읽는 법"):
-        st.markdown(text)
+def periods(grain, perspective, metric, seg1, seg2, year):
+    q = df[(df.grain == grain) & (df.perspective == perspective) & (df.metric == metric)
+           & (df.seg1 == seg1) & (df.seg2 == seg2) & (df.year == year)].sort_values("period_sort")
+    seen, out = set(), []
+    for p in q["period"]:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
 
 
-# ============================================================================= KPI
-if page.startswith("🏠"):
-    st.title("🏠 핵심 KPI")
-    wk = get("week", "일평균거래액", "TOTAL")
-    if wk.empty:
-        st.info("주차 데이터가 없습니다.")
-        st.stop()
-    periods = ordered_periods(wk[wk.year == CUR_YEAR])
-    latest = periods[-1] if periods else None
-    st.subheader(f"최신 주차: {CUR_YEAR}년 {latest} (전년 동주 대비)")
+YOY_POS = "color:#1f5fbf;font-weight:600"   # 신장(+) 파랑
+YOY_NEG = "color:#c0392b;font-weight:600"   # 역신장(−) 빨강
 
-    kpi_metrics = ["일평균거래액", "일평균고객수", "DAU", "유효회원수", "유입율", "CR", "일평균객단가"]
-    cols = st.columns(len(kpi_metrics))
-    for col, met in zip(cols, kpi_metrics):
-        sub = get("week", met, "TOTAL")
-        cur = sub[(sub.year == CUR_YEAR) & (sub.period == latest)]["value"]
-        prev = sub[(sub.year == PREV_YEAR) & (sub.period == latest)]["value"]
-        curv = cur.iloc[0] if len(cur) else None
-        prevv = prev.iloc[0] if len(prev) else None
-        col.metric(met, fmt(met, curv), yoy_str(yoy(curv, prevv)))
+TABLE_CSS = """
+<style>
+.sumtbl{border-collapse:collapse;font-size:12.5px;white-space:nowrap;}
+.sumtbl th,.sumtbl td{border:1px solid #d9d9d9;padding:4px 8px;text-align:right;}
+.sumtbl th{background:#f2f5fa;color:#222;text-align:center;font-weight:600;}
+.sumtbl td.rowh,.sumtbl th.rowh{position:sticky;left:0;background:#fafafa;text-align:left;font-weight:600;z-index:1;}
+.sumtbl .grp2026{background:#eaf1fb;}
+.sumtbl .grpyoy{background:#fff4ec;}
+.sumtbl .grp2025{background:#f4f4f4;}
+.sumwrap{overflow-x:auto;border:1px solid #e6e6e6;border-radius:6px;}
+</style>
+"""
 
-    st.markdown("---")
-    st.subheader("최근 12주 추세 (거래액 · DAU)")
-    c1, c2 = st.columns(2)
-    for cc, met in ((c1, "일평균거래액"), (c2, "DAU")):
-        sub = get("week", met, "TOTAL")
-        order = ordered_periods(sub[sub.year == CUR_YEAR])[-12:]
-        fig = go.Figure()
-        for yr, color in ((PREV_YEAR, "#BBBBBB"), (CUR_YEAR, "#2E5EAA")):
-            s = sub[sub.year == yr].set_index("period")["value"].reindex(order)
-            fig.add_trace(go.Scatter(x=order, y=s.values, name=f"{yr}", mode="lines+markers",
-                                     line=dict(color=color, width=3 if yr == CUR_YEAR else 2,
-                                               dash="solid" if yr == CUR_YEAR else "dot")))
-        fig.update_layout(title=met, height=340, margin=dict(t=40, b=40),
-                          legend=dict(orientation="h", y=1.12))
-        cc.plotly_chart(fig, use_container_width=True)
-    how_to("- 실선=올해, 점선=전년. 같은 '월 N주차' 라벨끼리 전년비를 계산합니다.\n"
-           "- 거래액=일평균거래액, DAU=일평균 방문자수.")
 
-# ============================================================================= 월별
-elif page.startswith("🗓️"):
-    st.title("🗓️ 월별 트렌드")
-    met = st.selectbox("지표", LEVEL_METRICS + RATE_METRICS, index=0)
-    sub = get("month", met, "TOTAL")
-    if sub.empty:
-        st.info("월별 데이터가 없습니다.")
-        st.stop()
-    order = ordered_periods(sub)
-    cur = sub[sub.year == CUR_YEAR].set_index("period")["value"].reindex(order)
-    prev = sub[sub.year == PREV_YEAR].set_index("period")["value"].reindex(order)
-    yy = [yoy(c, p) for c, p in zip(cur.values, prev.values)]
+def render_block_table(row_labels, blocks):
+    """blocks = list of (group_title, group_css, [(col_label, [cell_html per row]) ...])."""
+    html = ['<div class="sumwrap"><table class="sumtbl">']
+    # header row 1: group titles
+    html.append('<tr><th class="rowh" rowspan="2">구분</th>')
+    for title, gcss, cols in blocks:
+        html.append(f'<th colspan="{len(cols)}" class="{gcss}">{title}</th>')
+    html.append('</tr>')
+    # header row 2: column labels
+    html.append('<tr>')
+    for title, gcss, cols in blocks:
+        for cl, _ in cols:
+            html.append(f'<th class="{gcss}">{cl}</th>')
+    html.append('</tr>')
+    # body
+    for i, rl in enumerate(row_labels):
+        html.append(f'<tr><td class="rowh">{rl}</td>')
+        for title, gcss, cols in blocks:
+            for _, cells in cols:
+                html.append(cells[i])
+        html.append('</tr>')
+    html.append('</table></div>')
+    return "".join(html)
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Bar(x=order, y=prev.values, name=f"{PREV_YEAR}", marker_color="#CFCFCF"), secondary_y=False)
-    fig.add_trace(go.Bar(x=order, y=cur.values, name=f"{CUR_YEAR}", marker_color="#2E5EAA"), secondary_y=False)
-    fig.add_trace(go.Scatter(x=order, y=[None if v is None else v*100 for v in yy], name="전년비(%)",
-                             mode="lines+markers", line=dict(color="#ED7D31", width=2)), secondary_y=True)
-    fig.update_layout(barmode="group", height=460, legend=dict(orientation="h", y=1.1),
-                      title=f"{met} — {CUR_YEAR} vs {PREV_YEAR}")
-    fig.update_yaxes(title_text=met, secondary_y=False)
-    fig.update_yaxes(title_text="전년비(%)", secondary_y=True, zeroline=True, zerolinecolor="#ED7D31")
-    st.plotly_chart(fig, use_container_width=True)
 
-    tbl = pd.DataFrame({"월": order,
-                        f"{CUR_YEAR}": [fmt(met, v) for v in cur.values],
-                        f"{PREV_YEAR}": [fmt(met, v) for v in prev.values],
-                        "전년비": [yoy_str(v) for v in yy]})
-    st.dataframe(tbl, use_container_width=True, hide_index=True)
-    how_to("- 막대=월별 값(회색 전년/파랑 올해), 주황선=전년비(우축, %).\n- 지표는 상단에서 선택.")
+PERF_ROWS = [("거래액", "일평균거래액"), ("고객수", "일평균고객수"), ("DAU", "DAU"),
+             ("유입률", "유입율"), ("CR", "CR"), ("객단가", "일평균객단가")]
 
-# ============================================================================= 주차별
-elif page.startswith("📅"):
-    st.title("📅 주차별 트렌드")
-    c0, c1 = st.columns([2, 1])
-    met = c0.selectbox("지표", LEVEL_METRICS + RATE_METRICS, index=0)
-    nwk = c1.slider("최근 주차 수", 6, 26, 12)
-    sub = get("week", met, "TOTAL")
-    if sub.empty:
-        st.info("주차 데이터가 없습니다.")
-        st.stop()
-    order = ordered_periods(sub[sub.year == CUR_YEAR])[-nwk:]
-    cur = sub[sub.year == CUR_YEAR].set_index("period")["value"].reindex(order)
-    prev = sub[sub.year == PREV_YEAR].set_index("period")["value"].reindex(order)
-    yy = [yoy(c, p) for c, p in zip(cur.values, prev.values)]
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(go.Scatter(x=order, y=prev.values, name=f"{PREV_YEAR}", mode="lines+markers",
-                             line=dict(color="#BBBBBB", dash="dot")), secondary_y=False)
-    fig.add_trace(go.Scatter(x=order, y=cur.values, name=f"{CUR_YEAR}", mode="lines+markers",
-                             line=dict(color="#2E5EAA", width=3)), secondary_y=False)
-    fig.add_trace(go.Bar(x=order, y=[None if v is None else v*100 for v in yy], name="전년비(%)",
-                         marker_color="rgba(237,125,49,0.35)"), secondary_y=True)
-    fig.update_layout(height=460, legend=dict(orientation="h", y=1.1),
-                      title=f"{met} — 최근 {nwk}주 ({CUR_YEAR} vs {PREV_YEAR})")
-    fig.update_yaxes(title_text=met, secondary_y=False)
-    fig.update_yaxes(title_text="전년비(%)", secondary_y=True)
-    st.plotly_chart(fig, use_container_width=True)
+def perf_table(grain, cur_periods, prev_periods, pretty):
+    """월별/주차별 실적표: rows=지표, blocks=[2026 | 전년비 | 2025]. 전년비는 cur_periods 기준."""
+    b2026, byoy, b2025 = [], [], []
+    for p in cur_periods:
+        cells = []
+        for _, met in PERF_ROWS:
+            cells.append(f'<td class="grp2026">{fmt(met, V(grain,"overall",met,"TOTAL","",CUR,p))}</td>')
+        b2026.append((pretty(p), cells))
+    for p in cur_periods:
+        cells = []
+        for _, met in PERF_ROWS:
+            r = yoy(V(grain, "overall", met, "TOTAL", "", CUR, p), V(grain, "overall", met, "TOTAL", "", PREV, p))
+            sty = "" if r is None else (YOY_NEG if r < 0 else YOY_POS)
+            cells.append(f'<td class="grpyoy" style="{sty}">{yoy_str(r)}</td>')
+        byoy.append((pretty(p), cells))
+    for p in prev_periods:
+        cells = []
+        for _, met in PERF_ROWS:
+            cells.append(f'<td class="grp2025">{fmt(met, V(grain,"overall",met,"TOTAL","",PREV,p))}</td>')
+        b2025.append((pretty(p), cells))
+    blocks = [(f"{CUR}년", "grp2026", b2026), ("전년비", "grpyoy", byoy), (f"{PREV}년", "grp2025", b2025)]
+    return render_block_table([r for r, _ in PERF_ROWS], blocks)
 
-    tbl = pd.DataFrame({"주차": order,
-                        f"{CUR_YEAR}": [fmt(met, v) for v in cur.values],
-                        f"{PREV_YEAR}": [fmt(met, v) for v in prev.values],
-                        "전년비": [yoy_str(v) for v in yy]})
-    st.dataframe(tbl, use_container_width=True, hide_index=True)
-    how_to("- 실선=올해, 점선=전년(같은 '월 N주차'), 막대=전년비(우축).")
 
-# ============================================================================= 채널별
-elif page.startswith("🔀"):
-    st.title("🔀 채널별")
-    c0, c1 = st.columns(2)
-    grain = c0.radio("주기", ["week", "month"], format_func=lambda x: "주별" if x == "week" else "월별", horizontal=True)
-    met = c1.selectbox("지표", ["일평균거래액", "일평균고객수", "DAU", "일평균객단가", "CR"], index=0)
-    channels = [ch for ch in CHANNEL_ORDER if not get(grain, met, ch).empty]
+CH_ROWS = [("TTL", "TOTAL"), ("직접", "직접"), ("광고", "광고"), ("EP", "EP"), ("PUSH", "PUSH"), ("제휴", "제휴")]
 
-    sub_all = df[(df.grain == grain) & (df.perspective == "overall") & (df.metric == met) & (df.seg2 == "")]
-    order = ordered_periods(sub_all[sub_all.year == CUR_YEAR])[-(12 if grain == "week" else 12):]
 
-    st.subheader(f"채널 구성 추세 ({CUR_YEAR})")
-    stack = met in ("일평균거래액", "일평균고객수", "DAU")  # additive metrics → stacked
-    fig = go.Figure()
-    for ch in channels:
-        s = get(grain, met, ch)
-        s = s[s.year == CUR_YEAR].set_index("period")["value"].reindex(order)
-        if stack:
-            fig.add_trace(go.Bar(x=order, y=s.values, name=ch, marker_color=CH_COLORS.get(ch)))
-        else:
-            fig.add_trace(go.Scatter(x=order, y=s.values, name=ch, mode="lines+markers",
-                                     line=dict(color=CH_COLORS.get(ch))))
-    fig.update_layout(barmode="stack" if stack else "overlay", height=440,
-                      legend=dict(orientation="h", y=1.1), title=f"{met} — 채널별")
-    st.plotly_chart(fig, use_container_width=True)
+def channel_table(metric, wk_periods):
+    """채널별 표(단일 지표): rows=채널, blocks=[2026 | 전년비 | 2025], 3블록 동일 주차 라벨."""
+    b2026, byoy, b2025 = [], [], []
+    for p in wk_periods:
+        b2026.append((week_pretty(p), [f'<td class="grp2026">{fmt(metric, V("week","overall",metric,s1,"",CUR,p))}</td>' for _, s1 in CH_ROWS]))
+    for p in wk_periods:
+        cells = []
+        for _, s1 in CH_ROWS:
+            r = yoy(V("week", "overall", metric, s1, "", CUR, p), V("week", "overall", metric, s1, "", PREV, p))
+            sty = "" if r is None else (YOY_NEG if r < 0 else YOY_POS)
+            cells.append(f'<td class="grpyoy" style="{sty}">{yoy_str(r)}</td>')
+        byoy.append((week_pretty(p), cells))
+    for p in wk_periods:
+        b2025.append((week_pretty(p), [f'<td class="grp2025">{fmt(metric, V("week","overall",metric,s1,"",PREV,p))}</td>' for _, s1 in CH_ROWS]))
+    blocks = [(f"{CUR}년", "grp2026", b2026), ("전년비", "grpyoy", byoy), (f"{PREV}년", "grp2025", b2025)]
+    return render_block_table([r for r, _ in CH_ROWS], blocks)
 
-    latest = order[-1] if order else None
-    st.subheader(f"채널별 전년비 — 최신 {'주차' if grain=='week' else '월'} ({latest})")
-    rows = []
-    for ch in channels:
-        s = get(grain, met, ch)
-        cv = s[(s.year == CUR_YEAR) & (s.period == latest)]["value"]
-        pv = s[(s.year == PREV_YEAR) & (s.period == latest)]["value"]
-        cvv = cv.iloc[0] if len(cv) else None
-        pvv = pv.iloc[0] if len(pv) else None
-        rows.append({"채널": ch, f"{CUR_YEAR}": fmt(met, cvv), f"{PREV_YEAR}": fmt(met, pvv),
-                     "전년비": yoy_str(yoy(cvv, pvv))})
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    how_to("- 가산 지표(거래액·고객수·DAU)는 누적 막대로 채널 기여를 봅니다.\n"
-           "- 비율 지표(CR·객단가)는 채널별 선그래프.\n- 표는 최신 시점 채널별 전년비.")
 
-# ============================================================================= 상품별
-elif page.startswith("🛍️"):
-    st.title("🛍️ 상품별 (e-영업 × 카테고리)")
-    prod = df[df.perspective == "product"]
-    if prod.empty:
-        st.info("상품관점 데이터가 없습니다. 사이드바에서 '상품관점' xlsx를 올리세요.")
-        st.stop()
-    c0, c1 = st.columns(2)
-    met = c0.selectbox("지표", ["일평균거래액", "상품UV", "상품CR", "일평균객단가", "일평균고객수"], index=0)
-    sub = prod[prod.metric == met]
-    order = ordered_periods(sub[sub.year == CUR_YEAR])
-    latest = c1.selectbox("주차", order[::-1], index=0) if order else None
+CATS_ORDER = ["골프", "남성", "여성", "슈즈", "잡화", "스포츠", "명품", "아웃도어", "리빙", "뷰티", "키즈"]
+YEONG = ["e-영업1", "e-영업2", "e-영업3", "e-영업4"]
 
-    yeongs = ["e-영업1", "e-영업2", "e-영업3", "e-영업4"]
-    st.subheader(f"{met} 전년비 — {latest}")
-    # heatmap: rows=영업, cols=category, value=전년비
-    cats = [c for c in ["골프", "남성", "여성", "슈즈", "잡화", "스포츠", "명품", "아웃도어", "리빙", "뷰티", "키즈"]
-            if c in sub["seg2"].unique()]
-    z, text = [], []
-    for ye in yeongs:
-        zr, tr = [], []
+
+def product_table(metric, wk):
+    """상품별 표: rows=영업>카테고리, cols=[26년 | 25년 | 전년비 | 증감]. 단일 주차."""
+    rows, r26, r25, ryoy, rdlt = [], [], [], [], []
+    for ye in YEONG:
+        # 영업 소계
+        c = V("week", "product", metric, ye, "TOTAL", CUR, wk)
+        p = V("week", "product", metric, ye, "TOTAL", PREV, wk)
+        rows.append(f"<b>{ye}</b>")
+        r26.append(("<b>" + fmt(metric, c) + "</b>") if c is not None else "-")
+        r25.append(("<b>" + fmt(metric, p) + "</b>") if p is not None else "-")
+        rr = yoy(c, p)
+        ryoy.append((rr, True))
+        rdlt.append(fmt_delta(metric, (c - p) if (c is not None and p is not None) else None))
+        cats = [ca for ca in CATS_ORDER
+                if V("week", "product", metric, ye, ca, CUR, wk) is not None
+                or V("week", "product", metric, ye, ca, PREV, wk) is not None]
         for ca in cats:
-            cv = sub[(sub.year == CUR_YEAR) & (sub.period == latest) & (sub.seg1 == ye) & (sub.seg2 == ca)]["value"]
-            pv = sub[(sub.year == PREV_YEAR) & (sub.period == latest) & (sub.seg1 == ye) & (sub.seg2 == ca)]["value"]
-            r = yoy(cv.iloc[0] if len(cv) else None, pv.iloc[0] if len(pv) else None)
-            zr.append(None if r is None else r*100)
-            tr.append("" if r is None else f"{r*100:+.0f}%")
-        z.append(zr)
-        text.append(tr)
-    fig = go.Figure(go.Heatmap(z=z, x=cats, y=yeongs, text=text, texttemplate="%{text}",
-                               colorscale="RdBu", zmid=0, reversescale=True,
-                               colorbar=dict(title="전년비%")))
-    fig.update_layout(height=360, title=f"{met} 전년비 (%)")
-    st.plotly_chart(fig, use_container_width=True)
+            c = V("week", "product", metric, ye, ca, CUR, wk)
+            p = V("week", "product", metric, ye, ca, PREV, wk)
+            rows.append("&nbsp;&nbsp;" + ca)
+            r26.append(fmt(metric, c))
+            r25.append(fmt(metric, p))
+            ryoy.append((yoy(c, p), False))
+            rdlt.append(fmt_delta(metric, (c - p) if (c is not None and p is not None) else None))
+    # build table
+    html = [TABLE_CSS, '<div class="sumwrap"><table class="sumtbl">']
+    html.append(f'<tr><th class="rowh">구분</th><th class="grp2026">{CUR}년</th>'
+                f'<th class="grp2025">{PREV}년</th><th class="grpyoy">전년비</th><th>증감</th></tr>')
+    for i, rl in enumerate(rows):
+        rr, bold = ryoy[i]
+        sty = "" if rr is None else (YOY_NEG if rr < 0 else YOY_POS)
+        ytxt = yoy_str(rr)
+        if bold:
+            ytxt = f"<b>{ytxt}</b>"
+        html.append(f'<tr><td class="rowh">{rl}</td><td class="grp2026">{r26[i]}</td>'
+                    f'<td class="grp2025">{r25[i]}</td><td class="grpyoy" style="{sty}">{ytxt}</td>'
+                    f'<td>{rdlt[i]}</td></tr>')
+    html.append('</table></div>')
+    return "".join(html)
 
-    # top movers (absolute 전년비 on 거래액-like)
-    st.subheader("전년비 급변 카테고리 TOP")
-    movers = []
-    for ye in yeongs:
-        for ca in cats:
-            cv = sub[(sub.year == CUR_YEAR) & (sub.period == latest) & (sub.seg1 == ye) & (sub.seg2 == ca)]["value"]
-            pv = sub[(sub.year == PREV_YEAR) & (sub.period == latest) & (sub.seg1 == ye) & (sub.seg2 == ca)]["value"]
-            r = yoy(cv.iloc[0] if len(cv) else None, pv.iloc[0] if len(pv) else None)
-            if r is not None:
-                movers.append({"영업": ye, "카테고리": ca, f"{CUR_YEAR}": fmt(met, cv.iloc[0]),
-                               "전년비": r})
-    md = pd.DataFrame(movers)
-    if not md.empty:
-        md = md.sort_values("전년비")
-        cL, cR = st.columns(2)
-        top = md.tail(5).iloc[::-1].copy(); top["전년비"] = top["전년비"].map(yoy_str)
-        bot = md.head(5).copy(); bot["전년비"] = bot["전년비"].map(yoy_str)
-        cL.caption("📈 신장 TOP5"); cL.dataframe(top, use_container_width=True, hide_index=True)
-        cR.caption("📉 역신장 TOP5"); cR.dataframe(bot, use_container_width=True, hide_index=True)
-    how_to("- 히트맵: 파랑=신장/빨강=역신장 (전년비 %).\n- 영업×카테고리별 전년비를 한눈에, 아래 표는 급변 TOP.")
+
+# ============================================================================= RENDER
+st.markdown(TABLE_CSS, unsafe_allow_html=True)
+
+wk_all = periods("week", "overall", "일평균거래액", "TOTAL", "", CUR)
+latest_wk = wk_all[-1] if wk_all else None
+st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} 마감 CRM_VIP 실적")
+st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계")
+
+nwk = st.slider("주차 표시 개수", 5, 16, 5, help="주차별·채널별 표에 보여줄 최근 주차 수 (엑셀 기본 5주)")
+wk_periods = wk_all[-nwk:]
+
+# ---- 2) 월별 ----
+st.header("2) 월별")
+mcur = periods("month", "overall", "일평균거래액", "TOTAL", "", CUR)
+mprev = [f"{m}월" for m in range(1, 13)]  # 전년은 항상 1~12월(손상/결측 월은 '-')
+st.markdown(perf_table("month", mcur, mprev, month_pretty), unsafe_allow_html=True)
+
+# ---- 3) 주차별 ----
+st.header("3) 주차별")
+st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty), unsafe_allow_html=True)
+
+# ---- 4) 주차별·채널별 ----
+st.header("4) 주차별·채널별")
+for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("③ CR", "CR")]:
+    st.subheader(tag)
+    st.markdown(channel_table(met, wk_periods), unsafe_allow_html=True)
+
+# ---- 5) 상품별 ----
+if not df[df.perspective == "product"].empty:
+    st.header("5) 상품별 (e-영업 × 카테고리)")
+    pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
+    default_ix = len(pwk_all) - 1
+    sel = st.selectbox("주차 선택", pwk_all[::-1], index=0,
+                       format_func=week_pretty) if pwk_all else None
+    if sel:
+        st.subheader("① 거래액")
+        st.markdown(product_table("일평균거래액", sel), unsafe_allow_html=True)
+        st.subheader("② 상품UV")
+        st.markdown(product_table("상품UV", sel), unsafe_allow_html=True)
+
+with st.expander("ℹ️ 표 읽는 법 / 데이터"):
+    st.markdown(
+        f"- 각 표는 **구분 × [{CUR}년 | 전년비 | {PREV}년]** 구조로 엑셀 Summary 2.실적과 동일합니다.\n"
+        "- **전년비**: 같은 월/주차 라벨을 올해 vs 전년으로 계산. <span style='color:#1f5fbf'>파랑=신장(+)</span> / "
+        "<span style='color:#c0392b'>빨강=역신장(−)</span>.\n"
+        "- 거래액=일평균거래액(억), 고객수·DAU=일평균, 유입률·CR=%. (유효회원수는 Summary처럼 숨김)\n"
+        "- **월별은 깨끗한 일자별에서 집계**(손상 많은 월별 export 대체).\n"
+        "- ⚠️ 원본 데이터에 **2025년 9월말~10월** 손상 구간(유효회원수·DAU·거래액이 ~2배)이 있어 자동 제외했습니다. "
+        "해당 구간·전년비는 '—'로 표시됩니다(현재연도 2026은 정상).\n"
+        "- 목표 대비 달성율(2-1)·행사별(2-6)은 원본 6종에 데이터가 없어 제외(목표 파일 주시면 추가).",
+        unsafe_allow_html=True)
