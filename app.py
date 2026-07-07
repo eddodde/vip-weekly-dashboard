@@ -328,6 +328,9 @@ if "df" not in st.session_state:
 st.sidebar.title("📊 VIP 주간 실적")
 st.sidebar.caption("주간회의 'Summary' 시트 2.실적 양식")
 
+snap_slot = st.sidebar.container()   # 이번 주 스냅샷 자리(최상단) — 내용은 데이터 로드 후 채움
+st.sidebar.markdown("---")
+
 st.sidebar.markdown(
     "#### 🧭 바로가기\n"
     "**실적 흐름**\n"
@@ -511,6 +514,17 @@ TABLE_CSS = """
 .insight ul{margin:0;padding-left:18px;}
 .insight li{margin:2px 0;}
 .insight .imp{color:#1f5fbf;font-weight:600;}
+/* BCG 컨설팅 스타일 종합 방향성 */
+.bcg-head{background:linear-gradient(90deg,#13294b,#1f3b73);color:#fff;padding:14px 20px;border-radius:8px;
+  font-size:15px;font-weight:600;line-height:1.55;margin:4px 0 16px;box-shadow:0 1px 4px rgba(0,0,0,.15);}
+.bcg-head .k{color:#7fb3ff;}
+.bcg-card{border:1px solid #dbe3ef;border-radius:8px;overflow:hidden;background:#fff;height:100%;}
+.bcg-card h4{margin:0;padding:9px 14px;font-size:13px;color:#13294b;background:#eef3fb;
+  border-bottom:2px solid #1f3b73;display:flex;justify-content:space-between;}
+.bcg-card h4 .no{color:#9aa7bd;font-weight:700;}
+.bcg-card ul{margin:8px 0 10px;padding:0 14px 0 28px;font-size:12.7px;line-height:1.65;}
+.bcg-card li{margin:5px 0;}
+.bcg-card .imp{color:#1f5fbf;font-weight:600;}
 </style>
 """
 
@@ -1038,7 +1052,32 @@ def final_direction(wk_all, cur_mo, cutoff):
         nxt.append(f"금주 액션으로 <b>{main} 갭 절반 회복({_pct(comp[main])}→{_pct(comp[main]-half)})</b>{ev_txt} 가세 시 "
                    f"차주 거래액 <b>{_pct(sales)} → {_pct(scen)}</b>로 역신장 폭 축소 기대")
     nxt.append("중기: 자사(영업1·2) 성장 카테고리 전환 확대로 자사 브랜드 매출 비중 강화")
-    return diag, now, nxt
+
+    # 헤드라인(BCG 'answer-first'): 상황 → 근인 → 레버 → 정량 임팩트
+    head = ""
+    if sales is not None and main:
+        scen_txt = ""
+        if comp.get(main, 0) < 0:
+            scen = sales - comp[main] / 2
+            scen_txt = f', 병행 실행 시 차주 <span class="k">{_pct(sales)}→{_pct(scen)}</span>로 역신장 폭 절반 축소 가능'
+        evph = f"차주 <span class='k'>{up[0][0]}</span> 반복 모멘텀" if up else "구매효율 방어"
+        head = (f"거래액 {_pct(sales)}는 <span class='k'>{main} 구조적 하락</span>이 근인 — "
+                f"{evph}과 {main}(상시 방문) 회복 액션이 반등 관건{scen_txt}")
+    return head, diag, now, nxt
+
+
+def render_bcg(head, diag, now, nxt):
+    """BCG 컨설팅 스타일: 핵심 메시지 헤드라인 + 진단/실행/임팩트 3-카드."""
+    if head:
+        st.markdown(f'<div class="bcg-head">💡 {head}</div>', unsafe_allow_html=True)
+    cards = [("① 진단", "Where we are", diag),
+             ("② 금주 실행", "What to do now", now),
+             ("③ 차주 임팩트", "Expected impact", nxt)]
+    cols = st.columns(3)
+    for col, (title, sub, bullets) in zip(cols, cards):
+        lis = "".join(f"<li>{b}</li>" for b in bullets) or "<li>-</li>"
+        col.markdown(f'<div class="bcg-card"><h4><span>{title}</span><span class="no">{sub}</span></h4>'
+                     f'<ul>{lis}</ul></div>', unsafe_allow_html=True)
 
 
 # ============================================================================= RENDER
@@ -1049,23 +1088,23 @@ latest_wk = wk_all[-1] if wk_all else None
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} 마감 CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 (거래액 단위: 백만원)")
 
-# 사이드바 — 이번 주 스냅샷(최신주 전년비 KPI)
+# 사이드바 최상단 스냅샷(예약 슬롯 채우기) — 최신주 전년비 KPI
 if latest_wk:
-    st.sidebar.markdown(f"#### 📌 이번 주 스냅샷")
-    st.sidebar.caption(f"{week_pretty(latest_wk)} 마감 · 전년비")
-
     def _snap(col, label, met, is_sales=False):
         c = V("week", "overall", met, "TOTAL", "", CUR, latest_wk)
         p = V("week", "overall", met, "TOTAL", "", PREV, latest_wk)
         val = "-" if c is None else (f"{c/1e6:,.0f}백만" if is_sales else fmt(met, c))
         col.metric(label, val, yoy_str(yoy(c, p)))
-    r1 = st.sidebar.columns(2)
-    _snap(r1[0], "거래액", "일평균거래액", is_sales=True)
-    _snap(r1[1], "DAU", "DAU")
-    r2 = st.sidebar.columns(2)
-    _snap(r2[0], "CR", "CR")
-    _snap(r2[1], "객단가", "일평균객단가")
-    st.sidebar.caption(f"집계 기준일 {last_daily_date()}")
+    with snap_slot:
+        st.markdown("#### 📌 이번 주 스냅샷")
+        st.caption(f"{week_pretty(latest_wk)} 마감 · 전년비")
+        r1 = st.columns(2)
+        _snap(r1[0], "거래액", "일평균거래액", is_sales=True)
+        _snap(r1[1], "DAU", "DAU")
+        r2 = st.columns(2)
+        _snap(r2[0], "CR", "CR")
+        _snap(r2[1], "객단가", "일평균객단가")
+        st.caption(f"집계 기준일 {last_daily_date()}")
 
 wk_periods = wk_all[-5:]                       # 엑셀과 동일하게 최근 5주 고정
 cutoff = last_daily_date().day if last_daily_date() else None
@@ -1122,17 +1161,10 @@ if not df[df.perspective == "product"].empty:
         st.caption(f"기준: {week_pretty(sel)} · 거래액과 상품UV 통합")
         st.markdown(product_table(sel), unsafe_allow_html=True)
 
-# ---- 종합 방향성 (진단 → 금주 / 차주) ----
+# ---- 종합 방향성 (BCG 스타일: 헤드라인 + 진단/실행/임팩트) ----
 st.header("✅ 종합 방향성 및 전망", anchor="s6")
-diag_b, now_b, nxt_b = final_direction(wk_all, cur_mo, cutoff)
-render_insight(diag_b)
-d1, d2 = st.columns(2)
-with d1:
-    st.markdown("**금주 액션**")
-    render_insight(now_b)
-with d2:
-    st.markdown("**차주 전망**")
-    render_insight(nxt_b)
+head_b, diag_b, now_b, nxt_b = final_direction(wk_all, cur_mo, cutoff)
+render_bcg(head_b, diag_b, now_b, nxt_b)
 
 with st.expander("ℹ️ 표 읽는 법 / 데이터"):
     st.markdown(
