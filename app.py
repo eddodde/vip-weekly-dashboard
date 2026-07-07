@@ -1100,7 +1100,8 @@ st.markdown(TABLE_CSS, unsafe_allow_html=True)
 wk_all = periods("week", "overall", "일평균거래액", "TOTAL", "", CUR)
 latest_wk = wk_all[-1] if wk_all else None
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} 마감 CRM_VIP 실적")
-st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 (거래액 단위: 백만원)")
+st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
+           f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
 
 # 사이드바 최상단 스냅샷(예약 슬롯 채우기) — 최신주 전년비 KPI
 if latest_wk:
@@ -1111,7 +1112,7 @@ if latest_wk:
         col.metric(label, val, yoy_str(yoy(c, p)))
     with snap_slot:
         st.markdown("#### 📌 이번 주 스냅샷")
-        st.caption(f"{week_pretty(latest_wk)} 마감 · 전년비")
+        st.caption(f"{week_pretty(latest_wk)} 마감 · **일평균** 기준 · 전년비")
         r1 = st.columns(2)
         _snap(r1[0], "거래액", "일평균거래액", is_sales=True)
         _snap(r1[1], "DAU", "DAU")
