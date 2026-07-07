@@ -337,6 +337,7 @@ st.sidebar.markdown(
     "- [1) 거래액 트렌드](#s1)\n"
     "- [2) 월별](#s2)\n"
     "- [3) 주차별](#s3)\n"
+    "- [🎪 전관행사 주간](#s_ev)\n"
     "- [4) 주차별·채널별](#s4)\n"
     "- [5) 상품별](#s5)\n\n"
     "**진단·액션**\n"
@@ -512,6 +513,30 @@ def _week_majors(lo, hi):
     d = EVENTS["d"]
     mask = (EVENTS["major"].to_numpy(dtype=bool) & (d >= lo).to_numpy(dtype=bool) & (d <= hi).to_numpy(dtype=bool))
     return {_evname(t) for t in EVENTS.loc[mask, "text"]}
+
+
+def week_label_of(d):
+    """날짜 → 주차 라벨('MM월 N주차'). ISO식(그 주 목요일이 속한 달·목요일 순번)로 회사 주차와 정렬."""
+    thu = d - datetime.timedelta(days=d.weekday()) + datetime.timedelta(days=3)
+    n = (thu.day - 1) // 7 + 1
+    return f"{thu.month:02d}월 {n}주차"
+
+
+def major_event_weeks(year):
+    """해당 연도 전관행사가 걸린 주차 라벨 → 그 주 전관행사명 리스트. {label: [names]}."""
+    out = {}
+    if EVENTS.empty:
+        return out
+    mask = EVENTS["major"].to_numpy(dtype=bool) & EVENTS["d"].map(lambda d: _dyear(d) == year).to_numpy(dtype=bool)
+    for _, r in EVENTS.loc[mask].iterrows():
+        if "전관행사" not in str(r["text"]):
+            continue
+        lbl = week_label_of(r["d"])
+        nm = _evname(r["text"])
+        out.setdefault(lbl, [])
+        if nm not in out[lbl]:
+            out[lbl].append(nm)
+    return out
 
 
 def event_fairness(ref_date):
@@ -792,6 +817,21 @@ def monthly_table(cur_months, cutoff_day):
                                  for _, met in PERF_ROWS]))
     blocks = [(f"{CUR}년", "grp2026", b2026), ("전년비", "grpyoy", byoy), (f"{PREV}년", "grp2025", b2025)]
     return render_block_table([r for r, _ in PERF_ROWS], blocks, bold_label=cur_lbl(cur_mo))
+
+
+def event_week_table(label):
+    """전관행사 주간: 올해 그 주차 vs 전년 동일 주차. 지표=PERF_ROWS(거래액~객단가)."""
+    b26, byoy, b25 = [], [], []
+    for _, met in PERF_ROWS:
+        b26.append(_td("grp2026", fmt(met, V("week", "overall", met, "TOTAL", "", CUR, label)), False))
+        txt, sty = yoy_disp(yoy(V("week", "overall", met, "TOTAL", "", CUR, label),
+                                V("week", "overall", met, "TOTAL", "", PREV, label)))
+        byoy.append(_td("grpyoy", txt, False, sty))
+        b25.append(_td("grp2025", fmt(met, V("week", "overall", met, "TOTAL", "", PREV, label)), False))
+    blocks = [(f"{CUR}년", "grp2026", [(week_pretty(label), b26)]),
+              ("전년비", "grpyoy", [(week_pretty(label), byoy)]),
+              (f"{PREV}년", "grp2025", [(week_pretty(label), b25)])]
+    return render_block_table([r for r, _ in PERF_ROWS], blocks)
 
 
 CATS_ORDER = ["골프", "남성", "여성", "슈즈", "잡화", "스포츠", "명품", "아웃도어", "리빙", "뷰티", "키즈"]
@@ -1333,6 +1373,24 @@ st.markdown(monthly_table(cur_months, cutoff), unsafe_allow_html=True)
 st.header("3) 주차별", anchor="s3")
 render_insight(insight_perf("week", latest_wk, f"최신주({week_pretty(latest_wk)})"))
 st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty, bold_period=latest_wk), unsafe_allow_html=True)
+
+# ---- 3-1) 전관행사 주간 비교 (전년 동일 주차 전관행사와 비교) ----
+_mw_cur = major_event_weeks(CUR)
+_cur_wk = set(periods("week", "overall", "일평균거래액", "TOTAL", "", CUR))
+_comp_weeks = sorted([l for l in _mw_cur if l in _cur_wk],
+                     key=lambda l: (int(l[:2]), int(re.search(r"(\d+)\s*주", l).group(1))))
+if _comp_weeks:
+    st.header("🎪 전관행사 주간 (전년 동일 주 비교)", anchor="s_ev")
+    _mw_prev = major_event_weeks(PREV)
+    sel_ev = st.selectbox("전관행사 주차 선택", _comp_weeks[::-1], index=0, key="ev_week",
+                          format_func=lambda l: f"{week_pretty(l)} · {'/'.join(_mw_cur.get(l, []))}")
+    render_insight(insight_perf("week", sel_ev, f"{week_pretty(sel_ev)} 전관행사주"))
+    _pn = _mw_prev.get(sel_ev, [])
+    _note = (f"올해 **{'/'.join(_mw_cur.get(sel_ev, []))}** ↔ 전년 **{'/'.join(_pn)}** (동일 주차 전관행사 비교)"
+             if _pn else
+             f"올해 **{'/'.join(_mw_cur.get(sel_ev, []))}** — ⚠️ 전년 동주엔 전관행사 없음, 비교 시 참고")
+    st.caption(_note)
+    st.markdown(event_week_table(sel_ev), unsafe_allow_html=True)
 
 # ---- 4) 주차별·채널별 ----
 st.header("4) 주차별·채널별", anchor="s4")
