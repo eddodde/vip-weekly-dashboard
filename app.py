@@ -1555,18 +1555,23 @@ if not df[df.perspective == "product"].empty:
     pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
     sel = pwk_all[-1] if pwk_all else None
     if sel:
-        render_insight(insight_product(sel))
-        # 영업별 소계 요약(거래액 백만·전년비) 1줄
+        # 상단 전체 요약 — 회색 박스(탭별 파란 인사이트와 형식 구분)
+        _ov = insight_product(sel)
         _subs = []
         for _ye in YEONG:
             _c = V("week", "product", "일평균거래액", _ye, "TOTAL", CUR, sel)
             _p = V("week", "product", "일평균거래액", _ye, "TOTAL", PREV, sel)
             if _c is not None:
-                _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f}백만 {_pct(yoy(_c, _p))}")
+                _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f} {_pct(yoy(_c, _p))}")
+        _lines = "".join(f"<div>• {_redneg(b)}</div>" for b in _ov)
         st.markdown(
-            f"<div style='font-size:12px;color:#5b6472;background:#f7f9fc;border-left:3px solid #c5d3e8;"
-            f"padding:6px 12px;border-radius:4px;margin:2px 0 8px'>기준: {week_pretty(sel)} · 거래액 일평균(백만) · "
-            + _redneg("  |  ".join(_subs)) + "</div>", unsafe_allow_html=True)
+            "<div style='font-size:12px;line-height:1.6;color:#4b5563;background:#f7f9fc;"
+            "border-left:3px solid #c5d3e8;padding:8px 14px;border-radius:5px;margin:2px 0 10px'>"
+            f"<b>전체 요약</b>{_lines}"
+            f"<div style='margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f2;color:#6b7686'>"
+            f"기준 {week_pretty(sel)} · 거래액 일평균(백만) · " + _redneg("  |  ".join(_subs)) + "</div></div>",
+            unsafe_allow_html=True)
+        st.caption("영업별 상세는 아래 탭에서 확인")
         _tabs = st.tabs(YEONG)
         for _tab, _ye in zip(_tabs, YEONG):
             with _tab:
