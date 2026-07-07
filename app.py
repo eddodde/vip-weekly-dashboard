@@ -934,10 +934,9 @@ def product_table(wk):
             body.append(("&nbsp;&nbsp;" + ca, cells))
     html = ['<div class="sumwrap"><table class="sumtbl">']
     html.append('<tr><th class="rowh" rowspan="2">구분</th>'
-                f'<th colspan="2" class="grp2026">거래액(백만)</th>'
-                f'<th colspan="2" class="grpyoy">상품UV</th></tr>')
-    html.append(f'<tr><th class="grp2026">{CUR}년</th><th class="grp2026">전년비</th>'
-                f'<th class="grpyoy">{CUR}년</th><th class="grpyoy">전년비</th></tr>')
+                '<th colspan="2">거래액(백만)</th><th colspan="2">상품UV</th></tr>')
+    html.append(f'<tr><th class="grp2026">{CUR}년</th><th class="grpyoy">전년비</th>'
+                f'<th class="grp2026">{CUR}년</th><th class="grpyoy">전년비</th></tr>')
     for rl, cells in body:
         html.append(f'<tr><td class="rowh">{rl}</td>' + "".join(cells) + '</tr>')
     html.append('</table></div>')
@@ -970,10 +969,9 @@ def product_table_one(wk, ye):
         body.append((ca, cells))
     html = ['<div class="sumwrap"><table class="sumtbl">']
     html.append('<tr><th class="rowh" rowspan="2">구분</th>'
-                f'<th colspan="2" class="grp2026">거래액(백만)</th>'
-                f'<th colspan="2" class="grpyoy">상품UV</th></tr>')
-    html.append(f'<tr><th class="grp2026">{CUR}년</th><th class="grp2026">전년비</th>'
-                f'<th class="grpyoy">{CUR}년</th><th class="grpyoy">전년비</th></tr>')
+                '<th colspan="2">거래액(백만)</th><th colspan="2">상품UV</th></tr>')
+    html.append(f'<tr><th class="grp2026">{CUR}년</th><th class="grpyoy">전년비</th>'
+                f'<th class="grp2026">{CUR}년</th><th class="grpyoy">전년비</th></tr>')
     for rl, cells in body:
         html.append(f'<tr><td class="rowh">{rl}</td>' + "".join(cells) + '</tr>')
     html.append('</table></div>')
