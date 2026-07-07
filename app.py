@@ -1282,8 +1282,9 @@ if latest_wk:
 with ref_slot:
     st.markdown("#### 📖 참고 · 진행 행사")
     with st.expander("행사 캘린더 보기", expanded=False):
+        _cm = last_daily_date().month if last_daily_date() else 0   # 당월 기본
         yr = st.selectbox("연도", [PREV, CUR], index=0, format_func=lambda y: f"{y}년", key="ev_yr")
-        mo = st.selectbox("월", ["전체"] + [f"{m}월" for m in range(1, 13)], key="ev_mo")
+        mo = st.selectbox("월", ["전체"] + [f"{m}월" for m in range(1, 13)], index=_cm, key="ev_mo")
         only_major = st.checkbox("전관행사만", value=False, key="ev_major")
         occs = event_occurrences(yr, None if mo == "전체" else int(mo[:-1]), only_major)
         if not occs:
