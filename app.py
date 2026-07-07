@@ -1376,7 +1376,7 @@ with ref_slot:
             st.caption("표시할 행사가 없습니다.")
         else:
             md = "\n".join(
-                f"- **{s.month}/{s.day}~{e.month}/{e.day}** · {'★ ' if maj else ''}{nm}"
+                f"- **{s.month}/{s.day}\\~{e.month}/{e.day}** · {'★ ' if maj else ''}{nm}"
                 for s, e, nm, maj in occs)
             st.markdown(md)
             st.caption("기간=시작~종료 · ★=전관행사(전사)")
@@ -1432,8 +1432,8 @@ if _cur_evs:
     if prev:
         ps, pe = prev
         render_insight(insight_event(cs, ce, ps, pe, f"{nm} 기간"))
-        st.caption(f"올해 **{nm}** {_mdrange(cs, ce)} ↔ 전년 **{nm}** {_mdrange(ps, pe)} · "
-                   f"각 행사 진행기간 일평균 비교")
+        _c, _p = _mdrange(cs, ce).replace("~", "\\~"), _mdrange(ps, pe).replace("~", "\\~")
+        st.caption(f"올해 **{nm}** {_c} ↔ 전년 **{nm}** {_p} · 각 행사 진행기간 일평균 비교")
         st.markdown(event_period_table(cs, ce, ps, pe), unsafe_allow_html=True)
     else:
         st.caption(f"⚠️ 전년에 '{nm}' 행사가 없어 기간 비교 불가")
