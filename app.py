@@ -1075,52 +1075,65 @@ def final_direction(wk_all, cur_mo, cutoff):
     later = [e for e in up if not ge or e[1] > ge[1]]
     ce = later[0] if later else None                        # 이후 다음 행사
 
+    dau, cr, aov = comp.get("DAU"), comp.get("CR"), comp.get("객단가")
+    drags = [k for k in ("DAU", "CR", "객단가") if comp.get(k, 0) < 0]
+    buf = [k for k in ("DAU", "CR", "객단가") if comp.get(k, 0) > 0]
+    # 즉효(전술) 레버 = 전환(CR): 행사 고트래픽 위에서 단기에 움직임 / 구조 레버 = 방문(DAU)
+    tactical = "CR" if (cr is not None and cr < 0) else None
+
     diag, now, nxt = [], [], []
-    # 진단: 지난주 마감 동인 + DAU(비반복 인사이트)
-    if sales is not None and main:
-        diag.append(f"지난주 마감({week_pretty(period)}) 거래액 <b>{_pct(sales)}</b> — 가장 큰 원인은 "
-                    f"<b>{main}({_pct(comp[main])})</b>, 객단가·구매전환은 버팀")
+    # 진단: 퍼널 어디가 새는지 + DAU 구조성
+    if sales is not None:
+        drag_txt = "·".join(f"{k}({_pct(comp[k])})" for k in drags) or "-"
+        buf_txt = (", ".join(f"{k}({_pct(comp[k])})" for k in buf) + "만 버팀") if buf else ""
+        diag.append(f"거래액 <b>{_pct(sales)}</b> = <b>{drag_txt} 동반 부진</b>{('; ' + buf_txt) if buf_txt else ''} "
+                    f"→ 새는 곳은 <b>상단(방문)·중단(전환) 퍼널</b>, 고가치 구매층은 유지")
     diag += insight_dau(period)     # DAU 지속성·주도채널·평상시 방문
-    # 금주 액션(진행중)
-    if main:
-        now.append(f"<b>{main} 끌어올리기</b> — {DRIVER_ACTION.get(main, '')}")
-    now.append(f"구매전환 지키기 — {DRIVER_ACTION['CR']}")
+    # 금주 액션(진행중): 전환(CR)을 최우선으로
+    if tactical and ge:
+        now.append(f"<b>{ge[0]} 고트래픽에 전환(CR) 화력 집중</b> — {DRIVER_ACTION['CR']} "
+                   f"(CR이 방문만큼 빠졌고, 방문 몰릴 때 즉시 만회 가능)")
+    else:
+        now.append(f"구매전환 지키기 — {DRIVER_ACTION['CR']}")
     if own_worst:
         now.append(f"자사 부진 <b>{own_worst}</b> 구매전환(시크릿 혜택·기획전) + 잘 나가는 카테고리 밀어주기")
+    now.append(f"방문(DAU)은 구조적 하락 → 행사 유입객을 상시 재방문으로 묶기(앱 푸시 재동의·개인화 홈)")
     if ge:
         now.append(f"<b>금주 {ge[0]}</b>({ge[1].month}/{ge[1].day} 진행중) 사전 알림톡·고관여 타겟 집중")
-    # 전망 ① 금주 절대수준: 작년 행사주(주차별 실적)의 실제 반등폭을 올해 지난주에 적용
+
+    # 전망 ① 금주 절대수준: 작년 행사주(주차별 실적) 반등폭을 올해 지난주에 적용
     evnm = ge[0] if ge else "행사"
-    est = None
     if geum:
         lp, lg, tp = _wk_sales(PREV, period), _wk_sales(PREV, geum), _wk_sales(CUR, period)
         if lp and lg and tp:
-            wowL = lg / lp - 1                    # 작년 지난주→행사주 반등폭(=행사 효과)
-            est = tp * (1 + wowL)                 # 올해 지난주에 같은 반등 적용
-            nxt.append(f"금주 <b>{evnm}</b> 진행 — 작년 같은 주에도 직전주 대비 <b>{wowL*100:+.0f}%</b> 반등"
-                       f"({lp/1e6:,.0f}→{lg/1e6:,.0f}백만, 주차별 실적). 올해 지난주 {tp/1e6:,.0f}백만에 적용하면 "
-                       f"<b>금주 ~{est/1e6:,.0f}백만</b>으로 반등 예상")
-            nxt.append(f"다만 작년 같은 주에도 {evnm}가 있었기 때문에 <b>행사만으로는 전년비({_pct(sales)})가 그대로</b> — "
-                       f"전년비를 높이려면 작년보다 {main} 낙폭을 줄여야 함")
-    # 전망 ② 전년비 개선 여지: DAU(핵심동인) 격차 축소
-    if sales is not None and main and comp[main] < 0:
-        half = comp[main] / 2
-        scen = sales - half
-        nxt.append(f"<b>{main} 격차 절반 축소({_pct(comp[main])}→{_pct(comp[main]-half)})</b> 시 "
-                   f"금주 전년비 <b>{_pct(sales)} → {_pct(scen)}</b>로 개선 기대")
+            wowL = lg / lp - 1
+            est = tp * (1 + wowL)
+            nxt.append(f"금주 <b>{evnm}</b>로 절대 거래액 반등 — 올해 지난주 {tp/1e6:,.0f}백만에 작년 행사주 반등폭"
+                       f"({wowL*100:+.0f}%, {lp/1e6:,.0f}→{lg/1e6:,.0f}백만) 적용 시 <b>금주 ~{est/1e6:,.0f}백만</b>")
+            nxt.append(f"단 작년에도 이 주에 {evnm}가 있었기 때문에 <b>행사만으론 전년비({_pct(sales)}) 불변</b> — "
+                       f"전년비를 되돌리려면 작년보다 잘 팔아야 함")
+    # 전망 ② 어느 레버가 이번 주에 실제로 움직이나(핵심 인사이트)
+    if tactical:
+        scen = sales - cr            # 전환을 작년 수준으로 회복(CR 격차 만회)
+        half = sales - cr / 2
+        nxt.append(f"이번 주 <b>즉효 레버는 전환(CR {_pct(cr)})</b> — 방문(DAU)은 9주째 구조적이라 단기 반전이 어렵지만, "
+                   f"전환은 {evnm} 고트래픽 위에서 전술로 당길 수 있음")
+        nxt.append(f"{evnm}주 전환율을 작년 수준까지 회복하면 거래액 전년비 <b>{_pct(sales)} → {_pct(scen)}</b>"
+                   f"(절반만 잡아도 {_pct(half)}) — 방문 회복(구조)은 다음 분기 과제로 병행")
     if ce:
         nxt.append(f"이후 <b>{ce[0]}</b>({ce[1].month}/{ce[1].day}) 전관행사가 이어져 반등 흐름 연장 가능")
-    nxt.append("중기: 자사(영업1·2) 잘 되는 카테고리를 키워 자사 브랜드 비중 확대")
+    nxt.append("중기: 방문(DAU) 구조 회복 — 직접/앱 재방문 프로그램으로 상시 트래픽 복원")
 
-    # 헤드라인(핵심 메시지, 쉽게)
+    # 헤드라인: 어디가 새고, 이번 주 무엇을 당길지(비자명한 우선순위)
     head = ""
-    if sales is not None and main:
-        scen_txt = ""
-        if comp.get(main, 0) < 0:
-            scen = sales - comp[main] / 2
-            scen_txt = (f' — 금주 {evnm}로 절대 거래액은 반등하나 전년비 개선은 <span class="k">{main}</span> 회복이 관건, '
-                        f'되면 <span class="k">{_pct(sales)}→{_pct(scen)}</span>')
-        head = (f"지난주 거래액 {_pct(sales)}, 가장 큰 원인은 <span class='k'>{main} 하락</span>{scen_txt}")
+    if sales is not None:
+        if tactical:
+            scen = sales - cr
+            head = (f"지난주 {_pct(sales)}는 <span class='k'>방문·전환 동반 부진</span> — 방문(DAU)은 구조적이라 오래 걸리니, "
+                    f"이번 주 <span class='k'>{evnm} 고트래픽에서 '전환(CR)'을 끌어올리는 것</span>이 즉효 레버"
+                    f"(작년 전환율 회복 시 <span class='k'>{_pct(sales)}→{_pct(scen)}</span>)")
+        else:
+            head = f"지난주 거래액 {_pct(sales)} — 방문(DAU) 구조 회복이 근본 과제"
     return head, diag, now, nxt
 
 
