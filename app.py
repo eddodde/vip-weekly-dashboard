@@ -328,6 +328,19 @@ if "df" not in st.session_state:
 st.sidebar.title("📊 VIP 주간 실적")
 st.sidebar.caption("주간회의 'Summary' 시트 2.실적 양식")
 
+st.sidebar.markdown(
+    "#### 🧭 바로가기\n"
+    "**실적 흐름**\n"
+    "- [1) 거래액 트렌드](#s1)\n"
+    "- [2) 월별](#s2)\n"
+    "- [3) 주차별](#s3)\n"
+    "- [4) 주차별·채널별](#s4)\n"
+    "- [5) 상품별](#s5)\n\n"
+    "**진단·액션**\n"
+    "- [✅ 종합 방향성 및 전망](#s6)"
+)
+st.sidebar.markdown("---")
+
 with st.sidebar.expander("🔄 데이터 업데이트", expanded=False):
     st.markdown(
         "**주간 갱신**: 로컬에서 `update.ps1` 실행 → `data/perf_long.csv` 생성 → 아래 업로드.\n\n"
@@ -1036,6 +1049,24 @@ latest_wk = wk_all[-1] if wk_all else None
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} 마감 CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 (거래액 단위: 백만원)")
 
+# 사이드바 — 이번 주 스냅샷(최신주 전년비 KPI)
+if latest_wk:
+    st.sidebar.markdown(f"#### 📌 이번 주 스냅샷")
+    st.sidebar.caption(f"{week_pretty(latest_wk)} 마감 · 전년비")
+
+    def _snap(col, label, met, is_sales=False):
+        c = V("week", "overall", met, "TOTAL", "", CUR, latest_wk)
+        p = V("week", "overall", met, "TOTAL", "", PREV, latest_wk)
+        val = "-" if c is None else (f"{c/1e6:,.0f}백만" if is_sales else fmt(met, c))
+        col.metric(label, val, yoy_str(yoy(c, p)))
+    r1 = st.sidebar.columns(2)
+    _snap(r1[0], "거래액", "일평균거래액", is_sales=True)
+    _snap(r1[1], "DAU", "DAU")
+    r2 = st.sidebar.columns(2)
+    _snap(r2[0], "CR", "CR")
+    _snap(r2[1], "객단가", "일평균객단가")
+    st.sidebar.caption(f"집계 기준일 {last_daily_date()}")
+
 wk_periods = wk_all[-5:]                       # 엑셀과 동일하게 최근 5주 고정
 cutoff = last_daily_date().day if last_daily_date() else None
 cur_months = [int(p[:-1]) for p in periods("month", "overall", "일평균거래액", "TOTAL", "", CUR)]
@@ -1043,7 +1074,7 @@ if cutoff and (not cur_months or cur_months[-1] != last_daily_date().month):
     cur_months.append(last_daily_date().month)  # 당월(MTD) 추가
 
 # ---- 1) 거래액 트렌드 ----
-st.header("1) 거래액 트렌드")
+st.header("1) 거래액 트렌드", anchor="s1")
 render_insight(insight_trend(wk_all))
 wk_lbls = (week_pretty(wk_all[-2]) if len(wk_all) >= 2 else "", week_pretty(latest_wk) if latest_wk else "")
 cc = st.columns(4)
@@ -1053,7 +1084,7 @@ cc[2].plotly_chart(chart_weekly(wk_periods), use_container_width=True)
 cc[3].plotly_chart(chart_channel_yoy(wk_periods), use_container_width=True)
 
 # ---- 2) 월별 ----
-st.header("2) 월별")
+st.header("2) 월별", anchor="s2")
 cur_mo = cur_months[-1] if cur_months else None
 render_insight(insight_month(cur_mo, cutoff, True, f"당월({cur_mo}월~{cutoff}일 MTD)") if cur_mo else [])
 fc = forecast_month(cur_mo, cutoff) if cur_mo else None
@@ -1070,12 +1101,12 @@ st.caption(f"전년비 — 완료월: 전년 동월 **마감** 대비 / 당월({
 st.markdown(monthly_table(cur_months, cutoff), unsafe_allow_html=True)
 
 # ---- 3) 주차별 ----
-st.header("3) 주차별")
+st.header("3) 주차별", anchor="s3")
 render_insight(insight_perf("week", latest_wk, f"최신주({week_pretty(latest_wk)})"))
 st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty, bold_period=latest_wk), unsafe_allow_html=True)
 
 # ---- 4) 주차별·채널별 ----
-st.header("4) 주차별·채널별")
+st.header("4) 주차별·채널별", anchor="s4")
 render_insight(insight_channel(latest_wk))
 for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("③ CR", "CR")]:
     st.subheader(tag)
@@ -1083,7 +1114,7 @@ for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("
 
 # ---- 5) 상품별 ----
 if not df[df.perspective == "product"].empty:
-    st.header("5) 상품별 (e-영업 × 카테고리)")
+    st.header("5) 상품별 (e-영업 × 카테고리)", anchor="s5")
     pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
     sel = pwk_all[-1] if pwk_all else None
     if sel:
@@ -1092,7 +1123,7 @@ if not df[df.perspective == "product"].empty:
         st.markdown(product_table(sel), unsafe_allow_html=True)
 
 # ---- 종합 방향성 (진단 → 금주 / 차주) ----
-st.header("✅ 종합 방향성 및 전망")
+st.header("✅ 종합 방향성 및 전망", anchor="s6")
 diag_b, now_b, nxt_b = final_direction(wk_all, cur_mo, cutoff)
 render_insight(diag_b)
 d1, d2 = st.columns(2)
