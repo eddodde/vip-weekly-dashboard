@@ -858,11 +858,23 @@ def _wk_sales(year, period):
 
 
 def _next_prevweek(period):
-    """전년 기준 '차주' 라벨(계절성 참고)."""
+    """전년 기준 다음주 라벨(계절성 참고)."""
     pw = periods("week", "overall", SALES, "TOTAL", "", PREV)
     if period in pw and pw.index(period) + 1 < len(pw):
         return pw[pw.index(period) + 1]
     return None
+
+
+def resolve_weeks(latest_wk):
+    """주간 데이터는 '완료주'까지 → 그 다음 주가 금주(진행중), +2가 차주.
+    (라벨은 연 반복이므로 전년 주차 순서로 오프셋 계산.)"""
+    pw = periods("week", "overall", SALES, "TOTAL", "", PREV)
+    if not latest_wk or latest_wk not in pw:
+        return None, None
+    i = pw.index(latest_wk)
+    geum = pw[i + 1] if i + 1 < len(pw) else None    # 금주(진행중)
+    cha = pw[i + 2] if i + 2 < len(pw) else None      # 차주
+    return geum, cha
 
 
 def forecast_month(mo, cutoff):
@@ -889,36 +901,31 @@ def forecast_month(mo, cutoff):
 
 
 def insight_trend(wk_all):
-    """최신주 전년비·전주비 + 전년 동기 실측 패턴 근거의 차주 전망."""
+    """최신주(지난주 마감) 전년비·전주비 + 전년 동기 근거로 '금주(진행중)' 전망."""
     if not wk_all:
         return []
-    period = wk_all[-1]
+    period = wk_all[-1]                         # 최신 완료주 = 지난주(마감)
+    geum, cha = resolve_weeks(period)           # 금주(진행중), 차주
     b = []
     yoyv = yoy(_wk_sales(CUR, period), _wk_sales(PREV, period))
     wowv = yoy(_wk_sales(CUR, period), _wk_sales(CUR, wk_all[-2])) if len(wk_all) >= 2 else None
-    b.append(f"최신주({week_pretty(period)}) 거래액 전년비 <b>{_pct(yoyv)}</b>"
+    b.append(f"지난주 마감({week_pretty(period)}) 거래액 전년비 <b>{_pct(yoyv)}</b>"
              + (f" · 전주비 <b>{_pct(wowv)}</b>" if wowv is not None else ""))
-    pw = periods("week", "overall", SALES, "TOTAL", "", PREV)
-    nw = _next_prevweek(period)
-    if nw and period in pw:
-        i = pw.index(period)
-        a, c = _wk_sales(PREV, period), _wk_sales(PREV, nw)      # 전년 현주, 전년 차주
+    if geum:
+        a, c = _wk_sales(PREV, period), _wk_sales(PREV, geum)   # 전년 지난주, 전년 금주(동주)
         seas = yoy(c, a)
-        pmove = yoy(a, _wk_sales(PREV, pw[i - 1])) if i - 1 >= 0 else None
         if a and c and seas is not None:
-            lead = (f"전년엔 {week_pretty(period)}까지 전주비 {_pct(pmove)}로 둔화했다가 "
-                    if (pmove is not None and pmove < 0) else "전년엔 ")
-            tail = "회복 여력" if seas > 0 else "약세 지속 가능성 대비"
-            b.append(f"{lead}차주({week_pretty(nw)}) {a/1e6:,.0f}→{c/1e6:,.0f}백만(<b>{_pct(seas)}</b>)로 "
-                     f"{'반등' if seas > 0 else '추가 둔화'} "
-                     f'→ <span class="imp">올해도 같은 계절 패턴이면 차주 {tail}</span>')
+            b.append(f"전년 동기엔 {week_pretty(period)}→{week_pretty(geum)} "
+                     f"{a/1e6:,.0f}→{c/1e6:,.0f}백만(<b>{_pct(seas)}</b>)로 {'반등' if seas > 0 else '둔화'} "
+                     f'→ <span class="imp">올해 <b>금주({week_pretty(geum)})</b> '
+                     f'{"계절 반등 여력" if seas > 0 else "약세 지속 대비"}</span>')
     up = upcoming_major(last_daily_date(), horizon=10)
     if up:
         nm, pd0, cd0 = up[0]
         lift = event_lift(pd0)
         liftxt = f" — 전년 해당 행사기간 거래액 직전주 대비 <b>{_pct(lift)}</b>" if lift is not None else ""
-        b.append(f"차주 <b>{nm}</b>(전년 {pd0.month}/{pd0.day}, 매년 반복) 예정{liftxt} "
-                 f'→ <span class="imp">행사 모멘텀으로 반등 유도, 사전 알림·고관여 타겟팅 준비</span>')
+        b.append(f"<b>금주 {nm}</b>(전년 {pd0.month}/{pd0.day}·매년 반복, 오늘 전후 진행) 예정{liftxt} "
+                 f'→ <span class="imp">행사 모멘텀 반등 유도, 사전 알림·고관여 타겟팅</span>')
     return b
 
 
@@ -1034,37 +1041,42 @@ def final_direction(wk_all, cur_mo, cutoff):
             if c is not None and p is not None:
                 orecs.append((ca, c - p, yoy(c, p)))
     own_worst = min(orecs, key=lambda r: r[1])[0] if orecs else None
-    nw = _next_prevweek(period)
-    seas = yoy(_wk_sales(PREV, nw), _wk_sales(PREV, period)) if nw else None
-
-    up = upcoming_major(last_daily_date(), horizon=10)
+    geum, cha = resolve_weeks(period)                       # 금주(진행중), 차주
+    gw = week_pretty(geum) if geum else "금주"
+    cw = week_pretty(cha) if cha else "차주"
+    seas = yoy(_wk_sales(PREV, geum), _wk_sales(PREV, period)) if geum else None
+    up = upcoming_major(last_daily_date(), horizon=20)
+    ge = up[0] if up else None                              # 금주 행사(전년 ~1주 후)
+    ce = up[1] if len(up) > 1 else None                     # 차주 행사
 
     diag, now, nxt = [], [], []
-    # 진단: 거래액 동인 + DAU 구조성(비반복 인사이트)
+    # 진단: 지난주 마감 동인 + DAU 구조성(비반복 인사이트)
     if sales is not None and main:
-        diag.append(f"거래액 전년비 <b>{_pct(sales)}</b> — 핵심 동인은 <b>{main}({_pct(comp[main])})</b>, "
-                    f"객단가·전환 단가는 방어 중")
+        diag.append(f"지난주 마감({week_pretty(period)}) 거래액 <b>{_pct(sales)}</b> — 핵심 동인은 "
+                    f"<b>{main}({_pct(comp[main])})</b>, 객단가·전환 단가는 방어 중")
     diag += insight_dau(period)     # DAU 지속성·주도채널·상시방문 구조
-    # 금주 액션
+    # 금주 액션(진행중)
     if main:
         now.append(f"<b>{main} 회복</b> — {DRIVER_ACTION.get(main, '')}")
     now.append(f"구매전환 방어 — {DRIVER_ACTION['CR']}")
     if own_worst:
         now.append(f"자사 부진 <b>{own_worst}</b> 구매전환(시크릿 혜택·기획전) + 성장 카테고리 소구로 자사 비중 확대")
-    if up:
-        now.append(f"차주 <b>{up[0][0]}</b>(전년 {up[0][1].month}/{up[0][1].day} 반복) 사전 알림톡·고관여 타겟 준비")
-    # 차주 정량 전망
+    if ge:
+        now.append(f"<b>금주 {ge[0]}</b>(전년 {ge[1].month}/{ge[1].day} 반복, 진행중) 사전 알림톡·고관여 타겟 집중")
+    # 전망: 금주 정량 + 차주 전개
     if sales is not None and main and comp[main] < 0:
         half = comp[main] / 2
         scen = sales - half                      # main 갭 절반 회복 시(YoY 가법 근사)
         ev_txt = ""
-        if up:
-            lift = event_lift(up[0][1])
+        if ge:
+            lift = event_lift(ge[1])
             if lift is not None and lift > 0:
-                ev_txt = f" + 차주 {up[0][0]}(전년 거래액 +{lift*100:.0f}%) 반복 모멘텀"
-        nxt.append(f"현 추세 지속 시 차주 거래액 전년비 <b>{_pct(sales)}</b> 수준")
-        nxt.append(f"금주 액션으로 <b>{main} 갭 절반 회복({_pct(comp[main])}→{_pct(comp[main]-half)})</b>{ev_txt} 가세 시 "
-                   f"차주 거래액 <b>{_pct(sales)} → {_pct(scen)}</b>로 역신장 폭 축소 기대")
+                ev_txt = f" + 금주 {ge[0]}(전년 +{lift*100:.0f}%) 반복 모멘텀"
+        nxt.append(f"현 추세 지속 시 <b>금주({gw})</b> 거래액 전년비 <b>{_pct(sales)}</b> 수준")
+        nxt.append(f"<b>{main} 갭 절반 회복({_pct(comp[main])}→{_pct(comp[main]-half)})</b>{ev_txt} 가세 시 "
+                   f"금주 거래액 <b>{_pct(sales)} → {_pct(scen)}</b>로 역신장 폭 축소 기대")
+    if ce:
+        nxt.append(f"차주({cw})엔 <b>{ce[0]}</b>(전년 {ce[1].month}/{ce[1].day}) 이어짐 → 행사 모멘텀 연속 활용")
     nxt.append("중기: 자사(영업1·2) 성장 카테고리 전환 확대로 자사 브랜드 매출 비중 강화")
 
     # 헤드라인(BCG 'answer-first'): 상황 → 근인 → 레버 → 정량 임팩트
@@ -1073,10 +1085,10 @@ def final_direction(wk_all, cur_mo, cutoff):
         scen_txt = ""
         if comp.get(main, 0) < 0:
             scen = sales - comp[main] / 2
-            scen_txt = f', 병행 실행 시 차주 <span class="k">{_pct(sales)}→{_pct(scen)}</span>로 역신장 폭 절반 축소 가능'
-        evph = f"차주 <span class='k'>{up[0][0]}</span> 반복 모멘텀" if up else "구매효율 방어"
-        head = (f"거래액 {_pct(sales)}는 <span class='k'>{main} 구조적 하락</span>이 근인 — "
-                f"{evph}과 {main}(상시 방문) 회복 액션이 반등 관건{scen_txt}")
+            scen_txt = f', 병행 실행 시 금주 <span class="k">{_pct(sales)}→{_pct(scen)}</span>로 역신장 폭 절반 축소 가능'
+        evph = f"금주 <span class='k'>{ge[0]}</span> 반복 모멘텀" if ge else "구매효율 방어"
+        head = (f"지난주 거래액 {_pct(sales)}는 <span class='k'>{main} 구조적 하락</span>이 근인 — "
+                f"{evph}과 {main}(상시 방문) 회복 액션이 금주 반등 관건{scen_txt}")
     return head, diag, now, nxt
 
 
@@ -1084,9 +1096,9 @@ def render_bcg(head, diag, now, nxt):
     """BCG 컨설팅 스타일: 핵심 메시지 헤드라인 + 진단/실행/임팩트 3-카드."""
     if head:
         st.markdown(f'<div class="bcg-head">💡 {head}</div>', unsafe_allow_html=True)
-    cards = [("① 진단", "Where we are", diag),
-             ("② 금주 실행", "What to do now", now),
-             ("③ 차주 임팩트", "Expected impact", nxt)]
+    cards = [("① 진단", "지난주 마감 · Where we are", diag),
+             ("② 금주 실행", "진행중 · What to do now", now),
+             ("③ 전망", "금주·차주 · Impact", nxt)]
     cols = st.columns(3)
     for col, (title, sub, bullets) in zip(cols, cards):
         lis = "".join(f"<li>{b}</li>" for b in bullets) or "<li>-</li>"
