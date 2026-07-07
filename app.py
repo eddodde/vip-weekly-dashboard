@@ -503,6 +503,15 @@ TABLE_CSS = """
 .block-container h1{font-size:1.55rem !important;font-weight:700 !important;margin:0 0 .2rem !important;}
 .block-container h2{font-size:1.15rem !important;font-weight:700 !important;margin:1rem 0 .4rem !important;}
 .block-container h3{font-size:1.0rem !important;font-weight:600 !important;margin:.6rem 0 .3rem !important;}
+/* 사이드바 폰트 컴팩트화 */
+[data-testid="stSidebar"] h1{font-size:1.1rem !important;font-weight:700 !important;}
+[data-testid="stSidebar"] h4{font-size:.85rem !important;font-weight:700 !important;margin:.5rem 0 .2rem !important;}
+[data-testid="stSidebar"] p,[data-testid="stSidebar"] li,[data-testid="stSidebar"] .stMarkdown{font-size:11.5px !important;}
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"]{font-size:10.5px !important;}
+[data-testid="stSidebar"] [data-testid="stMetricValue"]{font-size:.95rem !important;}
+[data-testid="stSidebar"] [data-testid="stMetricLabel"]{font-size:10.5px !important;}
+[data-testid="stSidebar"] [data-testid="stMetricDelta"]{font-size:10.5px !important;}
+[data-testid="stSidebar"] [data-testid="stMetricDelta"] svg{width:11px;height:11px;}
 .sumtbl{border-collapse:collapse;font-size:12.5px;white-space:nowrap;}
 .sumtbl th,.sumtbl td{border:1px solid #d9d9d9;padding:4px 8px;text-align:right;}
 .sumtbl th{background:#f2f5fa;color:#222;text-align:center;font-weight:600;}
