@@ -498,6 +498,11 @@ YOY_NEG = "color:#c0392b;font-weight:600"   # 역신장(−) 빨강
 
 TABLE_CSS = """
 <style>
+/* 제목·헤더 폰트 컴팩트화(기본값이 과대) */
+.block-container{padding-top:2rem !important;}
+.block-container h1{font-size:1.55rem !important;font-weight:700 !important;margin:0 0 .2rem !important;}
+.block-container h2{font-size:1.15rem !important;font-weight:700 !important;margin:1rem 0 .4rem !important;}
+.block-container h3{font-size:1.0rem !important;font-weight:600 !important;margin:.6rem 0 .3rem !important;}
 .sumtbl{border-collapse:collapse;font-size:12.5px;white-space:nowrap;}
 .sumtbl th,.sumtbl td{border:1px solid #d9d9d9;padding:4px 8px;text-align:right;}
 .sumtbl th{background:#f2f5fa;color:#222;text-align:center;font-weight:600;}
