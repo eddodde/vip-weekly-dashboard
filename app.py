@@ -502,6 +502,35 @@ def event_lift(pd0, span=3):
     return (ev / base - 1) if (ev and base) else None
 
 
+def _week_majors(lo, hi):
+    """[lo,hi] 기간의 주요(전관행사급) 행사명 집합."""
+    if EVENTS.empty:
+        return set()
+    d = EVENTS["d"]
+    mask = (EVENTS["major"].to_numpy(dtype=bool) & (d >= lo).to_numpy(dtype=bool) & (d <= hi).to_numpy(dtype=bool))
+    return {_evname(t) for t in EVENTS.loc[mask, "text"]}
+
+
+def event_fairness(ref_date):
+    """해당 주의 전년비가 '행사 정렬상 공정'한지 판정. 올해 주(ref_date 포함)의 주요행사 vs
+    전년 동주(−364일) 주요행사 비교. 반환 (verdict, 설명)."""
+    if EVENTS.empty or ref_date is None:
+        return None
+    mon = ref_date - datetime.timedelta(days=ref_date.weekday())
+    sun = mon + datetime.timedelta(days=6)
+    cur = _week_majors(mon, sun)
+    prev = _week_majors(mon - datetime.timedelta(days=364), sun - datetime.timedelta(days=364))
+    if cur == prev:
+        if cur:
+            return ("fair", f"양년 모두 {'·'.join(sorted(cur))} 진행 → 동일 조건(공정)")
+        return ("fair", "양년 모두 이 주 전관행사 없음 → 동일 조건(공정)")
+    only_prev, only_cur = prev - cur, cur - prev
+    if only_prev:
+        return ("warn", f"작년 이 주엔 {'·'.join(sorted(only_prev))}(전관행사)가 있어 기저가 높음 "
+                        f"→ 전년비가 실제보다 나쁘게 보일 수 있음")
+    return ("warn", f"올해 이 주엔 {'·'.join(sorted(only_cur))} 진행(작년엔 없음) → 전년비 상방 요인")
+
+
 def event_prior_lift(name, near_date=None):
     """올해 행사의 '전년 같은 행사' 효과. near_date(올해 행사일) 있으면 전년 동명 행사 중
     가장 가까운(≈−364일) 것을 골라 event_lift 계산."""
@@ -936,6 +965,10 @@ def insight_trend(wk_all):
     wowv = yoy(_wk_sales(CUR, period), _wk_sales(CUR, wk_all[-2])) if len(wk_all) >= 2 else None
     b.append(f"지난주 마감({week_pretty(period)}) 거래액 전년비 <b>{_pct(yoyv)}</b>"
              + (f" · 전주비 <b>{_pct(wowv)}</b>" if wowv is not None else ""))
+    fr = event_fairness(last_daily_date())
+    if fr:
+        icon = "✅ 전년비 공정" if fr[0] == "fair" else "⚠️ 전년비 주의"
+        b.append(f'<span style="color:#5b6472"><b>{icon}</b> — {fr[1]}</span>')
     if geum:
         a, c = _wk_sales(PREV, period), _wk_sales(PREV, geum)   # 전년 지난주, 전년 금주(동주)
         seas = yoy(c, a)
