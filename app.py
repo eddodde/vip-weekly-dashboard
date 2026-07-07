@@ -443,7 +443,9 @@ EVENTS_CSV = "data/events.csv"
 def load_events():
     try:
         e = pd.read_csv(EVENTS_CSV, encoding="utf-8-sig")
-        e["d"] = pd.to_datetime(e["date"]).dt.date
+        e["text"] = e["text"].astype(str)
+        e["d"] = pd.to_datetime(e["date"], errors="coerce").dt.date
+        e = e[e["d"].notna()].reset_index(drop=True)          # 파싱 실패행 제거
         e["major"] = e["text"].str.contains(r"전관행사|L\+DAY|슈퍼세일|앵콜|정기세일", regex=True, na=False)
         return e
     except Exception:
@@ -460,13 +462,20 @@ def _evname(t):
     return t.strip()
 
 
+def _dyear(x):
+    return getattr(x, "year", None)
+
+
 def upcoming_major(after_date, horizon=25):
     """오늘(after_date) 이후 horizon일 내 실제 올해(CUR) 주요 행사 [(이름, 날짜)]."""
     if EVENTS.empty or after_date is None:
         return []
     hi = after_date + datetime.timedelta(days=horizon)
-    e = EVENTS[(EVENTS.major) & (EVENTS.d > after_date) & (EVENTS.d <= hi)]
-    e = e[e["d"].apply(lambda d: d.year == CUR)].sort_values("d")
+    d = EVENTS["d"]
+    mask = (EVENTS["major"].to_numpy(dtype=bool) & (d > after_date).to_numpy(dtype=bool)
+            & (d <= hi).to_numpy(dtype=bool)
+            & d.map(lambda x: _dyear(x) == CUR).to_numpy(dtype=bool))   # numpy bool(버전 무관 안전)
+    e = EVENTS.loc[mask].sort_values("d")
     out, seen = [], set()
     for _, r in e.iterrows():
         nm = _evname(r["text"])
@@ -496,13 +505,16 @@ def event_lift(pd0, span=3):
 def event_prior_lift(name, near_date=None):
     """올해 행사의 '전년 같은 행사' 효과. near_date(올해 행사일) 있으면 전년 동명 행사 중
     가장 가까운(≈−364일) 것을 골라 event_lift 계산."""
-    pe = EVENTS[EVENTS["d"].apply(lambda d: d.year == PREV)]
-    pe = pe[pe["text"].apply(lambda t: _evname(t) == name)]
+    if EVENTS.empty:
+        return None
+    mask = (EVENTS["d"].map(lambda x: _dyear(x) == PREV).to_numpy(dtype=bool)
+            & EVENTS["text"].map(lambda t: _evname(t) == name).to_numpy(dtype=bool))
+    pe = EVENTS.loc[mask]
     if pe.empty:
         return None
     if near_date is not None:
         target = near_date - datetime.timedelta(days=364)
-        pe = pe.assign(_diff=pe["d"].apply(lambda d: abs((d - target).days))).sort_values("_diff")
+        pe = pe.assign(_diff=pe["d"].map(lambda d: abs((d - target).days))).sort_values("_diff")
     return event_lift(pe.iloc[0]["d"])
 
 
