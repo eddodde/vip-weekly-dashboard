@@ -663,6 +663,12 @@ TABLE_CSS = """
 .block-container h1{font-size:1.55rem !important;font-weight:700 !important;margin:0 0 .2rem !important;}
 .block-container h2{font-size:1.15rem !important;font-weight:700 !important;margin:1rem 0 .4rem !important;}
 .block-container h3{font-size:1.0rem !important;font-weight:600 !important;margin:.6rem 0 .3rem !important;}
+/* 본문 metric(예상마감 등) 폰트 축소 */
+.block-container [data-testid="stMetricValue"]{font-size:1.4rem !important;}
+.block-container [data-testid="stMetricLabel"]{font-size:.8rem !important;}
+.block-container [data-testid="stMetricLabel"] p{font-size:.8rem !important;}
+.block-container [data-testid="stMetricDelta"]{font-size:.8rem !important;}
+.block-container [data-testid="stMetricDelta"] svg{width:.85rem;height:.85rem;}
 /* 사이드바 폰트 컴팩트화 */
 [data-testid="stSidebar"] h1{font-size:1.1rem !important;font-weight:700 !important;}
 [data-testid="stSidebar"] h4{font-size:.85rem !important;font-weight:700 !important;margin:.5rem 0 .2rem !important;}
