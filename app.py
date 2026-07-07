@@ -1288,6 +1288,42 @@ def insight_product(wk):
     return b
 
 
+def insight_yeong(ye, wk):
+    """영업 탭별 핵심 인사이트(간단·명료): 소계 전년비 + 부진/신장 카테고리 + 시사점."""
+    c = V("week", "product", SALES, ye, "TOTAL", CUR, wk)
+    p = V("week", "product", SALES, ye, "TOTAL", PREV, wk)
+    if c is None or p is None:
+        return []
+    tot = yoy(c, p)
+    recs = []
+    for ca in CATS_ORDER:
+        cc = V("week", "product", SALES, ye, ca, CUR, wk)
+        pp = V("week", "product", SALES, ye, ca, PREV, wk)
+        if cc is not None and pp is not None:
+            recs.append((ca, cc - pp, yoy(cc, pp)))
+    own = ye in OWN
+    seg = "자사" if own else "입점"
+    b = [f"<b>{ye}</b>({seg}) 거래액 전년비 <b>{_pct(tot)}</b>"]
+    if recs:
+        srt = sorted(recs, key=lambda r: r[1])
+        worst, best = srt[0], srt[-1]
+        parts = []
+        if worst[1] < 0:
+            parts.append(f"<b>{worst[0]}</b> 부진({_pct(worst[2])})")
+        if best[2] is not None and best[2] > 0:
+            parts.append(f"<b>{best[0]}</b> 신장({_pct(best[2])})")
+        if parts:
+            b.append(" · ".join(parts))
+        if own and worst[1] < 0:
+            tail = f", {best[0]} 성장세 유지" if (best[2] and best[2] > 0) else ""
+            b.append(f'<span class="imp">→ 자사 <b>{worst[0]}</b> 반등 우선(시크릿 혜택·기획전){tail}</span>')
+        elif own:
+            b.append(f'<span class="imp">→ {best[0]} 호조 확대로 자사 비중 강화</span>')
+        else:
+            b.append(f'<span class="imp">→ 입점 채널 · <b>{worst[0]}</b> 약세 점검, 자사 우선</span>')
+    return b
+
+
 def final_direction(wk_all, cur_mo, cutoff):
     """진단 → 금주 액션 → 차주 정량 전망(핵심동인 회복 시나리오)."""
     if not wk_all:
@@ -1534,6 +1570,7 @@ if not df[df.perspective == "product"].empty:
         _tabs = st.tabs(YEONG)
         for _tab, _ye in zip(_tabs, YEONG):
             with _tab:
+                render_insight(insight_yeong(_ye, sel))
                 st.markdown(product_table_one(sel, _ye), unsafe_allow_html=True)
 
 # ---- 종합 방향성 (BCG 스타일: 헤드라인 + 진단/실행/임팩트) ----
