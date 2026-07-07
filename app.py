@@ -936,6 +936,42 @@ def product_table(wk):
     return "".join(html)
 
 
+def product_table_one(wk, ye):
+    """단일 영업의 카테고리 표(탭용): 소계 + 카테고리. cols=거래액[26|전년비]·상품UV[26|전년비]."""
+    def cellpair(met, ca, bold):
+        c = V("week", "product", met, ye, ca, CUR, wk)
+        p = V("week", "product", met, ye, ca, PREV, wk)
+        v = fmt(met, c)
+        txt, sty = yoy_disp(yoy(c, p))
+        if bold:
+            v, txt = f"<b>{v}</b>", f"<b>{txt}</b>"
+        return (f'<td class="grp2026">{v}</td>', f'<td class="grpyoy" style="{sty}">{txt}</td>')
+
+    body = []
+    cells = []
+    for _, met in PROD_METRICS:
+        cells += list(cellpair(met, "TOTAL", True))
+    body.append((f"<b>{ye} 소계</b>", cells))
+    cats = [ca for ca in CATS_ORDER
+            if V("week", "product", "일평균거래액", ye, ca, CUR, wk) is not None
+            or V("week", "product", "일평균거래액", ye, ca, PREV, wk) is not None]
+    for ca in cats:
+        cells = []
+        for _, met in PROD_METRICS:
+            cells += list(cellpair(met, ca, False))
+        body.append((ca, cells))
+    html = ['<div class="sumwrap"><table class="sumtbl">']
+    html.append('<tr><th class="rowh" rowspan="2">구분</th>'
+                f'<th colspan="2" class="grp2026">거래액(백만)</th>'
+                f'<th colspan="2" class="grpyoy">상품UV</th></tr>')
+    html.append(f'<tr><th class="grp2026">{CUR}년</th><th class="grp2026">전년비</th>'
+                f'<th class="grpyoy">{CUR}년</th><th class="grpyoy">전년비</th></tr>')
+    for rl, cells in body:
+        html.append(f'<tr><td class="rowh">{rl}</td>' + "".join(cells) + '</tr>')
+    html.append('</table></div>')
+    return "".join(html)
+
+
 # ----------------------------------------------------------------------------- charts
 SALES = "일평균거래액"
 BLUE_CUR, BLUE_PREV, GREY = "#1f3b73", "#9db8e0", "#9aa0a6"
@@ -1478,8 +1514,21 @@ if not df[df.perspective == "product"].empty:
     sel = pwk_all[-1] if pwk_all else None
     if sel:
         render_insight(insight_product(sel))
-        st.caption(f"기준: {week_pretty(sel)} · 거래액과 상품UV 통합")
-        st.markdown(product_table(sel), unsafe_allow_html=True)
+        # 영업별 소계 요약(거래액 백만·전년비) 1줄
+        _subs = []
+        for _ye in YEONG:
+            _c = V("week", "product", "일평균거래액", _ye, "TOTAL", CUR, sel)
+            _p = V("week", "product", "일평균거래액", _ye, "TOTAL", PREV, sel)
+            if _c is not None:
+                _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f}백만 {yoy_str(yoy(_c, _p))}")
+        st.markdown(
+            f"<div style='font-size:12px;color:#5b6472;background:#f7f9fc;border-left:3px solid #c5d3e8;"
+            f"padding:6px 12px;border-radius:4px;margin:2px 0 8px'>기준: {week_pretty(sel)} · 거래액 일평균(백만) · "
+            + "  |  ".join(_subs) + "</div>", unsafe_allow_html=True)
+        _tabs = st.tabs(YEONG)
+        for _tab, _ye in zip(_tabs, YEONG):
+            with _tab:
+                st.markdown(product_table_one(sel, _ye), unsafe_allow_html=True)
 
 # ---- 종합 방향성 (BCG 스타일: 헤드라인 + 진단/실행/임팩트) ----
 st.header("✅ 종합 방향성 및 전망", anchor="s6")
