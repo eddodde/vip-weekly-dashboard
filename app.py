@@ -344,6 +344,9 @@ st.sidebar.markdown(
 )
 st.sidebar.markdown("---")
 
+ref_slot = st.sidebar.container()   # 📖 참고 · 진행 행사 (EVENTS 로드 후 채움)
+st.sidebar.markdown("---")
+
 with st.sidebar.expander("🔄 데이터 업데이트", expanded=False):
     st.markdown(
         "**주간 갱신**: 로컬에서 `update.ps1` 실행 → `data/perf_long.csv` 생성 → 아래 업로드.\n\n"
@@ -1210,6 +1213,31 @@ if latest_wk:
         _snap(r2[0], "CR", "CR")
         _snap(r2[1], "객단가", "일평균객단가")
         st.caption(f"집계 기준일 {last_daily_date()}")
+
+# 사이드바 참고 슬롯 채우기 — 진행 행사 캘린더(전년/올해)
+with ref_slot:
+    st.markdown("#### 📖 참고 · 진행 행사")
+    with st.expander("행사 캘린더 보기", expanded=False):
+        yr = st.selectbox("연도", [PREV, CUR], index=0, format_func=lambda y: f"{y}년", key="ev_yr")
+        mo = st.selectbox("월", ["전체"] + [f"{m}월" for m in range(1, 13)], key="ev_mo")
+        only_major = st.checkbox("전관행사만", value=False, key="ev_major")
+        ev = EVENTS[EVENTS["d"].map(lambda d: _dyear(d) == yr)].copy() if not EVENTS.empty else EVENTS
+        if ev is not None and not ev.empty:
+            ev["nm"] = ev["text"].map(_evname)
+            ev["maj"] = ev["text"].str.contains("전관행사", na=False)
+            if mo != "전체":
+                mm = int(mo[:-1])
+                ev = ev[ev["d"].map(lambda d: d.month == mm)]
+            if only_major:
+                ev = ev[ev["maj"]]
+        if ev is None or ev.empty:
+            st.caption("표시할 행사가 없습니다.")
+        else:
+            g = ev.groupby("nm").agg(날짜=("d", "min"), 전관=("maj", "any")).reset_index().sort_values("날짜")
+            g["일자"] = g["날짜"].map(lambda d: f"{d.month}/{d.day}")
+            g["행사"] = np.where(g["전관"], "★ " + g["nm"], g["nm"])
+            st.dataframe(g[["일자", "행사"]], hide_index=True, use_container_width=True, height=300)
+            st.caption("★ = 전관행사(전사 규모)")
 
 wk_periods = wk_all[-5:]                       # 엑셀과 동일하게 최근 5주 고정
 cutoff = last_daily_date().day if last_daily_date() else None
