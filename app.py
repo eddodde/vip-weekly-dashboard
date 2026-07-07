@@ -337,7 +337,7 @@ st.sidebar.markdown(
     "- [1) 거래액 트렌드](#s1)\n"
     "- [2) 월별](#s2)\n"
     "- [3) 주차별](#s3)\n"
-    "- [🎪 전관행사 주간](#s_ev)\n"
+    "- [🎪 전관행사 기간](#s_ev)\n"
     "- [4) 주차별·채널별](#s4)\n"
     "- [5) 상품별](#s5)\n\n"
     "**진단·액션**\n"
@@ -437,6 +437,28 @@ def dv(year, mo, day, metric="일평균거래액"):
         return None
     r = _DAY[(_DAY.metric == metric) & (_DAY.seg1 == "TOTAL") & (_DAY.year == year) & (_DAY.mo == mo) & (_DAY.dy == day)]
     return r["value"].iloc[0] if len(r) else None
+
+
+def range_mean(metric, year, lo, hi):
+    """[lo,hi] 기간 일자별 평균."""
+    vals, d = [], lo
+    while d <= hi:
+        v = dv(year, d.month, d.day, metric)
+        if v is not None:
+            vals.append(v)
+        d += datetime.timedelta(days=1)
+    return sum(vals) / len(vals) if vals else None
+
+
+def range_metric(metric, year, lo, hi):
+    """기간 지표(레벨=일평균, 객단가=거래액/고객수, CR=고객수/DAU)."""
+    if metric == "일평균객단가":
+        s, c = range_mean("일평균거래액", year, lo, hi), range_mean("일평균고객수", year, lo, hi)
+        return s / c if (s is not None and c) else None
+    if metric == "CR":
+        c, da = range_mean("일평균고객수", year, lo, hi), range_mean("DAU", year, lo, hi)
+        return c / da if (c is not None and da) else None
+    return range_mean(metric, year, lo, hi)
 
 
 # ----------------------------------------------------------------------------- events (가변탭 행사 캘린더)
@@ -819,19 +841,42 @@ def monthly_table(cur_months, cutoff_day):
     return render_block_table([r for r, _ in PERF_ROWS], blocks, bold_label=cur_lbl(cur_mo))
 
 
-def event_week_table(label):
-    """전관행사 주간: 올해 그 주차 vs 전년 동일 주차. 지표=PERF_ROWS(거래액~객단가)."""
+def _mdrange(lo, hi):
+    return f"{lo.month}/{lo.day}~{hi.month}/{hi.day}"
+
+
+def event_period_table(cs, ce, ps, pe):
+    """전관행사 '기간' 비교: 올해 기간(cs~ce) vs 전년 기간(ps~pe). 헤더=m/d~m/d."""
     b26, byoy, b25 = [], [], []
     for _, met in PERF_ROWS:
-        b26.append(_td("grp2026", fmt(met, V("week", "overall", met, "TOTAL", "", CUR, label)), False))
-        txt, sty = yoy_disp(yoy(V("week", "overall", met, "TOTAL", "", CUR, label),
-                                V("week", "overall", met, "TOTAL", "", PREV, label)))
+        cv, pv = range_metric(met, CUR, cs, ce), range_metric(met, PREV, ps, pe)
+        b26.append(_td("grp2026", fmt(met, cv), False))
+        txt, sty = yoy_disp(yoy(cv, pv))
         byoy.append(_td("grpyoy", txt, False, sty))
-        b25.append(_td("grp2025", fmt(met, V("week", "overall", met, "TOTAL", "", PREV, label)), False))
-    blocks = [(f"{CUR}년", "grp2026", [(week_pretty(label), b26)]),
-              ("전년비", "grpyoy", [(week_pretty(label), byoy)]),
-              (f"{PREV}년", "grp2025", [(week_pretty(label), b25)])]
+        b25.append(_td("grp2025", fmt(met, pv), False))
+    clab, plab = _mdrange(cs, ce), _mdrange(ps, pe)
+    blocks = [(f"{CUR}년", "grp2026", [(clab, b26)]),
+              ("전년비", "grpyoy", [(clab, byoy)]),
+              (f"{PREV}년", "grp2025", [(plab, b25)])]
     return render_block_table([r for r, _ in PERF_ROWS], blocks)
+
+
+def find_prior_event(name, cur_start):
+    """전년 동명 행사 중 올해 시작일−364에 가장 가까운 것 (start, end)."""
+    cands = [o for o in event_occurrences(PREV, only_major=True) if o[2] == name] \
+        or [o for o in event_occurrences(PREV) if o[2] == name]
+    if not cands:
+        return None
+    target = cur_start - datetime.timedelta(days=364)
+    o = min(cands, key=lambda o: abs((o[0] - target).days))
+    if abs((o[0] - target).days) > 21:    # 너무 멀면 동일 행사로 보기 어려움
+        return None
+    return o[0], o[1]
+
+
+def insight_event(cs, ce, ps, pe, label):
+    g = lambda m: yoy(range_metric(m, CUR, cs, ce), range_metric(m, PREV, ps, pe))
+    return _insight_sales(g, label)
 
 
 CATS_ORDER = ["골프", "남성", "여성", "슈즈", "잡화", "스포츠", "명품", "아웃도어", "리빙", "뷰티", "키즈"]
@@ -1374,23 +1419,24 @@ st.header("3) 주차별", anchor="s3")
 render_insight(insight_perf("week", latest_wk, f"최신주({week_pretty(latest_wk)})"))
 st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty, bold_period=latest_wk), unsafe_allow_html=True)
 
-# ---- 3-1) 전관행사 주간 비교 (전년 동일 주차 전관행사와 비교) ----
-_mw_cur = major_event_weeks(CUR)
-_cur_wk = set(periods("week", "overall", "일평균거래액", "TOTAL", "", CUR))
-_comp_weeks = sorted([l for l in _mw_cur if l in _cur_wk],
-                     key=lambda l: (int(l[:2]), int(re.search(r"(\d+)\s*주", l).group(1))))
-if _comp_weeks:
-    st.header("🎪 전관행사 주간 (전년 동일 주 비교)", anchor="s_ev")
-    _mw_prev = major_event_weeks(PREV)
-    sel_ev = st.selectbox("전관행사 주차 선택", _comp_weeks[::-1], index=0, key="ev_week",
-                          format_func=lambda l: f"{week_pretty(l)} · {'/'.join(_mw_cur.get(l, []))}")
-    render_insight(insight_perf("week", sel_ev, f"{week_pretty(sel_ev)} 전관행사주"))
-    _pn = _mw_prev.get(sel_ev, [])
-    _note = (f"올해 **{'/'.join(_mw_cur.get(sel_ev, []))}** ↔ 전년 **{'/'.join(_pn)}** (동일 주차 전관행사 비교)"
-             if _pn else
-             f"올해 **{'/'.join(_mw_cur.get(sel_ev, []))}** — ⚠️ 전년 동주엔 전관행사 없음, 비교 시 참고")
-    st.caption(_note)
-    st.markdown(event_week_table(sel_ev), unsafe_allow_html=True)
+# ---- 3-1) 전관행사 기간 비교 (전년 동일 행사 기간과 비교) ----
+_ld = last_daily_date()
+_cur_evs = sorted([o for o in event_occurrences(CUR, only_major=True) if _ld and o[1] <= _ld],
+                  key=lambda o: o[0])   # 완료된 전관행사(종료 ≤ 집계일)
+if _cur_evs:
+    st.header("🎪 전관행사 기간 (전년 동일 행사 비교)", anchor="s_ev")
+    sel_ev = st.selectbox("전관행사 선택", _cur_evs[::-1], index=0, key="ev_week",
+                          format_func=lambda o: f"{o[2]} ({_mdrange(o[0], o[1])})")
+    cs, ce, nm = sel_ev[0], sel_ev[1], sel_ev[2]
+    prev = find_prior_event(nm, cs)
+    if prev:
+        ps, pe = prev
+        render_insight(insight_event(cs, ce, ps, pe, f"{nm} 기간"))
+        st.caption(f"올해 **{nm}** {_mdrange(cs, ce)} ↔ 전년 **{nm}** {_mdrange(ps, pe)} · "
+                   f"각 행사 진행기간 일평균 비교")
+        st.markdown(event_period_table(cs, ce, ps, pe), unsafe_allow_html=True)
+    else:
+        st.caption(f"⚠️ 전년에 '{nm}' 행사가 없어 기간 비교 불가")
 
 # ---- 4) 주차별·채널별 ----
 st.header("4) 주차별·채널별", anchor="s4")
