@@ -1097,11 +1097,11 @@ def final_direction(wk_all, cur_mo, cutoff):
         if lp and lg and tp:
             wowL = lg / lp - 1                    # 작년 지난주→행사주 반등폭(=행사 효과)
             est = tp * (1 + wowL)                 # 올해 지난주에 같은 반등 적용
-            nxt.append(f"금주 <b>{evnm}</b> 진행 — 작년 이 주도 직전주 대비 <b>{wowL*100:+.0f}%</b> 반등"
-                       f"({lp/1e6:,.0f}→{lg/1e6:,.0f}백만, 주차별 실적). 올해 지난주 {tp/1e6:,.0f}백만에 적용 시 "
+            nxt.append(f"금주 <b>{evnm}</b> 진행 — 작년 같은 주에도 직전주 대비 <b>{wowL*100:+.0f}%</b> 반등"
+                       f"({lp/1e6:,.0f}→{lg/1e6:,.0f}백만, 주차별 실적). 올해 지난주 {tp/1e6:,.0f}백만에 적용하면 "
                        f"<b>금주 ~{est/1e6:,.0f}백만</b>으로 반등 예상")
-            nxt.append(f"단 작년도 {evnm}였어 행사만으론 <b>전년비 {_pct(sales)} 유지</b> — "
-                       f"전년비 개선은 작년보다 {main} 낙폭을 줄여야 가능")
+            nxt.append(f"다만 작년 같은 주에도 {evnm}가 있었기 때문에 <b>행사만으로는 전년비({_pct(sales)})가 그대로</b> — "
+                       f"전년비를 높이려면 작년보다 {main} 낙폭을 줄여야 함")
     # 전망 ② 전년비 개선 여지: DAU(핵심동인) 격차 축소
     if sales is not None and main and comp[main] < 0:
         half = comp[main] / 2
