@@ -1612,3 +1612,29 @@ with st.expander("ℹ️ 표 읽는 법 / 데이터"):
         "- ⚠️ 원본에 **2025년 9월말~10월** 손상 구간(유효회원수·DAU·거래액 ~2배)이 있어 자동 제외 → 해당 구간·전년비 '—'(2026은 정상).\n"
         "- 목표 대비 달성율(2-1)·행사별(2-6)은 원본 6종에 데이터가 없어 제외(목표 파일 주시면 추가).",
         unsafe_allow_html=True)
+
+# ---- ✍️ 액션 방향 / 코멘트 (직접 작성) ----
+COMMENT_FILE = "data/comment.md"
+if "user_comment" not in st.session_state:
+    try:
+        with open(COMMENT_FILE, encoding="utf-8") as _f:
+            st.session_state.user_comment = _f.read()
+    except Exception:
+        st.session_state.user_comment = ""
+
+st.markdown("---")
+with st.expander("✍️ 액션 방향 · 코멘트 (직접 작성)", expanded=bool(st.session_state.get("user_comment"))):
+    st.caption("보고용 메모 — 데이터 갱신(재업로드)돼도 유지됩니다. '저장'하면 파일에도 남고, 아래로 내려받아 보관도 가능.")
+    st.text_area("메모", key="user_comment", height=180,
+                 placeholder="예) 금주 방향: DAU 회복(미방문 리텐션)에 집중, L+DAY 전환 극대화 …\n차주: SUMMER VACANCE 대비 …",
+                 label_visibility="collapsed")
+    _b1, _b2, _b3 = st.columns([1, 1, 4])
+    if _b1.button("💾 저장"):
+        try:
+            with open(COMMENT_FILE, "w", encoding="utf-8") as _f:
+                _f.write(st.session_state.user_comment or "")
+            st.success("저장했습니다.")
+        except Exception as _e:  # noqa
+            st.warning(f"파일 저장 실패(세션엔 유지됨): {_e}")
+    _b2.download_button("⬇️ 내려받기", st.session_state.get("user_comment", ""),
+                        file_name="action_comment.md", mime="text/markdown")

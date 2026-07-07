@@ -4,3 +4,5 @@ __pycache__/
 .streamlit/secrets.toml
 # 원본 BI export (대용량/사내자료) — 시드 CSV만 커밋
 *.xlsx
+# 사용자 개인 코멘트(맨 하단 메모) — 커밋 안 함
+data/comment.md
