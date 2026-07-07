@@ -862,16 +862,20 @@ def event_period_table(cs, ce, ps, pe):
 
 
 def find_prior_event(name, cur_start):
-    """전년 동명 행사 중 올해 시작일−364에 가장 가까운 것 (start, end)."""
-    cands = [o for o in event_occurrences(PREV, only_major=True) if o[2] == name] \
-        or [o for o in event_occurrences(PREV) if o[2] == name]
-    if not cands:
-        return None
+    """전년 비교 대상 행사 (start, end, name).
+    ① 동명(L+DAY 등 정기 시리즈) 우선 → ② 없으면 같은 시기(±약1주) 전관행사(이름 무관)."""
     target = cur_start - datetime.timedelta(days=364)
-    o = min(cands, key=lambda o: abs((o[0] - target).days))
-    if abs((o[0] - target).days) > 21:    # 너무 멀면 동일 행사로 보기 어려움
-        return None
-    return o[0], o[1]
+    majors = event_occurrences(PREV, only_major=True)
+    same = [o for o in majors if o[2] == name]
+    if same:
+        o = min(same, key=lambda o: abs((o[0] - target).days))
+        if abs((o[0] - target).days) <= 21:
+            return o[0], o[1], o[2]
+    if majors:                             # 동명 없음 → 같은 시기 전관행사로 대조
+        o = min(majors, key=lambda o: abs((o[0] - target).days))
+        if abs((o[0] - target).days) <= 10:
+            return o[0], o[1], o[2]
+    return None
 
 
 def insight_event(cs, ce, ps, pe, label):
@@ -1430,13 +1434,17 @@ if _cur_evs:
     cs, ce, nm = sel_ev[0], sel_ev[1], sel_ev[2]
     prev = find_prior_event(nm, cs)
     if prev:
-        ps, pe = prev
+        ps, pe, pn = prev
         render_insight(insight_event(cs, ce, ps, pe, f"{nm} 기간"))
         _c, _p = _mdrange(cs, ce).replace("~", "\\~"), _mdrange(ps, pe).replace("~", "\\~")
-        st.caption(f"올해 **{nm}** {_c} ↔ 전년 **{nm}** {_p} · 각 행사 진행기간 일평균 비교")
+        if pn == nm:
+            st.caption(f"올해 **{nm}** {_c} ↔ 전년 **{nm}** {_p} · 동일 전관행사 기간 비교")
+        else:
+            st.caption(f"올해 **{nm}** {_c} ↔ 전년 동기 전관행사 **{pn}** {_p} · "
+                       f"같은 시기 전관행사끼리 비교(행사명은 다름)")
         st.markdown(event_period_table(cs, ce, ps, pe), unsafe_allow_html=True)
     else:
-        st.caption(f"⚠️ 전년에 '{nm}' 행사가 없어 기간 비교 불가")
+        st.caption(f"⚠️ 전년 같은 시기에 전관행사가 없어 기간 비교 불가")
 
 # ---- 4) 주차별·채널별 ----
 st.header("4) 주차별·채널별", anchor="s4")
