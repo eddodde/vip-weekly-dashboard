@@ -867,7 +867,7 @@ def monthly_table(cur_months, cutoff_day):
 
 
 def _mdrange(lo, hi):
-    return f"{lo.month}/{lo.day}~{hi.month}/{hi.day}"
+    return f"{lo.month}/{lo.day}" if lo == hi else f"{lo.month}/{lo.day}~{hi.month}/{hi.day}"
 
 
 def event_period_table(cs, ce, ps, pe):
@@ -1538,27 +1538,40 @@ for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("
 # ---- 5) 행사별 (전년 동일 행사 비교) ----
 st.header("5) 행사별 (전년 동일 행사 비교)", anchor="s_ev")
 _ld = last_daily_date()
-_cur_evs = sorted([o for o in event_occurrences(CUR, only_major=True) if _ld and o[1] <= _ld],
-                  key=lambda o: o[0])   # 완료된 전관행사(종료 ≤ 집계일)
-if _cur_evs:
-    sel_ev = st.selectbox("전관행사 선택", _cur_evs[::-1], index=0, key="ev_week",
-                          format_func=lambda o: f"{o[2]} ({_mdrange(o[0], o[1])})")
+# 시작된 전관행사(진행중 포함): 시작일 ≤ 집계일
+_started = sorted([o for o in event_occurrences(CUR, only_major=True) if _ld and o[0] <= _ld],
+                  key=lambda o: o[0])
+
+
+def _evsel_label(o):
+    if o[1] > _ld:                                   # 진행중
+        return f"{o[2]} · 진행중 {(_ld - o[0]).days + 1}일차 ({_mdrange(o[0], _ld)})"
+    return f"{o[2]} · 종료 ({_mdrange(o[0], o[1])})"
+
+
+if _started:
+    sel_ev = st.selectbox("전관행사 선택", _started[::-1], index=0, key="ev_week", format_func=_evsel_label)
     cs, ce, nm = sel_ev[0], sel_ev[1], sel_ev[2]
+    inprog = ce > _ld
+    ce_eff = min(ce, _ld)                            # 올해 유효 종료일(진행중이면 집계일)
+    elapsed = (ce_eff - cs).days + 1
     prev = find_prior_event(nm, cs)
     if prev:
         ps, pe, pn = prev
-        render_insight(insight_event(cs, ce, ps, pe, f"{nm} 기간"))
-        _c, _p = _mdrange(cs, ce).replace("~", "\\~"), _mdrange(ps, pe).replace("~", "\\~")
+        pe_eff = (ps + datetime.timedelta(days=elapsed - 1)) if inprog else pe   # 전년 같은 경과일
+        unit = f"{nm} {elapsed}일차까지" if inprog else f"{nm} 기간"
+        render_insight(insight_event(cs, ce_eff, ps, pe_eff, unit))
+        _c, _p = _mdrange(cs, ce_eff).replace("~", "\\~"), _mdrange(ps, pe_eff).replace("~", "\\~")
+        _stat = f"진행중 {elapsed}일차까지 · 행사 경과일 정렬" if inprog else "행사 종료 · 전체 기간"
         if pn == nm:
-            st.caption(f"올해 **{nm}** {_c} ↔ 전년 **{nm}** {_p} · 동일 전관행사 기간 비교")
+            st.caption(f"올해 **{nm}** {_c} ↔ 전년 **{nm}** {_p} · {_stat}")
         else:
-            st.caption(f"올해 **{nm}** {_c} ↔ 전년 동기 전관행사 **{pn}** {_p} · "
-                       f"같은 시기 전관행사끼리 비교(행사명은 다름)")
-        st.markdown(event_period_table(cs, ce, ps, pe), unsafe_allow_html=True)
+            st.caption(f"올해 **{nm}** {_c} ↔ 전년 동기 전관행사 **{pn}** {_p} · {_stat}(행사명 다름)")
+        st.markdown(event_period_table(cs, ce_eff, ps, pe_eff), unsafe_allow_html=True)
     else:
-        st.caption(f"⚠️ 전년 같은 시기에 전관행사가 없어 기간 비교 불가")
+        st.caption("⚠️ 전년 같은 시기에 전관행사가 없어 비교 불가")
 else:
-    st.caption("아직 완료된 전관행사가 없습니다(종료일 ≤ 집계일 기준).")
+    st.caption("아직 시작된 전관행사가 없습니다.")
 
 # ---- 6) 상품별 ----
 if not df[df.perspective == "product"].empty:
