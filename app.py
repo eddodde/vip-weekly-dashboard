@@ -534,6 +534,62 @@ def event_fairness(ref_date):
     return ("warn", f"올해 이 주엔 {'·'.join(sorted(only_cur))} 진행(작년엔 없음) → 전년비 상방 요인")
 
 
+def _parse_period(text, year):
+    """행사 텍스트의 괄호 안 '(M/D 10시 ~ M/D 10시)'에서 시작·종료일 파싱."""
+    m = re.search(r"(\d{1,2})\s*/\s*(\d{1,2}).*?~\s*(\d{1,2})\s*/\s*(\d{1,2})", str(text))
+    if not m:
+        return None
+    try:
+        s = datetime.date(year, int(m.group(1)), int(m.group(2)))
+        e = datetime.date(year, int(m.group(3)), int(m.group(4)))
+        if e < s:
+            e = datetime.date(year + 1, int(m.group(3)), int(m.group(4)))   # 연말→연초 걸침
+        return s, e
+    except ValueError:
+        return None
+
+
+def event_occurrences(year, month=None, only_major=False):
+    """연도(=date의 실제연도) 행사 발생목록 [(시작, 종료, 이름, 전관여부)]. 기간은 텍스트에서 파싱,
+    없으면 그리드 날짜 min~max. 이름×시작일로 중복 제거."""
+    if EVENTS.empty:
+        return []
+    ev = EVENTS[EVENTS["d"].map(lambda d: _dyear(d) == year).to_numpy(dtype=bool)]
+    if only_major:
+        ev = ev[ev["major"].to_numpy(dtype=bool)]
+    if ev.empty:
+        return []
+    recs, ranged = {}, set()
+    for _, r in ev.iterrows():
+        nm = _evname(r["text"])
+        maj = "전관행사" in str(r["text"])
+        per = _parse_period(r["text"], r["d"].year)
+        if per:
+            ranged.add(nm)
+            key = (nm, per[0])
+            if key not in recs or per[1] > recs[key][1]:
+                recs[key] = (per[0], per[1], nm, maj)
+    # 괄호 기간이 없는 행사 → 그리드 날짜 범위로
+    bare = {}
+    for _, r in ev.iterrows():
+        nm = _evname(r["text"])
+        if nm in ranged:
+            continue
+        maj = "전관행사" in str(r["text"])
+        if nm not in bare:
+            bare[nm] = [r["d"], r["d"], maj]
+        else:
+            bare[nm][0] = min(bare[nm][0], r["d"])
+            bare[nm][1] = max(bare[nm][1], r["d"])
+            bare[nm][2] = bare[nm][2] or maj
+    for nm, (s, e, maj) in bare.items():
+        recs[(nm, s)] = (s, e, nm, maj)
+    out = list(recs.values())
+    if month:
+        out = [o for o in out if o[0].month == month]
+    return sorted(out, key=lambda x: x[0])
+
+
 def event_prior_lift(name, near_date=None):
     """올해 행사의 '전년 같은 행사' 효과. near_date(올해 행사일) 있으면 전년 동명 행사 중
     가장 가까운(≈−364일) 것을 골라 event_lift 계산."""
@@ -569,6 +625,9 @@ TABLE_CSS = """
 [data-testid="stSidebar"] [data-testid="stMetricLabel"]{font-size:10.5px !important;}
 [data-testid="stSidebar"] [data-testid="stMetricDelta"]{font-size:10.5px !important;}
 [data-testid="stSidebar"] [data-testid="stMetricDelta"] svg{width:11px;height:11px;}
+/* 참고 메뉴: 익스팬더 헤더·위젯 라벨을 바로가기 링크와 동일 크기로 */
+[data-testid="stSidebar"] summary,[data-testid="stSidebar"] summary p{font-size:11.5px !important;font-weight:600 !important;}
+[data-testid="stSidebar"] label,[data-testid="stSidebar"] label p{font-size:11px !important;}
 .sumtbl{border-collapse:collapse;font-size:12.5px;white-space:nowrap;}
 .sumtbl th,.sumtbl td{border:1px solid #d9d9d9;padding:4px 8px;text-align:right;}
 .sumtbl th{background:#f2f5fa;color:#222;text-align:center;font-weight:600;}
@@ -1221,23 +1280,15 @@ with ref_slot:
         yr = st.selectbox("연도", [PREV, CUR], index=0, format_func=lambda y: f"{y}년", key="ev_yr")
         mo = st.selectbox("월", ["전체"] + [f"{m}월" for m in range(1, 13)], key="ev_mo")
         only_major = st.checkbox("전관행사만", value=False, key="ev_major")
-        ev = EVENTS[EVENTS["d"].map(lambda d: _dyear(d) == yr)].copy() if not EVENTS.empty else EVENTS
-        if ev is not None and not ev.empty:
-            ev["nm"] = ev["text"].map(_evname)
-            ev["maj"] = ev["text"].str.contains("전관행사", na=False)
-            if mo != "전체":
-                mm = int(mo[:-1])
-                ev = ev[ev["d"].map(lambda d: d.month == mm)]
-            if only_major:
-                ev = ev[ev["maj"]]
-        if ev is None or ev.empty:
+        occs = event_occurrences(yr, None if mo == "전체" else int(mo[:-1]), only_major)
+        if not occs:
             st.caption("표시할 행사가 없습니다.")
         else:
-            g = ev.groupby("nm").agg(날짜=("d", "min"), 전관=("maj", "any")).reset_index().sort_values("날짜")
-            g["일자"] = g["날짜"].map(lambda d: f"{d.month}/{d.day}")
-            g["행사"] = np.where(g["전관"], "★ " + g["nm"], g["nm"])
-            st.dataframe(g[["일자", "행사"]], hide_index=True, use_container_width=True, height=300)
-            st.caption("★ = 전관행사(전사 규모)")
+            md = "\n".join(
+                f"- **{s.month}/{s.day}~{e.month}/{e.day}** · {'★ ' if maj else ''}{nm}"
+                for s, e, nm, maj in occs)
+            st.markdown(md)
+            st.caption("기간=시작~종료 · ★=전관행사(전사)")
 
 wk_periods = wk_all[-5:]                       # 엑셀과 동일하게 최근 5주 고정
 cutoff = last_daily_date().day if last_daily_date() else None
