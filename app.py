@@ -717,10 +717,18 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 """
 
 
+_NEG_RE = re.compile(r"(△\s*[\d,.]+\s*%p?)")
+
+
+def _redneg(html):
+    """텍스트 속 음수(△X%)를 표와 동일하게 빨강으로. 이미 style이 걸린 곳은 건드리지 않음."""
+    return _NEG_RE.sub(r'<span style="color:#c0392b;font-weight:600">\1</span>', html)
+
+
 def render_insight(bullets):
     if not bullets:
         return
-    lis = "".join(f"<li>{b}</li>" for b in bullets)
+    lis = "".join(f"<li>{_redneg(b)}</li>" for b in bullets)
     st.markdown(f'<div class="insight"><ul>{lis}</ul></div>', unsafe_allow_html=True)
 
 
@@ -1382,7 +1390,7 @@ def render_bcg(head, diag, now, nxt):
              ("③ 전망", "금주·차주 · Impact", nxt)]
     cols = st.columns(3)
     for col, (title, sub, bullets) in zip(cols, cards):
-        lis = "".join(f"<li>{b}</li>" for b in bullets) or "<li>-</li>"
+        lis = "".join(f"<li>{_redneg(b)}</li>" for b in bullets) or "<li>-</li>"
         col.markdown(f'<div class="bcg-card"><h4><span>{title}</span><span class="no">{sub}</span></h4>'
                      f'<ul>{lis}</ul></div>', unsafe_allow_html=True)
 
@@ -1520,11 +1528,11 @@ if not df[df.perspective == "product"].empty:
             _c = V("week", "product", "일평균거래액", _ye, "TOTAL", CUR, sel)
             _p = V("week", "product", "일평균거래액", _ye, "TOTAL", PREV, sel)
             if _c is not None:
-                _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f}백만 {yoy_str(yoy(_c, _p))}")
+                _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f}백만 {_pct(yoy(_c, _p))}")
         st.markdown(
             f"<div style='font-size:12px;color:#5b6472;background:#f7f9fc;border-left:3px solid #c5d3e8;"
             f"padding:6px 12px;border-radius:4px;margin:2px 0 8px'>기준: {week_pretty(sel)} · 거래액 일평균(백만) · "
-            + "  |  ".join(_subs) + "</div>", unsafe_allow_html=True)
+            + _redneg("  |  ".join(_subs)) + "</div>", unsafe_allow_html=True)
         _tabs = st.tabs(YEONG)
         for _tab, _ye in zip(_tabs, YEONG):
             with _tab:
