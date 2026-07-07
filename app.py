@@ -732,6 +732,17 @@ def render_insight(bullets):
     st.markdown(f'<div class="insight"><ul>{lis}</ul></div>', unsafe_allow_html=True)
 
 
+def render_gray_insight(bullets):
+    """회색 톤 인사이트 박스(파란 인사이트와 형식 구분용)."""
+    if not bullets:
+        return
+    lines = "".join(f"<div>• {_redneg(b)}</div>" for b in bullets)
+    st.markdown(
+        "<div style='font-size:12.5px;line-height:1.65;color:#455063;background:#f7f9fc;"
+        f"border-left:3px solid #c5d3e8;padding:8px 14px;border-radius:5px;margin:2px 0 8px'>{lines}</div>",
+        unsafe_allow_html=True)
+
+
 def render_block_table(row_labels, blocks, bold_label=None):
     """blocks = list of (group_title, group_css, [(col_label, [cell_html per row]) ...]).
     bold_label: 해당 라벨의 열(헤더)을 강조(현재 월/주차)."""
@@ -1555,27 +1566,22 @@ if not df[df.perspective == "product"].empty:
     pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
     sel = pwk_all[-1] if pwk_all else None
     if sel:
-        # 상단 전체 요약 — 회색 박스(탭별 파란 인사이트와 형식 구분)
-        _ov = insight_product(sel)
+        render_insight(insight_product(sel))   # 상단 전체 요약(파란 박스)
+        # 영업별 소계 요약(회색 줄)
         _subs = []
         for _ye in YEONG:
             _c = V("week", "product", "일평균거래액", _ye, "TOTAL", CUR, sel)
             _p = V("week", "product", "일평균거래액", _ye, "TOTAL", PREV, sel)
             if _c is not None:
-                _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f} {_pct(yoy(_c, _p))}")
-        _lines = "".join(f"<div>• {_redneg(b)}</div>" for b in _ov)
+                _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f}백만 {_pct(yoy(_c, _p))}")
         st.markdown(
-            "<div style='font-size:12px;line-height:1.6;color:#4b5563;background:#f7f9fc;"
-            "border-left:3px solid #c5d3e8;padding:8px 14px;border-radius:5px;margin:2px 0 10px'>"
-            f"<b>전체 요약</b>{_lines}"
-            f"<div style='margin-top:5px;padding-top:5px;border-top:1px solid #e2e8f2;color:#6b7686'>"
-            f"기준 {week_pretty(sel)} · 거래액 일평균(백만) · " + _redneg("  |  ".join(_subs)) + "</div></div>",
-            unsafe_allow_html=True)
-        st.caption("영업별 상세는 아래 탭에서 확인")
+            f"<div style='font-size:12px;color:#5b6472;background:#f7f9fc;border-left:3px solid #c5d3e8;"
+            f"padding:6px 12px;border-radius:4px;margin:2px 0 8px'>기준: {week_pretty(sel)} · 거래액 일평균(백만) · "
+            + _redneg("  |  ".join(_subs)) + "</div>", unsafe_allow_html=True)
         _tabs = st.tabs(YEONG)
         for _tab, _ye in zip(_tabs, YEONG):
             with _tab:
-                render_insight(insight_yeong(_ye, sel))
+                render_gray_insight(insight_yeong(_ye, sel))   # 탭 인사이트는 회색 박스
                 st.markdown(product_table_one(sel, _ye), unsafe_allow_html=True)
 
 # ---- 종합 방향성 (BCG 스타일: 헤드라인 + 진단/실행/임팩트) ----
