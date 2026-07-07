@@ -8,39 +8,51 @@
 param(
   [Parameter(Mandatory = $true)][string]$Src,
   [string]$Out = "data\events.csv",
-  [int]$SheetIndex = 3   # '가변탭 확정 스케줄' (한글 리터럴 회피 위해 인덱스로 지정)
+  [int]$SheetIndex = 2   # '가변탭 확정 스케줄 2' = 2026 전체(12월) 확정본. (인덱스로 한글 회피)
 )
 $ErrorActionPreference = "Stop"
 
 $excel = New-Object -ComObject Excel.Application
 $excel.Visible = $false; $excel.DisplayAlerts = $false
 $wb = $excel.Workbooks.Open($Src, 0, $true)
-$ws = $wb.Worksheets.Item($SheetIndex)
-$v = $ws.UsedRange.Value2
-$rows = $v.GetLength(0)
 
-$bases = @{ 2024 = 21; 2025 = 31; 2026 = 41 }
+# 시트별 레이아웃이 다름:
+#   시트3 '가변탭 확정 스케줄'   = 과거(2024/2025) 정상, 날짜열 = B+2..B+8
+#   시트2 '가변탭 확정 스케줄 2' = 올해(2026) 12월까지 확정, 날짜열 = B+1..B+7
+# → 2025는 시트3에서, 2026은 시트2에서 뽑아 합친다.
+$configs = @(
+  @{ sheet = 3; off = 2; bases = @{ 2025 = 31 } },
+  @{ sheet = 2; off = 1; bases = @{ 2026 = 41 } }
+)
 $recs = New-Object System.Collections.Generic.List[object]
 
-foreach ($yr in 2024, 2025, 2026) {
-  $B = $bases[$yr]
-  $curDates = $null
-  for ($r = 1; $r -le $rows; $r++) {
-    # date row?  B+2..B+8 all numeric serials
-    $d = @(); $isDate = $true
-    for ($k = 2; $k -le 8; $k++) {
-      $x = $v.GetValue($r, $B + $k)
-      if ($x -is [double] -and $x -gt 40000 -and $x -lt 60000) { $d += [int]$x } else { $isDate = $false; break }
-    }
-    if ($isDate) { $curDates = $d; continue }
-    if ($null -eq $curDates) { continue }
-    for ($k = 2; $k -le 8; $k++) {
-      $x = $v.GetValue($r, $B + $k)
-      if ($null -ne $x) {
-        $t = ([string]$x).Trim() -replace '\s+', ' '
-        if ($t.Length -gt 2 -and $t -notmatch '^\d+$') {
-          $dt = [DateTime]::FromOADate($curDates[$k - 2])
-          $recs.Add([pscustomobject]@{ year = $yr; date = $dt.ToString('yyyy-MM-dd'); text = $t })
+foreach ($cfg in $configs) {
+  $ws = $wb.Worksheets.Item([int]$cfg.sheet)
+  $v = $ws.UsedRange.Value2
+  $rows = $v.GetLength(0)
+  $off = [int]$cfg.off
+  foreach ($yr in $cfg.bases.Keys) {
+    $B = [int]$cfg.bases[$yr]
+    $curDates = $null
+    for ($r = 1; $r -le $rows; $r++) {
+      $d = @(); $isDate = $true
+      for ($k = $off; $k -le $off + 6; $k++) {
+        $x = $v.GetValue($r, $B + $k)
+        if ($x -is [double] -and $x -gt 40000 -and $x -lt 60000) { $d += [int]$x } else { $isDate = $false; break }
+      }
+      if ($isDate) { $curDates = $d; continue }
+      if ($null -eq $curDates) { continue }
+      for ($k = $off; $k -le $off + 6; $k++) {
+        $x = $v.GetValue($r, $B + $k)
+        if ($null -ne $x) {
+          $t = ([string]$x).Trim() -replace '\s+', ' '
+          if ($t.Length -gt 2 -and $t -notmatch '^\d+$') {
+            $dt = [DateTime]::FromOADate($curDates[$k - $off])
+            # date 열 연도로 필터(블록 라벨과 실제연도 불일치 방지)
+            if ($dt.Year -eq [int]$yr) {
+              $recs.Add([pscustomobject]@{ year = $yr; date = $dt.ToString('yyyy-MM-dd'); text = $t })
+            }
+          }
         }
       }
     }

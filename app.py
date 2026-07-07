@@ -460,25 +460,25 @@ def _evname(t):
     return t.strip()
 
 
-def upcoming_major(last_date, horizon=16):
-    """전년 동기(−364일) 기준 앞으로 horizon일 내 반복될 주요 행사 [(이름, 전년일자, 올해추정일자)]."""
-    if EVENTS.empty or last_date is None:
+def upcoming_major(after_date, horizon=25):
+    """오늘(after_date) 이후 horizon일 내 실제 올해(CUR) 주요 행사 [(이름, 날짜)]."""
+    if EVENTS.empty or after_date is None:
         return []
-    lo = last_date - datetime.timedelta(days=364)
-    hi = lo + datetime.timedelta(days=horizon)
-    e = EVENTS[(EVENTS.major) & (EVENTS.d > lo) & (EVENTS.d <= hi)].sort_values("d")
+    hi = after_date + datetime.timedelta(days=horizon)
+    e = EVENTS[(EVENTS.major) & (EVENTS.d > after_date) & (EVENTS.d <= hi)]
+    e = e[e["d"].apply(lambda d: d.year == CUR)].sort_values("d")
     out, seen = [], set()
     for _, r in e.iterrows():
         nm = _evname(r["text"])
         if not nm or nm in seen:
             continue
         seen.add(nm)
-        out.append((nm, r["d"], r["d"] + datetime.timedelta(days=364)))
+        out.append((nm, r["d"]))
     return out
 
 
 def event_lift(pd0, span=3):
-    """전년 행사 효과: 행사기간(pd0~+span일) 일평균거래액 vs 직전 7일 대비."""
+    """행사 효과: 행사기간(pd0~+span일) 일평균거래액 vs 직전 7일. pd0는 전년 일자."""
     def avg(lo, hi):
         vals = []
         d = lo
@@ -491,6 +491,19 @@ def event_lift(pd0, span=3):
     ev = avg(pd0, pd0 + datetime.timedelta(days=span - 1))
     base = avg(pd0 - datetime.timedelta(days=7), pd0 - datetime.timedelta(days=1))
     return (ev / base - 1) if (ev and base) else None
+
+
+def event_prior_lift(name, near_date=None):
+    """올해 행사의 '전년 같은 행사' 효과. near_date(올해 행사일) 있으면 전년 동명 행사 중
+    가장 가까운(≈−364일) 것을 골라 event_lift 계산."""
+    pe = EVENTS[EVENTS["d"].apply(lambda d: d.year == PREV)]
+    pe = pe[pe["text"].apply(lambda t: _evname(t) == name)]
+    if pe.empty:
+        return None
+    if near_date is not None:
+        target = near_date - datetime.timedelta(days=364)
+        pe = pe.assign(_diff=pe["d"].apply(lambda d: abs((d - target).days))).sort_values("_diff")
+    return event_lift(pe.iloc[0]["d"])
 
 
 YOY_POS = "color:#1f5fbf;font-weight:600"   # 신장(+) 파랑
@@ -823,8 +836,8 @@ def chart_channel_yoy(wkp):
 
 # ----------------------------------------------------------------------------- insights (분석형)
 # 섹션 인사이트엔 '핵심 레버'만(짧게). 상세 액션(전술)은 최하단 종합 방향성에서만 노출.
-DRIVER_LEVER = {"DAU": "방문(DAU) 회복이 핵심 레버", "CR": "구매전환(CR) 개선이 핵심 레버",
-                "객단가": "객단가 방어·상향이 핵심 레버"}
+DRIVER_LEVER = {"DAU": "방문(DAU) 회복이 가장 중요", "CR": "구매전환(CR) 올리기가 가장 중요",
+                "객단가": "객단가 지키고 올리기가 중요"}
 DRIVER_ACTION = {"DAU": "최근 미방문 VIP 자동화 문자·출석체크·개인화 추천으로 재방문 유도",
                  "CR": "장바구니·보유쿠폰·최근 본 상품 리마인드로 전환 유도",
                  "객단가": "고관여 세그 고단가 상품 소구·번들·기획전으로 객단가 상향"}
@@ -846,9 +859,9 @@ def _insight_sales(g, unit_label):
     drags = [k for k in comp if (comp[k] < 0) == neg and k != main]
     defend = [k for k in comp if (comp[k] > 0) == neg]
     b = [f"{unit_label} 거래액 <b>{_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>가 "
-         f"{'하락' if neg else '신장'} 주도" + (f", {drags[0]}({_pct(comp[drags[0]])})도 동반" if drags else "")]
+         f"{'하락' if neg else '신장'}을 이끔" + (f", {drags[0]}({_pct(comp[drags[0]])})도 같이" if drags else "")]
     if defend:
-        b.append(("상쇄" if neg else "상충") + " 요인: " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
+        b.append(("버팀목" if neg else "발목") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
     b.append(f'<span class="imp">→ {DRIVER_LEVER.get(main, "")}</span>')
     return b
 
@@ -895,7 +908,7 @@ def forecast_month(mo, cutoff):
     ratio = mtd26 / mtd25
     proj_total = mtd26 + rem25 * ratio
     proj_daily = proj_total / dim
-    ev = [nm for nm, _, cd in upcoming_major(datetime.date(CUR, mo, cutoff), horizon=dim - cutoff)]
+    ev = [nm for nm, d in upcoming_major(datetime.date(CUR, mo, cutoff), horizon=dim - cutoff)]
     return dict(daily=proj_daily, total=proj_total, dim=dim, ratio=ratio, rem=dim - cutoff,
                 yoy=ratio - 1, events=ev)
 
@@ -915,17 +928,17 @@ def insight_trend(wk_all):
         a, c = _wk_sales(PREV, period), _wk_sales(PREV, geum)   # 전년 지난주, 전년 금주(동주)
         seas = yoy(c, a)
         if a and c and seas is not None:
-            b.append(f"전년 동기엔 {week_pretty(period)}→{week_pretty(geum)} "
-                     f"{a/1e6:,.0f}→{c/1e6:,.0f}백만(<b>{_pct(seas)}</b>)로 {'반등' if seas > 0 else '둔화'} "
-                     f'→ <span class="imp">올해 <b>금주({week_pretty(geum)})</b> '
-                     f'{"계절 반등 여력" if seas > 0 else "약세 지속 대비"}</span>')
+            b.append(f"작년 같은 시기엔 {week_pretty(period)}→{week_pretty(geum)} "
+                     f"{a/1e6:,.0f}→{c/1e6:,.0f}백만(<b>{_pct(seas)}</b>)로 {'올랐음' if seas > 0 else '내렸음'} "
+                     f'→ <span class="imp">올해 <b>금주({week_pretty(geum)})</b>도 '
+                     f'{"반등 기대" if seas > 0 else "약세 이어질 수 있어 방어 필요"}</span>')
     up = upcoming_major(last_daily_date(), horizon=10)
     if up:
-        nm, pd0, cd0 = up[0]
-        lift = event_lift(pd0)
-        liftxt = f" — 전년 해당 행사기간 거래액 직전주 대비 <b>{_pct(lift)}</b>" if lift is not None else ""
-        b.append(f"<b>금주 {nm}</b>(전년 {pd0.month}/{pd0.day}·매년 반복, 오늘 전후 진행) 예정{liftxt} "
-                 f'→ <span class="imp">행사 모멘텀 반등 유도, 사전 알림·고관여 타겟팅</span>')
+        nm, ed = up[0]
+        lift = event_prior_lift(nm, ed)
+        liftxt = f" (작년 이 행사 때 거래액 직전주보다 <b>{_pct(lift)}</b>)" if lift is not None else ""
+        b.append(f"<b>금주 {nm}</b>({ed.month}/{ed.day} 진행) 예정{liftxt} "
+                 f'→ <span class="imp">행사 효과로 반등 유도, 사전 알림·고관여 타겟팅</span>')
     return b
 
 
@@ -970,9 +983,9 @@ def insight_dau(period):
             cons += 1
         else:
             break
-    b = [f"DAU 전년비 <b>{cons}주 연속</b> 역신장(단기 이슈 아닌 구조적 하락) — "
-         f"감소는 <b>{worst[0]} 채널</b>이 주도({_pct(worst[2])})"]
-    b.append('<span class="imp">→ 행사성 일시 유입이 아닌 <b>상시 방문 기반</b>(미방문 VIP 리텐션·앱 재방문 유도) 회복이 관건</span>')
+    b = [f"DAU가 <b>{cons}주 연속</b> 전년보다 낮음(잠깐이 아니라 계속되는 하락) — "
+         f"특히 <b>{worst[0]} 채널</b>에서 많이 빠짐({_pct(worst[2])})"]
+    b.append('<span class="imp">→ 행사 때 잠깐 오는 방문이 아니라 <b>평상시 방문</b>(안 오던 VIP 다시 부르기·앱 재방문) 회복이 핵심</span>')
     return b
 
 
@@ -991,11 +1004,11 @@ def insight_channel(period):
     sw = sorted(big, key=lambda r: r[1])
     worst = min(rows, key=lambda r: r[1])
     lift = sw[-1]
-    b = [f"<b>{worst[0]}</b>(비중 {worst[2]*100:.0f}%)가 거래액 감소를 주도 — Δ{worst[1]/1e6:+,.0f}백만, {_pct(worst[3])}"]
+    b = [f"거래액이 가장 많이 빠진 채널은 <b>{worst[0]}</b>(비중 {worst[2]*100:.0f}%) — {worst[1]/1e6:+,.0f}백만, {_pct(worst[3])}"]
     sec = [r for r in sw if r[1] < 0 and r[0] != worst[0]]
-    b.append((f"규모 채널 {sec[0][0]}({_pct(sec[0][3])})도 부진, " if sec else "")
-             + f"<b>{lift[0]}</b>(비중 {lift[2]*100:.0f}%, {_pct(lift[3])})는 상대적 선전")
-    b.append(f'<span class="imp">→ 비중 큰 {worst[0]} 회복이 전체 반등의 관건</span>')
+    b.append((f"큰 채널 중 {sec[0][0]}({_pct(sec[0][3])})도 부진, " if sec else "")
+             + f"<b>{lift[0]}</b>(비중 {lift[2]*100:.0f}%, {_pct(lift[3])})는 그나마 선방")
+    b.append(f'<span class="imp">→ 비중 큰 {worst[0]}부터 살려야 전체가 반등</span>')
     return b
 
 
@@ -1043,52 +1056,53 @@ def final_direction(wk_all, cur_mo, cutoff):
     own_worst = min(orecs, key=lambda r: r[1])[0] if orecs else None
     geum, cha = resolve_weeks(period)                       # 금주(진행중), 차주
     gw = week_pretty(geum) if geum else "금주"
-    cw = week_pretty(cha) if cha else "차주"
     seas = yoy(_wk_sales(PREV, geum), _wk_sales(PREV, period)) if geum else None
-    up = upcoming_major(last_daily_date(), horizon=20)
-    ge = up[0] if up else None                              # 금주 행사(전년 ~1주 후)
-    ce = up[1] if len(up) > 1 else None                     # 차주 행사
+    last = last_daily_date()
+    up = upcoming_major(last, horizon=25)                   # 실제 올해 행사
+    ge = next((e for e in up if e[1] <= last + datetime.timedelta(days=7)), None)   # 금주 행사
+    later = [e for e in up if not ge or e[1] > ge[1]]
+    ce = later[0] if later else None                        # 이후 다음 행사
 
     diag, now, nxt = [], [], []
-    # 진단: 지난주 마감 동인 + DAU 구조성(비반복 인사이트)
+    # 진단: 지난주 마감 동인 + DAU(비반복 인사이트)
     if sales is not None and main:
-        diag.append(f"지난주 마감({week_pretty(period)}) 거래액 <b>{_pct(sales)}</b> — 핵심 동인은 "
-                    f"<b>{main}({_pct(comp[main])})</b>, 객단가·전환 단가는 방어 중")
-    diag += insight_dau(period)     # DAU 지속성·주도채널·상시방문 구조
+        diag.append(f"지난주 마감({week_pretty(period)}) 거래액 <b>{_pct(sales)}</b> — 가장 큰 원인은 "
+                    f"<b>{main}({_pct(comp[main])})</b>, 객단가·구매전환은 버팀")
+    diag += insight_dau(period)     # DAU 지속성·주도채널·평상시 방문
     # 금주 액션(진행중)
     if main:
-        now.append(f"<b>{main} 회복</b> — {DRIVER_ACTION.get(main, '')}")
-    now.append(f"구매전환 방어 — {DRIVER_ACTION['CR']}")
+        now.append(f"<b>{main} 끌어올리기</b> — {DRIVER_ACTION.get(main, '')}")
+    now.append(f"구매전환 지키기 — {DRIVER_ACTION['CR']}")
     if own_worst:
-        now.append(f"자사 부진 <b>{own_worst}</b> 구매전환(시크릿 혜택·기획전) + 성장 카테고리 소구로 자사 비중 확대")
+        now.append(f"자사 부진 <b>{own_worst}</b> 구매전환(시크릿 혜택·기획전) + 잘 나가는 카테고리 밀어주기")
     if ge:
-        now.append(f"<b>금주 {ge[0]}</b>(전년 {ge[1].month}/{ge[1].day} 반복, 진행중) 사전 알림톡·고관여 타겟 집중")
-    # 전망: 금주 정량 + 차주 전개
+        now.append(f"<b>금주 {ge[0]}</b>({ge[1].month}/{ge[1].day} 진행중) 사전 알림톡·고관여 타겟 집중")
+    # 전망: 금주 정량 + 이후 전개
     if sales is not None and main and comp[main] < 0:
         half = comp[main] / 2
         scen = sales - half                      # main 갭 절반 회복 시(YoY 가법 근사)
         ev_txt = ""
         if ge:
-            lift = event_lift(ge[1])
+            lift = event_prior_lift(ge[0], ge[1])
             if lift is not None and lift > 0:
-                ev_txt = f" + 금주 {ge[0]}(전년 +{lift*100:.0f}%) 반복 모멘텀"
-        nxt.append(f"현 추세 지속 시 <b>금주({gw})</b> 거래액 전년비 <b>{_pct(sales)}</b> 수준")
-        nxt.append(f"<b>{main} 갭 절반 회복({_pct(comp[main])}→{_pct(comp[main]-half)})</b>{ev_txt} 가세 시 "
-                   f"금주 거래액 <b>{_pct(sales)} → {_pct(scen)}</b>로 역신장 폭 축소 기대")
+                ev_txt = f" + 금주 {ge[0]}(작년 이 행사 때 +{lift*100:.0f}%) 효과"
+        nxt.append(f"지금 흐름이면 <b>금주({gw})</b> 거래액 전년비 <b>{_pct(sales)}</b> 수준")
+        nxt.append(f"<b>{main} 격차 절반 회복({_pct(comp[main])}→{_pct(comp[main]-half)})</b>{ev_txt}까지 되면 "
+                   f"금주 <b>{_pct(sales)} → {_pct(scen)}</b>로 하락 폭이 절반으로 줄 것으로 기대")
     if ce:
-        nxt.append(f"차주({cw})엔 <b>{ce[0]}</b>(전년 {ce[1].month}/{ce[1].day}) 이어짐 → 행사 모멘텀 연속 활용")
-    nxt.append("중기: 자사(영업1·2) 성장 카테고리 전환 확대로 자사 브랜드 매출 비중 강화")
+        nxt.append(f"이후 <b>{ce[0]}</b>({ce[1].month}/{ce[1].day}) 전관행사가 이어져 반등 흐름 연장 가능")
+    nxt.append("중기: 자사(영업1·2) 잘 되는 카테고리를 키워 자사 브랜드 비중 확대")
 
-    # 헤드라인(BCG 'answer-first'): 상황 → 근인 → 레버 → 정량 임팩트
+    # 헤드라인(핵심 메시지, 쉽게)
     head = ""
     if sales is not None and main:
         scen_txt = ""
         if comp.get(main, 0) < 0:
             scen = sales - comp[main] / 2
-            scen_txt = f', 병행 실행 시 금주 <span class="k">{_pct(sales)}→{_pct(scen)}</span>로 역신장 폭 절반 축소 가능'
-        evph = f"금주 <span class='k'>{ge[0]}</span> 반복 모멘텀" if ge else "구매효율 방어"
-        head = (f"지난주 거래액 {_pct(sales)}는 <span class='k'>{main} 구조적 하락</span>이 근인 — "
-                f"{evph}과 {main}(상시 방문) 회복 액션이 금주 반등 관건{scen_txt}")
+            scen_txt = f', 함께 실행하면 금주 <span class="k">{_pct(sales)}→{_pct(scen)}</span>로 하락 폭 절반 축소 가능'
+        evph = f"금주 <span class='k'>{ge[0]}</span> 행사" if ge else "구매전환 방어"
+        head = (f"지난주 거래액 {_pct(sales)}, 가장 큰 원인은 <span class='k'>{main} 하락</span> — "
+                f"{evph}와 {main}(방문) 회복이 금주 반등의 관건{scen_txt}")
     return head, diag, now, nxt
 
 
