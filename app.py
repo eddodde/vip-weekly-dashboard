@@ -1064,13 +1064,13 @@ def _insight_sales(g, unit_label):
     b = [f"{unit_label} 거래액 <b>{_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>가 "
          f"{'하락' if neg else '신장'}을 이끔" + (f", {drags[0]}({_pct(comp[drags[0]])})도 같이" if drags else "")]
     if defend:
-        b.append(("버팀목" if neg else "발목") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
-    # 시사점 레버 = '가장 발목 잡는(가장 낮은)' 요인. 신장 주에도 이미 잘 나오는 걸 올리라 하지 않도록.
+        b.append(("상쇄 요인" if neg else "제약 요인") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
+    # 시사점 레버 = '가장 부진한(가장 낮은)' 요인. 신장 주에 이미 좋은 지표를 올리라 하지 않도록.
     worst = min(comp, key=comp.get)
     if comp[worst] < 0:
         b.append(f'<span class="imp">→ {DRIVER_LEVER.get(worst, "")}</span>')
     else:
-        b.append('<span class="imp">→ 전 지표 호조, 현 모멘텀 유지</span>')
+        b.append('<span class="imp">→ 전 지표 개선, 현 상승세 유지</span>')
     return b
 
 
@@ -1242,7 +1242,7 @@ def insight_product(wk):
         ow = min(own, key=lambda r: r[3])
         ob = max(own, key=lambda r: r[3])
         b.append(f"자사(영업1·2): <b>{ow[2]}</b> 부진({_pct(ow[4])}) / <b>{ob[2]}</b> 견조({_pct(ob[4])})")
-        b.append(f'<span class="imp">→ 자사 {ow[1]} 반등이 우선, {ob[1]} 성장 모멘텀 유지</span>')
+        b.append(f'<span class="imp">→ 자사 {ow[1]} 반등이 우선, {ob[1]} 성장세 유지</span>')
     return b
 
 
@@ -1285,7 +1285,7 @@ def final_direction(wk_all, cur_mo, cutoff):
     # 진단: 퍼널 어디가 새는지 + DAU 구조성
     if sales is not None:
         drag_txt = "·".join(f"{k}({_pct(comp[k])})" for k in drags) or "-"
-        buf_txt = (", ".join(f"{k}({_pct(comp[k])})" for k in buf) + "만 버팀") if buf else ""
+        buf_txt = (", ".join(f"{k}({_pct(comp[k])})" for k in buf) + "만 상방 기여") if buf else ""
         diag.append(f"거래액 <b>{_pct(sales)}</b> = <b>{drag_txt} 동반 부진</b>{('; ' + buf_txt) if buf_txt else ''} "
                     f"→ 새는 곳은 <b>상단(방문)·중단(전환) 퍼널</b>, 고가치 구매층은 유지")
     diag += insight_dau(period)     # DAU 지속성·주도채널·평상시 방문
