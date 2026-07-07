@@ -629,8 +629,10 @@ TABLE_CSS = """
 [data-testid="stSidebar"] summary,[data-testid="stSidebar"] summary p{font-size:11.5px !important;font-weight:600 !important;}
 [data-testid="stSidebar"] label,[data-testid="stSidebar"] label p{font-size:11px !important;}
 /* 셀렉트박스 선택값 + 드롭다운 옵션 폰트(baseweb) */
-[data-testid="stSidebar"] [data-baseweb="select"] div{font-size:11.5px !important;}
-[data-baseweb="popover"] li,[data-baseweb="menu"] li,ul[role="listbox"] li{font-size:11.5px !important;}
+section[data-testid="stSidebar"] [data-baseweb="select"],
+section[data-testid="stSidebar"] [data-baseweb="select"] *,
+section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px !important;}
+[data-baseweb="popover"] *,[data-baseweb="menu"] *,[role="listbox"] *{font-size:11.5px !important;}
 .sumtbl{border-collapse:collapse;font-size:12.5px;white-space:nowrap;}
 .sumtbl th,.sumtbl td{border:1px solid #d9d9d9;padding:4px 8px;text-align:right;}
 .sumtbl th{background:#f2f5fa;color:#222;text-align:center;font-weight:600;}
