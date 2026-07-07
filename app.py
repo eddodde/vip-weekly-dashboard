@@ -1077,18 +1077,25 @@ def final_direction(wk_all, cur_mo, cutoff):
         now.append(f"자사 부진 <b>{own_worst}</b> 구매전환(시크릿 혜택·기획전) + 잘 나가는 카테고리 밀어주기")
     if ge:
         now.append(f"<b>금주 {ge[0]}</b>({ge[1].month}/{ge[1].day} 진행중) 사전 알림톡·고관여 타겟 집중")
-    # 전망: 금주 정량 + 이후 전개
+    # 전망 ① 금주 절대수준: 작년 행사주(주차별 실적)의 실제 반등폭을 올해 지난주에 적용
+    evnm = ge[0] if ge else "행사"
+    est = None
+    if geum:
+        lp, lg, tp = _wk_sales(PREV, period), _wk_sales(PREV, geum), _wk_sales(CUR, period)
+        if lp and lg and tp:
+            wowL = lg / lp - 1                    # 작년 지난주→행사주 반등폭(=행사 효과)
+            est = tp * (1 + wowL)                 # 올해 지난주에 같은 반등 적용
+            nxt.append(f"금주 <b>{evnm}</b> 진행 — 작년 이 주도 직전주 대비 <b>{wowL*100:+.0f}%</b> 반등"
+                       f"({lp/1e6:,.0f}→{lg/1e6:,.0f}백만, 주차별 실적). 올해 지난주 {tp/1e6:,.0f}백만에 적용 시 "
+                       f"<b>금주 ~{est/1e6:,.0f}백만</b>으로 반등 예상")
+            nxt.append(f"단 작년도 {evnm}였어 행사만으론 <b>전년비 {_pct(sales)} 유지</b> — "
+                       f"전년비 개선은 작년보다 {main} 낙폭을 줄여야 가능")
+    # 전망 ② 전년비 개선 여지: DAU(핵심동인) 격차 축소
     if sales is not None and main and comp[main] < 0:
         half = comp[main] / 2
-        scen = sales - half                      # main 갭 절반 회복 시(YoY 가법 근사)
-        ev_txt = ""
-        if ge:
-            lift = event_prior_lift(ge[0], ge[1])
-            if lift is not None and lift > 0:
-                ev_txt = f" + 금주 {ge[0]}(작년 이 행사 때 +{lift*100:.0f}%) 효과"
-        nxt.append(f"지금 흐름이면 <b>금주({gw})</b> 거래액 전년비 <b>{_pct(sales)}</b> 수준")
-        nxt.append(f"<b>{main} 격차 절반 회복({_pct(comp[main])}→{_pct(comp[main]-half)})</b>{ev_txt}까지 되면 "
-                   f"금주 <b>{_pct(sales)} → {_pct(scen)}</b>로 하락 폭이 절반으로 줄 것으로 기대")
+        scen = sales - half
+        nxt.append(f"<b>{main} 격차 절반 축소({_pct(comp[main])}→{_pct(comp[main]-half)})</b> 시 "
+                   f"금주 전년비 <b>{_pct(sales)} → {_pct(scen)}</b>로 개선 기대")
     if ce:
         nxt.append(f"이후 <b>{ce[0]}</b>({ce[1].month}/{ce[1].day}) 전관행사가 이어져 반등 흐름 연장 가능")
     nxt.append("중기: 자사(영업1·2) 잘 되는 카테고리를 키워 자사 브랜드 비중 확대")
@@ -1099,10 +1106,9 @@ def final_direction(wk_all, cur_mo, cutoff):
         scen_txt = ""
         if comp.get(main, 0) < 0:
             scen = sales - comp[main] / 2
-            scen_txt = f', 함께 실행하면 금주 <span class="k">{_pct(sales)}→{_pct(scen)}</span>로 하락 폭 절반 축소 가능'
-        evph = f"금주 <span class='k'>{ge[0]}</span> 행사" if ge else "구매전환 방어"
-        head = (f"지난주 거래액 {_pct(sales)}, 가장 큰 원인은 <span class='k'>{main} 하락</span> — "
-                f"{evph}와 {main}(방문) 회복이 금주 반등의 관건{scen_txt}")
+            scen_txt = (f' — 금주 {evnm}로 절대 거래액은 반등하나 전년비 개선은 <span class="k">{main}</span> 회복이 관건, '
+                        f'되면 <span class="k">{_pct(sales)}→{_pct(scen)}</span>')
+        head = (f"지난주 거래액 {_pct(sales)}, 가장 큰 원인은 <span class='k'>{main} 하락</span>{scen_txt}")
     return head, diag, now, nxt
 
 
