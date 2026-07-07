@@ -1065,7 +1065,12 @@ def _insight_sales(g, unit_label):
          f"{'하락' if neg else '신장'}을 이끔" + (f", {drags[0]}({_pct(comp[drags[0]])})도 같이" if drags else "")]
     if defend:
         b.append(("버팀목" if neg else "발목") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
-    b.append(f'<span class="imp">→ {DRIVER_LEVER.get(main, "")}</span>')
+    # 시사점 레버 = '가장 발목 잡는(가장 낮은)' 요인. 신장 주에도 이미 잘 나오는 걸 올리라 하지 않도록.
+    worst = min(comp, key=comp.get)
+    if comp[worst] < 0:
+        b.append(f'<span class="imp">→ {DRIVER_LEVER.get(worst, "")}</span>')
+    else:
+        b.append('<span class="imp">→ 전 지표 호조, 현 모멘텀 유지</span>')
     return b
 
 
