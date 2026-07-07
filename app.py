@@ -337,9 +337,9 @@ st.sidebar.markdown(
     "- [1) 거래액 트렌드](#s1)\n"
     "- [2) 월별](#s2)\n"
     "- [3) 주차별](#s3)\n"
-    "- [🎪 전관행사 기간](#s_ev)\n"
     "- [4) 주차별·채널별](#s4)\n"
-    "- [5) 상품별](#s5)\n\n"
+    "- [5) 행사별](#s_ev)\n"
+    "- [6) 상품별](#s5)\n\n"
     "**진단·액션**\n"
     "- [✅ 종합 방향성 및 전망](#s6)"
 )
@@ -1434,12 +1434,19 @@ st.header("3) 주차별", anchor="s3")
 render_insight(insight_perf("week", latest_wk, f"최신주({week_pretty(latest_wk)})"))
 st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty, bold_period=latest_wk), unsafe_allow_html=True)
 
-# ---- 3-1) 전관행사 기간 비교 (전년 동일 행사 기간과 비교) ----
+# ---- 4) 주차별·채널별 ----
+st.header("4) 주차별·채널별", anchor="s4")
+render_insight(insight_channel(latest_wk))
+for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("③ CR", "CR")]:
+    st.subheader(tag)
+    st.markdown(channel_table(met, wk_periods, bold_period=latest_wk), unsafe_allow_html=True)
+
+# ---- 5) 행사별 (전년 동일 행사 비교) ----
+st.header("5) 행사별 (전년 동일 행사 비교)", anchor="s_ev")
 _ld = last_daily_date()
 _cur_evs = sorted([o for o in event_occurrences(CUR, only_major=True) if _ld and o[1] <= _ld],
                   key=lambda o: o[0])   # 완료된 전관행사(종료 ≤ 집계일)
 if _cur_evs:
-    st.header("🎪 전관행사 기간 (전년 동일 행사 비교)", anchor="s_ev")
     sel_ev = st.selectbox("전관행사 선택", _cur_evs[::-1], index=0, key="ev_week",
                           format_func=lambda o: f"{o[2]} ({_mdrange(o[0], o[1])})")
     cs, ce, nm = sel_ev[0], sel_ev[1], sel_ev[2]
@@ -1456,17 +1463,12 @@ if _cur_evs:
         st.markdown(event_period_table(cs, ce, ps, pe), unsafe_allow_html=True)
     else:
         st.caption(f"⚠️ 전년 같은 시기에 전관행사가 없어 기간 비교 불가")
+else:
+    st.caption("아직 완료된 전관행사가 없습니다(종료일 ≤ 집계일 기준).")
 
-# ---- 4) 주차별·채널별 ----
-st.header("4) 주차별·채널별", anchor="s4")
-render_insight(insight_channel(latest_wk))
-for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("③ CR", "CR")]:
-    st.subheader(tag)
-    st.markdown(channel_table(met, wk_periods, bold_period=latest_wk), unsafe_allow_html=True)
-
-# ---- 5) 상품별 ----
+# ---- 6) 상품별 ----
 if not df[df.perspective == "product"].empty:
-    st.header("5) 상품별 (e-영업 × 카테고리)", anchor="s5")
+    st.header("6) 상품별 (e-영업 × 카테고리)", anchor="s5")
     pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
     sel = pwk_all[-1] if pwk_all else None
     if sel:
