@@ -1411,18 +1411,23 @@ cc[3].plotly_chart(chart_channel_yoy(wk_periods), use_container_width=True)
 st.header("2) 월별", anchor="s2")
 cur_mo = cur_months[-1] if cur_months else None
 render_insight(insight_month(cur_mo, cutoff, True, f"당월({cur_mo}월~{cutoff}일 MTD)") if cur_mo else [])
+st.caption(f"전년비 — 완료월: 전년 동월 **마감** 대비 / 당월({cur_mo}월~{cutoff}일): 전년 동월 **동일기간(MTD)** 대비")
+st.markdown(monthly_table(cur_months, cutoff), unsafe_allow_html=True)
+# 하단 참고: 예상 마감(추정치) — 작게, 표 아래에
 fc = forecast_month(cur_mo, cutoff) if cur_mo else None
 if fc and fc["yoy"] is not None:
-    basis = (f"근거: {cur_mo}월 1~{cutoff}일 실적 + 잔여 {fc['rem']}일은 전년 동월 같은 일자 실적에 "
+    basis = (f"{cur_mo}월 1~{cutoff}일 실적 + 잔여 {fc['rem']}일은 전년 동월 같은 일자 실적에 "
              f"올해 MTD 수준(전년비 {fc['ratio']*100-100:+.0f}%)을 반영해 추정. "
              f"전년 대비 행사 컨텐츠 동일·일자만 1~2일 이동 가정(월 총액 영향 미미)"
              + (f". 잔여기간 전년 반복 행사: {', '.join(fc['events'][:3])}" if fc["events"] else "") + ".")
-    m1, m2, m3 = st.columns(3)
-    m1.metric(f"{cur_mo}월 예상 마감 (일평균)", f"{fc['daily']/1e6:,.0f}백만", yoy_str(fc['yoy']), help=basis)
-    m2.metric("예상 월 거래액", f"{fc['total']/1e8:,.0f}억", help=basis)
-    m3.metric(f"MTD(~{cutoff}일) 전년비", yoy_str(fc['ratio'] - 1), help="집계일까지 누적 전년 동기 대비")
-st.caption(f"전년비 — 완료월: 전년 동월 **마감** 대비 / 당월({cur_mo}월~{cutoff}일): 전년 동월 **동일기간(MTD)** 대비")
-st.markdown(monthly_table(cur_months, cutoff), unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='font-size:12px;line-height:1.55;color:#5b6472;background:#f7f9fc;"
+        f"border-left:3px solid #c5d3e8;padding:7px 12px;border-radius:4px;margin-top:8px'>"
+        f"📌 <b>참고 · {cur_mo}월 예상 마감(추정치, 변동 가능)</b> — "
+        f"일평균 <b>{fc['daily']/1e6:,.0f}백만</b>(전년비 {yoy_str(fc['yoy'])}) · "
+        f"월 거래액 약 <b>{fc['total']/1e8:,.0f}억</b> · MTD(~{cutoff}일) 전년비 {yoy_str(fc['ratio']-1)}"
+        f"<br><span style='color:#93a0b3'>근거: {basis}</span></div>",
+        unsafe_allow_html=True)
 
 # ---- 3) 주차별 ----
 st.header("3) 주차별", anchor="s3")
