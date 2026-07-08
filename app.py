@@ -1023,13 +1023,14 @@ def _fig(title, x, series, trend=None, ypct=False):
 
 
 def chart_daily(wk_labels=("", "")):
-    """직전 완료주까지 월~일 14일(2주). x축=m/d(요일), 주차 표기. 전년은 전년동요일(−364일)."""
+    """직전 2개 완료주 + 당주(진행중, 집계일까지). x축=m/d(요일), 주차 표기. 전년은 전년동요일(−364일)."""
     last = last_daily_date()
     if last is None:
         return _fig("일자별 거래액 트렌드(전년동요일)", [], {})
-    end = last - datetime.timedelta(days=(last.weekday() + 1) % 7)  # 최근 일요일
-    start = end - datetime.timedelta(days=13)                       # 그 2주 전 월요일
-    days = [start + datetime.timedelta(days=i) for i in range(14)]
+    cur_mon = last - datetime.timedelta(days=last.weekday())   # 당주 월요일
+    start = cur_mon - datetime.timedelta(days=14)              # 2주 전 월요일
+    n = (last - start).days + 1                                # 집계일까지 포함
+    days = [start + datetime.timedelta(days=i) for i in range(n)]
     x = [f"{d.month}/{d.day}({WD[d.weekday()]})" for d in days]
     y26 = [_m(V("day", "overall", SALES, "TOTAL", "", CUR, f"{d.month}/{d.day}")) for d in days]
     y25 = []
@@ -1038,12 +1039,16 @@ def chart_daily(wk_labels=("", "")):
         y25.append(_m(V("day", "overall", SALES, "TOTAL", "", PREV, f"{d0.month}/{d0.day}")))
     fig = _fig("일자별 거래액 트렌드(전년동요일)", x,
                {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}(동요일)": (y25, BLUE_PREV, "solid")}, trend=y26)
-    # 주차 구분선 + 라벨
-    fig.add_vline(x=6.5, line_width=1, line_dash="dot", line_color="#bbb")
-    for xi, lab in ((3, wk_labels[0]), (10, wk_labels[1])):
-        if lab:
-            fig.add_annotation(x=xi, xref="x", yref="paper", y=1.0, yanchor="bottom",
-                               text=f"<b>{lab}</b>", showarrow=False, font=dict(size=10, color="#1f3b73"))
+    # 주 경계 구분선 + 주차 라벨(월요일마다 새 주). 마지막 주는 진행중(부분).
+    for gi in range(0, n, 7):
+        if gi > 0:
+            fig.add_vline(x=gi - 0.5, line_width=1, line_dash="dot", line_color="#bbb")
+        seg = min(7, n - gi)
+        lab = week_pretty(week_label_of(days[gi]))
+        if gi + 7 >= n and last.weekday() != 6:   # 완결되지 않은 당주
+            lab += " 진행중"
+        fig.add_annotation(x=gi + (seg - 1) / 2, xref="x", yref="paper", y=1.0, yanchor="bottom",
+                           text=f"<b>{lab}</b>", showarrow=False, font=dict(size=10, color="#1f3b73"))
     return fig
 
 
@@ -1623,7 +1628,7 @@ with st.expander("ℹ️ 표 읽는 법 / 데이터"):
         "- **전년비**: 같은 월/주차 라벨을 올해 vs 전년으로 계산. 음수 <span style='color:#c0392b'>빨강 △</span>, 양수 검정.\n"
         "- 거래액=일평균거래액 **백만원**, 고객수·DAU=일평균, 유입률·CR=%. (유효회원수는 Summary처럼 숨김)\n"
         "- **월별은 깨끗한 일자별에서 집계**. 당월은 MTD(~집계일)이며 파란 테두리로 강조. 최신 주차도 동일 강조.\n"
-        "- 일자별 차트는 **직전 완료주까지 월~일 14일**, 전년은 **전년동요일**(날짜−364일) 비교.\n"
+        "- 일자별 차트는 **직전 2개 완료주 + 당주(집계일까지, 진행중)**, 전년은 **전년동요일**(날짜−364일) 비교.\n"
         "- ⚠️ 원본에 **2025년 9월말~10월** 손상 구간(유효회원수·DAU·거래액 ~2배)이 있어 자동 제외 → 해당 구간·전년비 '—'(2026은 정상).\n"
         "- 목표 대비 달성율(2-1)·행사별(2-6)은 원본 6종에 데이터가 없어 제외(목표 파일 주시면 추가).",
         unsafe_allow_html=True)
