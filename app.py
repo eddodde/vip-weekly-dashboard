@@ -1465,7 +1465,7 @@ if latest_wk:
         r2 = st.columns(2)
         _snap(r2[0], "CR", "CR")
         _snap(r2[1], "객단가", "일평균객단가")
-        st.caption(f"집계 기준일 {last_daily_date()}")
+        st.caption(f"🗓 집계 기준일 **{last_daily_date()}** — 이 날짜가 최신 데이터입니다")
 
 # 사이드바 참고 슬롯 채우기 — 진행 행사 캘린더(전년/올해)
 with ref_slot:
