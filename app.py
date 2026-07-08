@@ -905,7 +905,7 @@ def find_prior_event(name, cur_start):
 
 def insight_event(cs, ce, ps, pe, label):
     g = lambda m: yoy(range_metric(m, CUR, cs, ce), range_metric(m, PREV, ps, pe))
-    return _insight_sales(g, label)
+    return _insight_sales(g, label, event=True)
 
 
 CATS_ORDER = ["골프", "남성", "여성", "슈즈", "잡화", "스포츠", "명품", "아웃도어", "리빙", "뷰티", "키즈"]
@@ -1103,8 +1103,10 @@ def _pct(r):
     return yoy_disp(r)[0]
 
 
-def _insight_sales(g, unit_label):
-    """거래액=DAU×CR×객단가 분해로 주동인·상쇄요인·핵심레버 도출(단순 현상 나열 X). g=지표→전년비."""
+def _insight_sales(g, unit_label, event=False):
+    """거래액=DAU×CR×객단가 분해로 주동인·상쇄요인·핵심레버 도출(단순 현상 나열 X). g=지표→전년비.
+    event=True(전관행사): VIP 기준 EP는 유입(DAU) 견인 효과가 제한적이고 CR(전환)에 효과 →
+    DAU는 구조적 변수로 두고 CR을 우선 레버로 제시(방문 회복은 부수)."""
     sales = g("일평균거래액")
     comp = {"DAU": g("DAU"), "CR": g("CR"), "객단가": g("일평균객단가")}
     comp = {k: v for k, v in comp.items() if v is not None}
@@ -1118,7 +1120,18 @@ def _insight_sales(g, unit_label):
          f"{'하락' if neg else '신장'}을 이끔" + (f", {drags[0]}({_pct(comp[drags[0]])})도 같이" if drags else "")]
     if defend:
         b.append(("상쇄 요인" if neg else "제약 요인") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
-    # 시사점 레버 = '가장 부진한(가장 낮은)' 요인. 신장 주에 이미 좋은 지표를 올리라 하지 않도록.
+    if event:
+        # 전관행사: DAU(유입)는 EP로 안 움직이는 구조 변수 → CR(전환)을 우선 레버, 방문은 부수.
+        cr = comp.get("CR")
+        if cr is not None and cr < 0:
+            b.append('<span class="imp">→ 전관행사는 VIP 유입(DAU) 견인 효과가 제한적 → '
+                     '<b>CR(전환) 극대화가 우선</b>(지원금 사용유도·쿠폰·리마인드), 방문(DAU)은 구조 과제로 부수 병행</span>')
+        elif cr is not None:
+            b.append('<span class="imp">→ CR(전환) 방어 중 — <b>전환 모멘텀 유지가 우선</b>, 방문(DAU) 회복은 부수 병행</span>')
+        else:
+            b.append('<span class="imp">→ <b>CR(전환) 극대화가 우선</b>, 방문(DAU)은 부수</span>')
+        return b
+    # (일반) 시사점 레버 = '가장 부진한(가장 낮은)' 요인. 신장 주에 이미 좋은 지표를 올리라 하지 않도록.
     worst = min(comp, key=comp.get)
     if comp[worst] < 0:
         b.append(f'<span class="imp">→ {DRIVER_LEVER.get(worst, "")}</span>')
