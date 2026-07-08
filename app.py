@@ -1116,8 +1116,10 @@ def _insight_sales(g, unit_label, event=False):
     main = (min if neg else max)(comp, key=comp.get)
     drags = [k for k in comp if (comp[k] < 0) == neg and k != main]
     defend = [k for k in comp if (comp[k] > 0) == neg]
-    b = [f"{unit_label} 거래액 <b>{_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>가 "
-         f"{'하락' if neg else '신장'}을 이끔" + (f", {drags[0]}({_pct(comp[drags[0]])})도 같이" if drags else "")]
+    lead = "가 하락을 주도" if neg else "가 성장을 견인"
+    also = " 동반 약세" if neg else " 동반 개선"
+    b = [f"{unit_label} 거래액 <b>{_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>{lead}"
+         + (f", {drags[0]}({_pct(comp[drags[0]])}){also}" if drags else "")]
     if defend:
         b.append(("상쇄 요인" if neg else "제약 요인") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
     if event:
