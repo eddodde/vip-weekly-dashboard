@@ -1023,13 +1023,14 @@ def _fig(title, x, series, trend=None, ypct=False):
 
 
 def chart_daily(wk_labels=("", "")):
-    """직전 2개 완료주 + 당주(진행중, 집계일까지). x축=m/d(요일), 주차 표기. 전년은 전년동요일(−364일)."""
+    """마지막이 일요일=2완료주, 진행중=직전 2완료주+당주(집계일까지). x축=m/d(요일). 전년은 전년동요일(−364일)."""
     last = last_daily_date()
     if last is None:
         return _fig("일자별 거래액 트렌드(전년동요일)", [], {})
-    cur_mon = last - datetime.timedelta(days=last.weekday())   # 당주 월요일
-    start = cur_mon - datetime.timedelta(days=14)              # 2주 전 월요일
-    n = (last - start).days + 1                                # 집계일까지 포함
+    # 마지막이 일요일(완결주)이면 정확히 2주. 진행중(월~토)이면 직전 2완료주 + 당주(집계일까지).
+    last_sun = last if last.weekday() == 6 else last - datetime.timedelta(days=(last.weekday() + 1) % 7)
+    start = last_sun - datetime.timedelta(days=13)            # 직전 2개 완료주의 월요일
+    n = (last - start).days + 1                               # 당주 진행중이면 집계일까지 연장
     days = [start + datetime.timedelta(days=i) for i in range(n)]
     x = [f"{d.month}/{d.day}({WD[d.weekday()]})" for d in days]
     y26 = [_m(V("day", "overall", SALES, "TOTAL", "", CUR, f"{d.month}/{d.day}")) for d in days]
