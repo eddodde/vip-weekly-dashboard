@@ -693,6 +693,7 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .sumtbl .grp2026{background:#eaf1fb;}
 .sumtbl .grpyoy{background:#fff4ec;}
 .sumtbl .grp2025{background:#f4f4f4;}
+.sumtbl .grpmom{background:#eef7f1;}
 .sumtbl .curcol{font-weight:700;border-left:2px solid #1f5fbf;border-right:2px solid #1f5fbf;}
 .sumtbl th.curcol{border-top:2px solid #1f5fbf;}
 .sumtbl .curbot{border-bottom:2px solid #1f5fbf;}
@@ -870,19 +871,28 @@ def _mdrange(lo, hi):
     return f"{lo.month}/{lo.day}" if lo == hi else f"{lo.month}/{lo.day}~{hi.month}/{hi.day}"
 
 
-def event_period_table(cs, ce, ps, pe):
-    """전관행사 '기간' 비교: 올해 기간(cs~ce) vs 전년 기간(ps~pe). 헤더=m/d~m/d."""
-    b26, byoy, b25 = [], [], []
+def event_period_table(cs, ce, ps, pe, ms=None, me=None):
+    """전관행사 '기간' 비교: 올해(cs~ce) vs 전년(ps~pe). ms/me 주면 직전월 동종 행사(전월비)도 추가."""
+    b26, byoy, b25, bmv, bmr = [], [], [], [], []
     for _, met in PERF_ROWS:
         cv, pv = range_metric(met, CUR, cs, ce), range_metric(met, PREV, ps, pe)
         b26.append(_td("grp2026", fmt(met, cv), False))
         txt, sty = yoy_disp(yoy(cv, pv))
         byoy.append(_td("grpyoy", txt, False, sty))
         b25.append(_td("grp2025", fmt(met, pv), False))
+        if ms:
+            mv = range_metric(met, CUR, ms, me)
+            mtxt, msty = yoy_disp(yoy(cv, mv))
+            bmr.append(_td("grpmom", mtxt, False, msty))
+            bmv.append(_td("grp2025", fmt(met, mv), False))
     clab, plab = _mdrange(cs, ce), _mdrange(ps, pe)
-    blocks = [(f"{CUR}년", "grp2026", [(clab, b26)]),
-              ("전년비", "grpyoy", [(clab, byoy)]),
-              (f"{PREV}년", "grp2025", [(plab, b25)])]
+    blocks = [(f"{CUR}년", "grp2026", [(clab, b26)])]
+    if ms:
+        blocks.append(("전월비", "grpmom", [(clab, bmr)]))
+    blocks.append(("전년비", "grpyoy", [(clab, byoy)]))
+    if ms:
+        blocks.append(("전월", "grp2025", [(_mdrange(ms, me), bmv)]))
+    blocks.append((f"{PREV}년", "grp2025", [(plab, b25)]))
     return render_block_table([r for r, _ in PERF_ROWS], blocks)
 
 
@@ -901,6 +911,17 @@ def find_prior_event(name, cur_start):
         if abs((o[0] - target).days) <= 10:
             return o[0], o[1], o[2]
     return None
+
+
+def find_prev_month_event(name, cur_start):
+    """같은 해 직전 회차의 동명 행사(L+DAY 등 매월 정기 시리즈) (start, end). ~70일 이내만(결측월 방지)."""
+    occ = [o for o in event_occurrences(CUR, only_major=True) if o[2] == name and o[0] < cur_start]
+    if not occ:
+        return None
+    o = max(occ, key=lambda x: x[0])                 # 가장 최근(직전 회차)
+    if (cur_start - o[0]).days > 70:
+        return None
+    return o[0], o[1]
 
 
 def insight_event(cs, ce, ps, pe, label):
@@ -1557,7 +1578,7 @@ for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("
     st.markdown(channel_table(met, wk_periods, bold_period=latest_wk), unsafe_allow_html=True)
 
 # ---- 5) 행사별 (전년 동일 행사 비교) ----
-st.header("5) 행사별 (전년 동일 행사 비교)", anchor="s_ev")
+st.header("5) 행사별 (전년·전월 비교)", anchor="s_ev")
 _ld = last_daily_date()
 # 시작된 전관행사(진행중 포함): 시작일 ≤ 집계일
 _started = sorted([o for o in event_occurrences(CUR, only_major=True) if _ld and o[0] <= _ld],
@@ -1584,11 +1605,19 @@ if _started:
         render_insight(insight_event(cs, ce_eff, ps, pe_eff, unit))
         _c, _p = _mdrange(cs, ce_eff).replace("~", "\\~"), _mdrange(ps, pe_eff).replace("~", "\\~")
         _stat = f"진행중 {elapsed}일차까지 · 행사 경과일 정렬" if inprog else "행사 종료 · 전체 기간"
+        pm = find_prev_month_event(nm, cs)          # 직전월 동종 행사(L+DAY 등)
+        ms = me = None
+        if pm:
+            ms = pm[0]
+            me = ms + datetime.timedelta(days=(ce_eff - cs).days)   # 같은 경과일수로 정렬
         if pn == nm:
             st.caption(f"올해 **{nm}** {_c} ↔ 전년 **{nm}** {_p} · {_stat}")
         else:
             st.caption(f"올해 **{nm}** {_c} ↔ 전년 동기 전관행사 **{pn}** {_p} · {_stat}(행사명 다름)")
-        st.markdown(event_period_table(cs, ce_eff, ps, pe_eff), unsafe_allow_html=True)
+        if pm:
+            _mm = _mdrange(ms, me).replace("~", "\\~")
+            st.caption(f"↕ **전월비**: 직전월 **{nm}** {_mm} 대비 (매월 정기 행사)")
+        st.markdown(event_period_table(cs, ce_eff, ps, pe_eff, ms, me), unsafe_allow_html=True)
     else:
         st.caption("⚠️ 전년 같은 시기에 전관행사가 없어 비교 불가")
 else:
