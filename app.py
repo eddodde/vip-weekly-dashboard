@@ -924,9 +924,20 @@ def find_prev_month_event(name, cur_start):
     return o[0], o[1]
 
 
-def insight_event(cs, ce, ps, pe, label):
+def insight_event(cs, ce, ps, pe, label, ms=None, me=None):
     g = lambda m: yoy(range_metric(m, CUR, cs, ce), range_metric(m, PREV, ps, pe))
-    return _insight_sales(g, label, event=True)
+    b = _insight_sales(g, label, event=True)
+    if ms:   # 직전월 동종 행사 대비(전월비) 요약 한 줄
+        mm = lambda k: yoy(range_metric(k, CUR, cs, ce), range_metric(k, CUR, ms, me))
+        s, a, c, dau = mm("일평균거래액"), mm("일평균객단가"), mm("일평균고객수"), mm("DAU")
+        if s is not None:
+            comp = {k: v for k, v in {"객단가": a, "고객수": c, "방문(DAU)": dau}.items() if v is not None}
+            lead = max(comp, key=comp.get) if comp else None
+            tail = f" — <b>{lead}({_pct(comp[lead])})</b>가 견인" if lead else ""
+            warn = (f", 단 고객수 {_pct(c)}로 방문 회복은 미미"
+                    if lead == "객단가" and c is not None and c < (a or 0) else "")
+            b.append(f'<span style="color:#2e7d5b">직전월 동종행사比 거래액 <b>{_pct(s)}</b>{tail}{warn}</span>')
+    return b
 
 
 CATS_ORDER = ["골프", "남성", "여성", "슈즈", "잡화", "스포츠", "명품", "아웃도어", "리빙", "뷰티", "키즈"]
@@ -1602,14 +1613,14 @@ if _started:
         ps, pe, pn = prev
         pe_eff = (ps + datetime.timedelta(days=elapsed - 1)) if inprog else pe   # 전년 같은 경과일
         unit = f"{nm} {elapsed}일차까지" if inprog else f"{nm} 기간"
-        render_insight(insight_event(cs, ce_eff, ps, pe_eff, unit))
-        _c, _p = _mdrange(cs, ce_eff).replace("~", "\\~"), _mdrange(ps, pe_eff).replace("~", "\\~")
-        _stat = f"진행중 {elapsed}일차까지 · 행사 경과일 정렬" if inprog else "행사 종료 · 전체 기간"
         pm = find_prev_month_event(nm, cs)          # 직전월 동종 행사(L+DAY 등)
         ms = me = None
         if pm:
             ms = pm[0]
             me = ms + datetime.timedelta(days=(ce_eff - cs).days)   # 같은 경과일수로 정렬
+        render_insight(insight_event(cs, ce_eff, ps, pe_eff, unit, ms, me))
+        _c, _p = _mdrange(cs, ce_eff).replace("~", "\\~"), _mdrange(ps, pe_eff).replace("~", "\\~")
+        _stat = f"진행중 {elapsed}일차까지 · 행사 경과일 정렬" if inprog else "행사 종료 · 전체 기간"
         if pn == nm:
             st.caption(f"올해 **{nm}** {_c} ↔ 전년 **{nm}** {_p} · {_stat}")
         else:
