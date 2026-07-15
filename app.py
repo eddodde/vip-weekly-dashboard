@@ -1579,6 +1579,24 @@ if fc and fc["yoy"] is not None:
         f"<br><span style='color:#93a0b3'>근거: {basis}</span></div>",
         unsafe_allow_html=True)
 
+# 하단 참고: 구조 진단(수동 갱신 — 2026.7월 심층분석 요약. 상황 변하면 이 블록 업데이트)
+st.markdown(
+    "<div style='font-size:12px;line-height:1.7;color:#5b4a32;background:#fdf9f1;"
+    "border-left:3px solid #d9b45c;padding:8px 12px;border-radius:4px;margin-top:6px'>"
+    "🔍 <b>참고 · 구조 진단 (7월 심층분석 요약)</b>"
+    "<br>· <b>고객수 감소는 저단가 구매 위축이 주도</b> — 객단가 하위 브랜드 구매고객 △30~46%, 20~40만 프리미엄대만 +10%. "
+    "객단가 상승은 그 반사효과(총거래액 미성장·퍼널 위축 → 프리미엄화 아님)"
+    "<br>· <b>슈즈 급감(△40%)은 '25.9월 핏플랍 철수 공백</b>이 샌들 성수기에 표면화된 것"
+    "(전년 카테 거래액의 49%·고객의 56%, 잔여 브랜드 흡수 19%) — 7~8월 지속, 9월부터 기저 소멸"
+    "<br>· <b>여름은 저단가 상품이 전환(CR)을 견인하는 시즌</b>(객단가↔CR 역상관 △0.76)이라 "
+    "저단가 구색 공백이 6월부터 CR 역신장으로 전이 — 행사·앱 사용성 요인은 데이터상 무관"
+    "(행사일/비행사일 하락폭 동일, 인당 조회수 전년 동일)"
+    "<br>· <b>상반기 CR 우위(+5~10%)는 전년 PUSH·광고 전환 개선의 기저효과</b>로 6월 소진. "
+    "직접 채널 CR 6월부터 첫 하락(△6~8%), 광고는 유입 +21% 확대에도 CR △12%(효율 저하)"
+    "<br>· <b>방문 기반: 회원 수 유지, 방문율만 하락(35→32%)</b> — 감소분은 직접·PUSH 채널(습관성 방문). "
+    "PUSH는 전환력 유지 중이라 도달 회복 여지"
+    "</div>", unsafe_allow_html=True)
+
 # ---- 3) 주차별 ----
 st.header("3) 주차별", anchor="s3")
 render_insight(insight_perf("week", latest_wk, f"최신주({week_pretty(latest_wk)})"))
