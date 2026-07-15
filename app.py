@@ -1512,7 +1512,12 @@ st.markdown(TABLE_CSS, unsafe_allow_html=True)
 
 wk_all = periods("week", "overall", "일평균거래액", "TOTAL", "", CUR)
 latest_wk = wk_all[-1] if wk_all else None
-st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} 마감 CRM_VIP 실적")
+# 주별 BI export가 진행중 주를 포함할 수 있음 → 최신 주가 미완결(집계일이 그 주 일요일 전)인지 판정
+_ldt = last_daily_date()
+wk_partial = bool(latest_wk and _ldt and week_label_of(_ldt) == latest_wk and _ldt.weekday() != 6)
+wk_status = f"(~{_ldt.month}/{_ldt.day} 진행중)" if wk_partial else "마감"
+wk_all_closed = wk_all[:-1] if wk_partial else wk_all   # '지난주 마감' 기반 인사이트용(완결주만)
+st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
 
@@ -1525,7 +1530,7 @@ if latest_wk:
         col.metric(label, val, yoy_str(yoy(c, p)))
     with snap_slot:
         st.markdown("#### 📌 이번 주 스냅샷")
-        st.caption(f"{week_pretty(latest_wk)} 마감 · **일평균** 기준 · 전년비")
+        st.caption(f"{week_pretty(latest_wk)} {wk_status} · **일평균** 기준 · 전년비")
         r1 = st.columns(2)
         _snap(r1[0], "거래액", "일평균거래액", is_sales=True)
         _snap(r1[1], "DAU", "DAU")
@@ -1560,7 +1565,7 @@ if cutoff and (not cur_months or cur_months[-1] != last_daily_date().month):
 
 # ---- 1) 거래액 트렌드 ----
 st.header("1) 거래액 트렌드", anchor="s1")
-render_insight(insight_trend(wk_all))
+render_insight(insight_trend(wk_all_closed))
 wk_lbls = (week_pretty(wk_all[-2]) if len(wk_all) >= 2 else "", week_pretty(latest_wk) if latest_wk else "")
 cc = st.columns(4)
 cc[0].plotly_chart(chart_daily(wk_lbls), use_container_width=True)
@@ -1610,7 +1615,11 @@ st.markdown(
 
 # ---- 3) 주차별 ----
 st.header("3) 주차별", anchor="s3")
-render_insight(insight_perf("week", latest_wk, f"최신주({week_pretty(latest_wk)})"))
+render_insight(insight_perf("week", latest_wk,
+                            f"최신주({week_pretty(latest_wk)}{' · ~' + str(_ldt.month) + '/' + str(_ldt.day) + ' 진행중' if wk_partial else ''})"))
+if wk_partial:
+    st.caption(f"※ {week_pretty(latest_wk)}는 **진행중(~{_ldt.month}/{_ldt.day})** — "
+               f"전년비는 전년 동주 전체 대비라 주말 포함 여부 차이만큼 참고용")
 st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty, bold_period=latest_wk), unsafe_allow_html=True)
 
 # ---- 4) 주차별·채널별 ----
@@ -1692,7 +1701,7 @@ if not df[df.perspective == "product"].empty:
 
 # ---- 종합 방향성 (BCG 스타일: 헤드라인 + 진단/실행/임팩트) ----
 st.header("✅ 종합 방향성 및 전망", anchor="s6")
-head_b, diag_b, now_b, nxt_b = final_direction(wk_all, cur_mo, cutoff)
+head_b, diag_b, now_b, nxt_b = final_direction(wk_all_closed, cur_mo, cutoff)
 render_bcg(head_b, diag_b, now_b, nxt_b)
 
 with st.expander("ℹ️ 표 읽는 법 / 데이터"):
