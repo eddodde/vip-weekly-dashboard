@@ -1133,8 +1133,8 @@ def chart_channel_yoy(wkp):
 
 # ----------------------------------------------------------------------------- insights (분석형)
 # 섹션 인사이트엔 '핵심 레버'만(짧게). 상세 액션(전술)은 최하단 종합 방향성에서만 노출.
-DRIVER_LEVER = {"DAU": "방문(DAU) 회복이 가장 중요", "CR": "구매전환(CR) 올리기가 가장 중요",
-                "객단가": "객단가 지키고 올리기가 중요"}
+DRIVER_LEVER = {"DAU": "방문(DAU) 회복이 가장 중요", "CR": "잔존 방문의 구매전환(CR) 제고가 실질 레버",
+                "객단가": "객단가 방어가 실질 레버"}
 DRIVER_ACTION = {"DAU": "최근 미방문 VIP 자동화 문자·출석체크·개인화 추천으로 재방문 유도",
                  "CR": "장바구니·보유쿠폰·최근 본 상품 리마인드로 전환 유도",
                  "객단가": "고관여 세그 고단가 상품 소구·번들·기획전으로 객단가 상향"}
@@ -1174,10 +1174,21 @@ def _insight_sales(g, unit_label, event=False):
         else:
             b.append('<span class="imp">→ <b>CR(전환) 극대화가 우선</b>, 방문(DAU)은 부수</span>')
         return b
-    # (일반) 시사점 레버 = '가장 부진한(가장 낮은)' 요인. 신장 주에 이미 좋은 지표를 올리라 하지 않도록.
+    # (일반) 시사점 레버. 단 DAU 구조 하락은 전사 기지 사항이라 결론으로 쓰지 않고(당연한 소리),
+    # 그 다음으로 부진한 '움직일 수 있는' 요인을 실질 레버로 제시.
     worst = min(comp, key=comp.get)
     if comp[worst] < 0:
-        b.append(f'<span class="imp">→ {DRIVER_LEVER.get(worst, "")}</span>')
+        if worst == "DAU":
+            others = {k: v for k, v in comp.items() if k != "DAU" and v < 0}
+            if others:
+                w2 = min(others, key=others.get)
+                b.append(f'<span class="imp">→ 방문 감소(구조·기지 요인)를 상수로 두면 '
+                         f'<b>{DRIVER_LEVER.get(w2, "")}</b></span>')
+            else:
+                b.append('<span class="imp">→ 하락은 방문 감소분에 국한(전환·객단가는 방어 중) — '
+                         '잔존 방문의 전환 수준 유지가 관건</span>')
+        else:
+            b.append(f'<span class="imp">→ {DRIVER_LEVER.get(worst, "")}</span>')
     else:
         b.append('<span class="imp">→ 전 지표 개선, 현 상승세 유지</span>')
     return b
