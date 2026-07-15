@@ -212,6 +212,9 @@ def finalize(df):
         return df
     df = df.copy()
     df["year"] = df["year"].astype(int)
+    # period_sort 타입 통일(str, 고정폭 8자리라 사전순=시간순).
+    # CSV 시드는 int로 읽히고 업로드 파서는 str을 만들어, 병합 시 혼합되면 sort_values가 TypeError.
+    df["period_sort"] = df["period_sort"].astype(str)
     for c in ("seg1", "seg2"):
         df[c] = df[c].fillna("")
     ov = df["perspective"] == "overall"
