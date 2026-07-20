@@ -1599,7 +1599,8 @@ if fc and fc["yoy"] is not None:
 st.markdown(
     "<div style='font-size:12px;line-height:1.7;color:#5b4a32;background:#fdf9f1;"
     "border-left:3px solid #d9b45c;padding:8px 12px;border-radius:4px;margin-top:6px'>"
-    "🔍 <b>참고 · 구조 진단 (7월 심층분석 요약)</b>"
+    "🔍 <b>참고 · 구조 진단 (7월 심층분석 요약)</b> <span style='color:#a08b5f'>— 분석 기준 ~7/13 집계"
+    "(구조 결론으로 최신 주 실적과 별개, 세부 수치는 기준일 시점)</span>"
     "<br>· <b>고객수 감소는 저단가 구매 위축이 주도</b> — 객단가 하위 브랜드 구매고객 △30~46%, 20~40만 프리미엄대만 +10%. "
     "객단가 상승은 그 반사효과(총거래액 미성장·퍼널 위축 → 프리미엄화 아님)"
     "<br>· <b>슈즈 급감(△40%)은 '25.9월 핏플랍 철수 공백</b>이 샌들 성수기에 표면화된 것"
