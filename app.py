@@ -1101,6 +1101,16 @@ def chart_monthly():
     xlab = [f"{m}월" for m in range(1, 13)]
     fig = _fig(f"{PREV}·{CUR}년 월별 거래액 트렌드", xlab,
                {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}": (y25, BLUE_PREV, "solid")})
+    # 당월 '전년 동일기간(MTD)' 기준점 — 2025 라인은 월 마감이라 당월 MTD와 직접 비교하면 착시
+    # (예: 올해 1~19일엔 행사가 몰려 있고 전년 마감엔 하순 소강까지 포함) → 공정 비교점을 마커로 표시.
+    pmtd = _m(month_value(SALES, PREV, cm, cd)) if cm else None
+    if pmtd is not None:
+        fig.add_trace(go.Scatter(x=[xlab[cm - 1]], y=[pmtd], name=f"전년 동기(~{cd}일)",
+                                 mode="markers",
+                                 marker=dict(symbol="diamond-open", size=10, color="#8496b0",
+                                             line=dict(width=2)),
+                                 hovertemplate=(f"{PREV}년 {cm}/1~{cd} 일평균 {pmtd:,.0f}백만<br>"
+                                                f"당월 MTD와 동일 기간 비교 기준<extra></extra>")))
     # 당월 예상 마감(전망) 마커 — 호버 시 근거
     fc = forecast_month(cm, cd) if cm else None
     if fc:
