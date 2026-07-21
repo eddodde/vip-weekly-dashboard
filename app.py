@@ -1344,8 +1344,33 @@ def insight_channel(period):
     return b
 
 
+def _amt(chg):
+    m = chg / 1e6
+    return f"△{abs(m):,.0f}백만" if m < 0 else f"+{m:,.0f}백만"
+
+
+def _fmt_cat(name, chg, rate):
+    """카테고리 라벨을 (증감율·증감액) 병기로 — 규모·낙폭 둘 다 보이게."""
+    return f"<b>{name}</b>({_pct(rate)}·{_amt(chg)})"
+
+
+def _decline_drivers(recs, topn=2):
+    """recs=[(name, chg, rate), …]. 하락 주도 = 증감액(규모) 기준 topn(둘 다 표기).
+    + 규모 밖이지만 급락(율≤△40%)한 소규모 카테는 '급락 신호'로 별도 반환(조기경보)."""
+    neg = [r for r in recs if r[1] is not None and r[1] < 0]
+    if not neg:
+        return [], None
+    lead = sorted(neg, key=lambda r: r[1])[:topn]
+    names = {r[0] for r in lead}
+    tot = sum(r[1] for r in neg)
+    cand = [r for r in neg if r[0] not in names and r[2] is not None and r[2] <= -0.40
+            and r[1] <= tot * 0.08]                      # 하락총합의 8%+ 규모라야 노이즈 아님
+    steep = min(cand, key=lambda r: r[2]) if cand else None
+    return lead, steep
+
+
 def insight_product(wk):
-    """자사(영업1·2) 중심으로 부진·견조 카테고리를 짚음."""
+    """자사(영업1·2) 중심으로 부진·견조 카테고리를 짚음. 하락 주도는 규모(증감액)+낙폭(증감율) 병기."""
     recs = []
     for ye in YEONG:
         for ca in CATS_ORDER:
@@ -1355,13 +1380,17 @@ def insight_product(wk):
                 recs.append((ye, ca, f"영업{ye[-1]} {ca}", c - p, yoy(c, p)))
     if not recs:
         return []
-    allw = sorted(recs, key=lambda r: r[3])[:2]
-    b = ["전체 하락 주도: " + ", ".join(f"<b>{r[2]}</b>({_pct(r[4])})" for r in allw)]
+    lead, steep = _decline_drivers([(r[2], r[3], r[4]) for r in recs])
+    b = []
+    if lead:
+        b.append("전체 하락 주도(규모순): " + ", ".join(_fmt_cat(*r) for r in lead))
+    if steep:
+        b.append("급락 신호(소규모): " + _fmt_cat(*steep))
     own = [r for r in recs if r[0] in OWN]
     if own:
         ow = min(own, key=lambda r: r[3])
         ob = max(own, key=lambda r: r[3])
-        b.append(f"자사(영업1·2): <b>{ow[2]}</b> 부진({_pct(ow[4])}) / <b>{ob[2]}</b> 견조({_pct(ob[4])})")
+        b.append(f"자사(영업1·2): {_fmt_cat(ow[2], ow[3], ow[4])} 부진 / <b>{ob[2]}</b> 견조({_pct(ob[4])})")
         b.append(f'<span class="imp">→ 자사 {ow[1]} 반등이 우선, {ob[1]} 성장세 유지</span>')
     return b
 
@@ -1383,21 +1412,21 @@ def insight_yeong(ye, wk):
     seg = "자사" if own else "입점"
     b = [f"<b>{ye}</b>({seg}) 거래액 전년비 <b>{_pct(tot)}</b>"]
     if recs:
-        srt = sorted(recs, key=lambda r: r[1])
-        worst, best = srt[0], srt[-1]
-        parts = []
-        if worst[1] < 0:
-            parts.append(f"<b>{worst[0]}</b> 부진({_pct(worst[2])})")
+        lead, steep = _decline_drivers(recs)          # 규모(증감액)순 하락 + 소규모 급락
+        best = max(recs, key=lambda r: r[1])
+        if lead:
+            b.append("하락 주도: " + ", ".join(_fmt_cat(*r) for r in lead))
+        if steep:
+            b.append("급락 신호(소규모): " + _fmt_cat(*steep))
         if best[2] is not None and best[2] > 0:
-            parts.append(f"<b>{best[0]}</b> 신장({_pct(best[2])})")
-        if parts:
-            b.append(" · ".join(parts))
-        if own and worst[1] < 0:
+            b.append(f"신장: <b>{best[0]}</b>({_pct(best[2])})")
+        worst = lead[0] if lead else None
+        if own and worst:
             tail = f", {best[0]} 성장세 유지" if (best[2] and best[2] > 0) else ""
             b.append(f'<span class="imp">→ 자사 <b>{worst[0]}</b> 반등 우선(시크릿 혜택·기획전){tail}</span>')
         elif own:
             b.append(f'<span class="imp">→ {best[0]} 호조 확대로 자사 비중 강화</span>')
-        else:
+        elif worst:
             b.append(f'<span class="imp">→ 입점 채널 · <b>{worst[0]}</b> 약세 점검, 자사 우선</span>')
     return b
 
