@@ -1546,6 +1546,9 @@ _ldt = last_daily_date()
 wk_partial = bool(latest_wk and _ldt and week_label_of(_ldt) == latest_wk and _ldt.weekday() != 6)
 wk_status = f"(~{_ldt.month}/{_ldt.day} 진행중)" if wk_partial else "마감"
 wk_all_closed = wk_all[:-1] if wk_partial else wk_all   # '지난주 마감' 기반 인사이트용(완결주만)
+# 주간 비교(스냅샷·주차별 차트/표)는 완료주 기준 — 진행중 주(2일치)를 전년 마감주와 붙이면 MTD 착시.
+# 진행중 주 실적은 일자별 차트(동요일)·5)행사별(행사일 정렬)에서 공정 비교됨.
+snap_wk = wk_all_closed[-1] if wk_all_closed else latest_wk
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
@@ -1553,13 +1556,14 @@ st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트
 # 사이드바 최상단 스냅샷(예약 슬롯 채우기) — 최신주 전년비 KPI
 if latest_wk:
     def _snap(col, label, met, is_sales=False):
-        c = V("week", "overall", met, "TOTAL", "", CUR, latest_wk)
-        p = V("week", "overall", met, "TOTAL", "", PREV, latest_wk)
+        c = V("week", "overall", met, "TOTAL", "", CUR, snap_wk)
+        p = V("week", "overall", met, "TOTAL", "", PREV, snap_wk)
         val = "-" if c is None else (f"{c/1e6:,.0f}백만" if is_sales else fmt(met, c))
         col.metric(label, val, yoy_str(yoy(c, p)))
     with snap_slot:
-        st.markdown("#### 📌 이번 주 스냅샷")
-        st.caption(f"{week_pretty(latest_wk)} {wk_status} · **일평균** 기준 · 전년비")
+        st.markdown("#### 📌 최근 완료주 스냅샷")
+        st.caption(f"{week_pretty(snap_wk)} 마감 · **일평균** 기준 · 전년비"
+                   + (f" (금주 {week_pretty(latest_wk)}는 진행중)" if wk_partial else ""))
         r1 = st.columns(2)
         _snap(r1[0], "거래액", "일평균거래액", is_sales=True)
         _snap(r1[1], "DAU", "DAU")
@@ -1586,7 +1590,7 @@ with ref_slot:
             st.markdown(md)
             st.caption("기간=시작~종료 · ★=전관행사(전사)")
 
-wk_periods = wk_all[-5:]                       # 엑셀과 동일하게 최근 5주 고정
+wk_periods = wk_all_closed[-5:]                # 완료주 5개(진행중 주 제외 — MTD 착시 방지)
 cutoff = last_daily_date().day if last_daily_date() else None
 cur_months = [int(p[:-1]) for p in periods("month", "overall", "일평균거래액", "TOTAL", "", CUR)]
 if cutoff and (not cur_months or cur_months[-1] != last_daily_date().month):
@@ -1655,19 +1659,17 @@ st.markdown(
 
 # ---- 3) 주차별 ----
 st.header("3) 주차별", anchor="s3")
-render_insight(insight_perf("week", latest_wk,
-                            f"최신주({week_pretty(latest_wk)}{' · ~' + str(_ldt.month) + '/' + str(_ldt.day) + ' 진행중' if wk_partial else ''})"))
+render_insight(insight_perf("week", snap_wk, f"최신 완료주({week_pretty(snap_wk)})"))
 if wk_partial:
-    st.caption(f"※ {week_pretty(latest_wk)}는 **진행중(~{_ldt.month}/{_ldt.day})** — "
-               f"전년비는 전년 동주 전체 대비라 주말 포함 여부 차이만큼 참고용")
-st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty, bold_period=latest_wk), unsafe_allow_html=True)
+    st.caption(f"※ 완료주 기준(진행중 {week_pretty(latest_wk)}는 제외) — 진행중 주 실적은 1)일자별·5)행사별에서 확인")
+st.markdown(perf_table("week", wk_periods, wk_periods, week_pretty, bold_period=snap_wk), unsafe_allow_html=True)
 
 # ---- 4) 주차별·채널별 ----
 st.header("4) 주차별·채널별", anchor="s4")
-render_insight(insight_channel(latest_wk))
+render_insight(insight_channel(snap_wk))
 for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("③ CR", "CR")]:
     st.subheader(tag)
-    st.markdown(channel_table(met, wk_periods, bold_period=latest_wk), unsafe_allow_html=True)
+    st.markdown(channel_table(met, wk_periods, bold_period=snap_wk), unsafe_allow_html=True)
 
 # ---- 5) 행사별 (전년 동일 행사 비교) ----
 st.header("5) 행사별 (전년·전월 비교)", anchor="s_ev")
@@ -1719,7 +1721,9 @@ else:
 if not df[df.perspective == "product"].empty:
     st.header("6) 상품별 (e-영업 × 카테고리)", anchor="s5")
     pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
-    sel = pwk_all[-1] if pwk_all else None
+    # 완료주 기준(진행중 주 제외 — 상품도 전년 마감주와 붙이면 착시)
+    pwk_closed = [p for p in pwk_all if p != latest_wk] if wk_partial else pwk_all
+    sel = pwk_closed[-1] if pwk_closed else (pwk_all[-1] if pwk_all else None)
     if sel:
         render_insight(insight_product(sel))   # 상단 전체 요약(파란 박스)
         # 영업별 소계 요약(회색 줄)
