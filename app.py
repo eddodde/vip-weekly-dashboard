@@ -1455,10 +1455,21 @@ def final_direction(wk_all, cur_mo, cutoff):
     gw = week_pretty(geum) if geum else "금주"
     seas = yoy(_wk_sales(PREV, geum), _wk_sales(PREV, period)) if geum else None
     last = last_daily_date()
-    up = upcoming_major(last, horizon=25)                   # 실제 올해 행사
-    ge = next((e for e in up if e[1] <= last + datetime.timedelta(days=7)), None)   # 금주 행사
+    up = upcoming_major(last, horizon=25)                   # 올해 '예정'(시작 전) 전관행사
+    # 이미 시작·미종료인 '진행 중' 전관행사는 upcoming에 안 잡힘 → 별도 탐지, 실제 실적으로 전망
+    _st = sorted([o for o in event_occurrences(CUR, only_major=True) if o[0] <= last], key=lambda o: o[0])
+    ip = _st[-1] if _st and _st[-1][1] > last else None
+    ip_yoy = ip_rem = ip_elapsed = None
+    if ip:
+        _ceff = min(ip[1], last); ip_elapsed = (_ceff - ip[0]).days + 1; ip_rem = (ip[1] - last).days
+        _pv = find_prior_event(ip[2], ip[0])
+        if _pv:
+            _peff = _pv[0] + datetime.timedelta(days=ip_elapsed - 1)
+            ip_yoy = yoy(range_metric(SALES, CUR, ip[0], _ceff), range_metric(SALES, PREV, _pv[0], _peff))
+    ge = next((e for e in up if e[1] <= last + datetime.timedelta(days=7)), None)   # 금주 시작 예정 행사
     later = [e for e in up if not ge or e[1] > ge[1]]
-    ce = later[0] if later else None                        # 이후 다음 행사
+    ce = later[0] if later else None
+    cur_ev = ip or ge                                       # 진행중 우선, 없으면 예정                        # 이후 다음 행사
 
     dau, cr, aov = comp.get("DAU"), comp.get("CR"), comp.get("객단가")
     drags = [k for k in ("DAU", "CR", "객단가") if comp.get(k, 0) < 0]
@@ -1475,20 +1486,25 @@ def final_direction(wk_all, cur_mo, cutoff):
                     f"→ 새는 곳은 <b>상단(방문)·중단(전환) 퍼널</b>, 고가치 구매층은 유지")
     diag += insight_dau(period)     # DAU 지속성·주도채널·평상시 방문
     # 금주 액션(진행중): 전환(CR)을 최우선으로
-    if tactical and ge:
-        now.append(f"<b>{ge[0]} 고트래픽에 전환(CR) 화력 집중</b> — {DRIVER_ACTION['CR']} "
-                   f"(CR이 방문만큼 빠졌고, 방문 몰릴 때 즉시 만회 가능)")
+    if tactical and cur_ev:
+        now.append(f"<b>{cur_ev[0]} 기간 전환(CR) 화력 집중</b> — {DRIVER_ACTION['CR']} "
+                   f"(CR이 방문만큼 빠졌고, 행사 유입객 전환이 즉효 레버)")
     else:
         now.append(f"구매전환 지키기 — {DRIVER_ACTION['CR']}")
     if own_worst:
         now.append(f"자사 부진 <b>{own_worst}</b> 구매전환(시크릿 혜택·기획전) + 잘 나가는 카테고리 밀어주기")
     now.append(f"방문(DAU)은 구조적 하락 → 행사 유입객을 상시 재방문으로 묶기(앱 푸시 재동의·개인화 홈)")
-    if ge:
-        now.append(f"<b>금주 {ge[0]}</b>({ge[1].month}/{ge[1].day} 진행중) 사전 알림톡·고관여 타겟 집중")
+    if cur_ev:
+        now.append(f"<b>금주 {cur_ev[0]}</b>({'진행중·~' if ip else '예정 '}{cur_ev[1].month}/{cur_ev[1].day}) "
+                   f"사전 알림톡·고관여 타겟 집중")
 
-    # 전망 ① 금주 절대수준: 작년 행사주(주차별 실적) 반등폭을 올해 지난주에 적용
-    evnm = ge[0] if ge else "행사"
-    if geum:
+    # 전망 ① 금주 절대수준. 진행 중 행사면 '실제 실적'으로, 예정 행사면 '작년 패턴'으로 예측
+    evnm = cur_ev[0] if cur_ev else "행사"
+    if ip and ip_yoy is not None:
+        nxt.append(f"금주 <b>{ip[2]}</b> 진행 중 — {ip_elapsed}일차까지 거래액 전년비 <b>{_pct(ip_yoy)}</b>"
+                   f"(전년 동일 행사 대비)로 <b>작년 행사 반등 패턴에 미달</b>. 잔여 {ip_rem}일 반등 없으면 행사주도 전년비 마이너스 마감")
+        nxt.append(f"→ {ip[2]} 잔여기간 <b>전환(CR)·타겟 리텐션으로 낙폭 축소</b>가 관건(행사 자체는 양년 공통이라 증분 액션이 격차 결정)")
+    elif geum:
         lp, lg, tp = _wk_sales(PREV, period), _wk_sales(PREV, geum), _wk_sales(CUR, period)
         if lp and lg and tp:
             wowL = lg / lp - 1
