@@ -1644,33 +1644,65 @@ if fc and fc["yoy"] is not None:
         f"<br><span style='color:#93a0b3'>근거: {basis}</span></div>",
         unsafe_allow_html=True)
 
-# 하단 참고: 구조 진단(수동 갱신 — 2026.7월 심층분석 요약. 상황 변하면 이 블록 업데이트)
+# 하단 참고: 구조 진단 — 시드에서 계산 가능한 지표(당월 MTD·방문율·진행 행사)는 자동 갱신,
+# 외부 파일 기반 결론(브랜드 밴드·주문건수·코호트: 별도 심층분석)만 정적(기준일 표기).
+_dg = last_daily_date()
+_dg_c = yoy(month_value("일평균고객수", CUR, cur_mo, cutoff), month_value("일평균고객수", PREV, cur_mo, cutoff)) if cur_mo else None
+_dg_a = yoy(month_value("일평균객단가", CUR, cur_mo, cutoff), month_value("일평균객단가", PREV, cur_mo, cutoff)) if cur_mo else None
+_dg_s = yoy(month_value("일평균거래액", CUR, cur_mo, cutoff), month_value("일평균거래액", PREV, cur_mo, cutoff)) if cur_mo else None
+_dg_cr = yoy(month_value("CR", CUR, cur_mo, cutoff), month_value("CR", PREV, cur_mo, cutoff)) if cur_mo else None
+_dg_mb = yoy(dmean("유효회원수", CUR, cur_mo, cutoff), dmean("유효회원수", PREV, cur_mo, cutoff)) if cur_mo else None
+_u26, _m26 = dmean("DAU", CUR, cur_mo, cutoff), dmean("유효회원수", CUR, cur_mo, cutoff)
+_u25, _m25 = dmean("DAU", PREV, cur_mo, cutoff), dmean("유효회원수", PREV, cur_mo, cutoff)
+_dg_vr = f"{_u25/_m25*100:.1f}→{_u26/_m26*100:.1f}%" if all(x for x in (_u26, _m26, _u25, _m25)) else "—"
+# 진행 중 전관행사 일차별 전년비(경과일 정렬) — 자동
+_dg_ev = ""
+_ipo = sorted([o for o in event_occurrences(CUR, only_major=True) if _dg and o[0] <= _dg], key=lambda o: o[0])
+_ipo = _ipo[-1] if _ipo and _ipo[-1][1] > _dg else None
+if _ipo:
+    _pvv = find_prior_event(_ipo[2], _ipo[0])
+    if _pvv:
+        _el = (min(_ipo[1], _dg) - _ipo[0]).days + 1
+        _days = []
+        for _i in range(min(_el, 8)):
+            _cd_ = _ipo[0] + datetime.timedelta(days=_i)
+            _pd_ = _pvv[0] + datetime.timedelta(days=_i)
+            _yy = yoy(range_metric(SALES, CUR, _cd_, _cd_), range_metric(SALES, PREV, _pd_, _pd_))
+            if _yy is not None:
+                _days.append(f"{_i+1}일차 {_pct(_yy)}")
+        _cum = yoy(range_metric(SALES, CUR, _ipo[0], min(_ipo[1], _dg)),
+                   range_metric(SALES, PREV, _pvv[0], _pvv[0] + datetime.timedelta(days=_el - 1)))
+        if _days:
+            _dg_ev = (f"<br>· <b>{_ipo[2]}({_ipo[0].month}/{_ipo[0].day}~) 진행 중: "
+                      + " → ".join(_days) + f"</b> (누적 {_pct(_cum)}, 전년 동일 행사 경과일 정렬) — "
+                      "1일차 부진은 행사탭(EP) 정상·직접 채널 부진 구도로 상시 트래픽 구조 문제의 반복")
 st.markdown(
     "<div style='font-size:12px;line-height:1.7;color:#5b4a32;background:#fdf9f1;"
     "border-left:3px solid #d9b45c;padding:8px 12px;border-radius:4px;margin-top:6px'>"
-    "🔍 <b>참고 · 구조 진단 (7월 심층분석 요약)</b> <span style='color:#a08b5f'>— 분석 기준 ~7/21 집계(브랜드 단위 수치만 ~7/19)</span>"
-    "<br>· <b>고객수 감소(△13.0%)는 저단가 구매 위축이 주도</b> — 5만 미만 브랜드 구매고객 △32%, 5~20만 △11~15%, "
-    "20~40만 프리미엄대만 +4%. 객단가 상승(+10.4%)은 그 반사효과(총거래액 미성장·퍼널 위축 → 프리미엄화 아님)"
+    f"🔍 <b>참고 · 구조 진단</b> <span style='color:#a08b5f'>— 지표 자동 갱신(~{cur_mo}/{cutoff}) · "
+    "브랜드·코호트 수치는 7월 심층분석(~7/19 브랜드 집계) 기준</span>"
+    f"<br>· <b>고객수 감소({_pct(_dg_c)})는 저단가 구매 위축이 주도</b> — 5만 미만 브랜드 구매고객 △32%, 5~20만 △11~15%, "
+    f"20~40만 프리미엄대만 +4%(20만↑ 전체는 신규 유입 포함 +13%). 객단가 상승({_pct(_dg_a)})은 그 반사효과"
+    "(총거래액 미성장·퍼널 위축 → 프리미엄화 아님)"
     "<br>· <b>객단가 상승 분해(주문건수 기준): 인당 구매횟수 불변(1.25건), 건당 금액만 +12.3%</b> — "
     "그중 브랜드 내 단가 인상분은 중앙값 +4.5%(41%는 하락)로 일부일 뿐, 대부분은 고가 브랜드·아이템으로의 구매 쏠림"
-    "<br>· <b>슈즈 급감(최근 주도 △44%)은 '25.9월 핏플랍 철수 공백</b>이 샌들 성수기에 표면화된 것"
+    "<br>· <b>슈즈 급감은 '25.9월 핏플랍 철수 공백</b>이 샌들 성수기에 표면화된 것"
     "(전년 슈즈 거래액의 53%, 핏플랍 제외 시 슈즈 +27% 성장) — 7~8월 지속, 9월부터 기저 소멸. "
     "저가 브랜드 축소도 저가존 집중(10만 미만 △12%·−163개 vs 10만 이상 △1~3%)"
     "<br>· <b>핏플랍 기구매 VIP 15,077명 CRM 실측: 80%는 플랫폼 잔존</b>(활동고객 인당 240만 구매), "
     "28%만 타 슈즈로 이동(콜한·킨·우포스 순), <b>20%(2,958명)는 올해 미구매(완전 이탈)</b> — "
-    "이탈이 아닌 '슈즈 지갑 닫힘'이 본질. 윈백(2,958명)·샌들 크로스셀(잔존 슈즈 미구매 7,859명) 타겟 여지"
+    "이탈이 아닌 '슈즈 지갑 닫힘'(71.7%)이 본질. 윈백(2,958명)·샌들 크로스셀(잔존 슈즈 미구매 7,859명) 타겟 여지"
     "<br>· <b>여름은 저단가 상품이 전환(CR)을 견인하는 시즌</b>(객단가↔CR 역상관 △0.76)이라 "
     "저단가 구색 공백이 6월부터 CR 역신장으로 전이. 행사·앱 사용성이 주요인일 가능성은 낮음 — "
-    "행사 문제라면 행사일이 더 빠져야 하나 행사일/비행사일 하락폭 동일, 앱 문제라면 전 카테고리 "
-    "동반 하락이어야 하나 여성·뷰티·리빙 상품CR은 +4~5% 상승(저가 카테만 하락)"
+    "행사일/비행사일 하락폭 동일, 여성·뷰티·리빙 상품CR은 +4~5% 상승(저가 카테만 하락)"
     "<br>· <b>상반기 CR 우위(+5~10%)는 전년 PUSH·광고 전환 개선의 기저효과</b>로 6월 소진. "
-    "직접 채널 CR 6월부터 하락 지속(7월 주간 △4~12%), 광고는 유입 확대에도 CR 약세(효율 저하)"
-    "<br>· <b>방문 기반: 회원 수 유지(△0.7%), 방문율만 하락(34.2→31.2%)</b> — 감소분은 직접·PUSH 채널(습관성 방문, 도달 △14~15%). "
-    "PUSH 전환은 주별 등락(△9~+6%)이나 도달 회복이 우선 과제"
-    "<br>· <b>SUMMER VACANCE(7/20~) 1일차 △24% → 2일차 △9%로 회복</b> — 1일차 부진은 행사탭(EP) 정상(+9%)·직접 채널 붕괴(△32%)로, "
-    "행사가 아닌 상시 트래픽 구조 문제의 반복. 2일차 회복분은 바버 라이브(7/21) 겹쳐 별도 검증 예정"
-    "<br>· <b>현 구조는 플러스 전환 문턱이 낮음</b> — 객단가(+10.4%)가 DAU 감소를 상쇄, 거래액 △3.8%의 대부분이 CR △4% 몫. "
-    "CR을 전년 수준으로만 회복해도 거래액 전년비 플러스 전환 가능(20만↑ 조건부 전환 경로, 쿠션 유지되는 7~8월 한시)"
+    "직접 채널 CR 6월부터 하락 지속, 광고는 유입 확대에도 CR 약세(효율 저하)"
+    f"<br>· <b>방문 기반: 회원 수 유지({_pct(_dg_mb)}), 방문율만 하락({_dg_vr})</b> — 감소분은 직접·PUSH 채널(습관성 방문). "
+    "PUSH 전환은 주별 등락이나 도달 회복이 우선 과제"
+    f"{_dg_ev}"
+    f"<br>· <b>현 구조는 플러스 전환 문턱이 낮음</b> — 객단가({_pct(_dg_a)})가 DAU 감소를 상쇄, "
+    f"거래액 {_pct(_dg_s)}의 대부분이 CR {_pct(_dg_cr)} 몫. CR을 전년 수준으로만 회복해도 거래액 전년비 플러스 전환 가능"
+    "(20만↑ 조건부 전환 경로, 쿠션 유지되는 7~8월 한시)"
     "</div>", unsafe_allow_html=True)
 
 # ---- 3) 주차별 ----
