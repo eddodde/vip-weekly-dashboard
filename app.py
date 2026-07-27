@@ -874,6 +874,11 @@ def _mdrange(lo, hi):
     return f"{lo.month}/{lo.day}" if lo == hi else f"{lo.month}/{lo.day}~{hi.month}/{hi.day}"
 
 
+def sell_end(cs, ce):
+    """전관행사 종료 표기는 'M/D 10시'(오전 마감) 관례 → 실질 마지막 판매일 = 종료 표기일 − 1."""
+    return ce - datetime.timedelta(days=1) if ce > cs else ce
+
+
 def event_period_table(cs, ce, ps, pe, ms=None, me=None):
     """전관행사 '기간' 비교: 올해(cs~ce) vs 전년(ps~pe). ms/me 주면 직전월 동종 행사(전월비)도 추가."""
     b26, byoy, b25, bmv, bmr = [], [], [], [], []
@@ -1458,18 +1463,22 @@ def final_direction(wk_all, cur_mo, cutoff):
     up = upcoming_major(last, horizon=25)                   # 올해 '예정'(시작 전) 전관행사
     # 이미 시작·미종료인 '진행 중' 전관행사는 upcoming에 안 잡힘 → 별도 탐지, 실제 실적으로 전망
     _st = sorted([o for o in event_occurrences(CUR, only_major=True) if o[0] <= last], key=lambda o: o[0])
-    ip = _st[-1] if _st and _st[-1][1] > last else None
+    _lastev = _st[-1] if _st else None
+    _lsend = sell_end(_lastev[0], _lastev[1]) if _lastev else None   # 실질 마지막 판매일(10시 마감 관례)
+    ip = _lastev if _lastev and last < _lsend else None              # 진행 중
+    je = _lastev if (_lastev and not ip and 0 <= (last - _lsend).days <= 2) else None   # 직전 종료(결과 공유)
     ip_yoy = ip_rem = ip_elapsed = None
-    if ip:
-        _ceff = min(ip[1], last); ip_elapsed = (_ceff - ip[0]).days + 1; ip_rem = (ip[1] - last).days
-        _pv = find_prior_event(ip[2], ip[0])
+    for _ev in ([ip] if ip else ([je] if je else [])):
+        _ceff = min(_lsend, last); ip_elapsed = (_ceff - _ev[0]).days + 1; ip_rem = (_lsend - last).days
+        _pv = find_prior_event(_ev[2], _ev[0])
         if _pv:
             _peff = _pv[0] + datetime.timedelta(days=ip_elapsed - 1)
-            ip_yoy = yoy(range_metric(SALES, CUR, ip[0], _ceff), range_metric(SALES, PREV, _pv[0], _peff))
+            ip_yoy = yoy(range_metric(SALES, CUR, _ev[0], _ceff), range_metric(SALES, PREV, _pv[0], _peff))
     ge = next((e for e in up if e[1] <= last + datetime.timedelta(days=7)), None)   # 금주 시작 예정 행사
     later = [e for e in up if not ge or e[1] > ge[1]]
     ce = later[0] if later else None
-    cur_ev = ip or ge                                       # 진행중 우선, 없으면 예정                        # 이후 다음 행사
+    # 현재 컨텍스트 행사명·날짜(진행중 > 직전종료 > 예정) — occurrences 튜플은 (시작,종료,이름), upcoming은 (이름,날짜)
+    cur_nm = ip[2] if ip else (je[2] if je else (ge[0] if ge else None))
 
     dau, cr, aov = comp.get("DAU"), comp.get("CR"), comp.get("객단가")
     drags = [k for k in ("DAU", "CR", "객단가") if comp.get(k, 0) < 0]
@@ -1486,24 +1495,30 @@ def final_direction(wk_all, cur_mo, cutoff):
                     f"→ 새는 곳은 <b>상단(방문)·중단(전환) 퍼널</b>, 고가치 구매층은 유지")
     diag += insight_dau(period)     # DAU 지속성·주도채널·평상시 방문
     # 금주 액션(진행중): 전환(CR)을 최우선으로
-    if tactical and cur_ev:
-        now.append(f"<b>{cur_ev[0]} 기간 전환(CR) 화력 집중</b> — {DRIVER_ACTION['CR']} "
+    if tactical and (ip or ge):
+        now.append(f"<b>{cur_nm} 기간 전환(CR) 화력 집중</b> — {DRIVER_ACTION['CR']} "
                    f"(CR이 방문만큼 빠졌고, 행사 유입객 전환이 즉효 레버)")
     else:
         now.append(f"구매전환 지키기 — {DRIVER_ACTION['CR']}")
     if own_worst:
         now.append(f"자사 부진 <b>{own_worst}</b> 구매전환(시크릿 혜택·기획전) + 잘 나가는 카테고리 밀어주기")
     now.append(f"방문(DAU)은 구조적 하락 → 행사 유입객을 상시 재방문으로 묶기(앱 푸시 재동의·개인화 홈)")
-    if cur_ev:
-        now.append(f"<b>금주 {cur_ev[0]}</b>({'진행중·~' if ip else '예정 '}{cur_ev[1].month}/{cur_ev[1].day}) "
-                   f"사전 알림톡·고관여 타겟 집중")
+    if ip:
+        now.append(f"<b>금주 {cur_nm}</b>(진행중 · 판매 마지막날 {_lsend.month}/{_lsend.day}) 알림톡·고관여 타겟 집중")
+    elif ge:
+        now.append(f"<b>금주 {cur_nm}</b>({ge[1].month}/{ge[1].day} 시작 예정) 사전 알림톡·고관여 타겟 집중")
 
-    # 전망 ① 금주 절대수준. 진행 중 행사면 '실제 실적'으로, 예정 행사면 '작년 패턴'으로 예측
-    evnm = cur_ev[0] if cur_ev else "행사"
+    # 전망 ① 금주 절대수준. 진행중=실제 실적, 직전 종료=마감 결과, 예정=작년 패턴 예측
+    evnm = cur_nm or "행사"
+    # 전술(CR) 레버가 딛고 설 행사: 진행중이면 그 행사, 종료됐으면 다음 예정 행사
+    evnm_t = ip[2] if ip else (ge[0] if ge else (ce[0] if ce else "차기 행사"))
     if ip and ip_yoy is not None:
-        nxt.append(f"금주 <b>{ip[2]}</b> 진행 중 — {ip_elapsed}일차까지 거래액 전년비 <b>{_pct(ip_yoy)}</b>"
-                   f"(전년 동일 행사 대비)로 <b>작년 행사 반등 패턴에 미달</b>. 잔여 {ip_rem}일 반등 없으면 행사주도 전년비 마이너스 마감")
-        nxt.append(f"→ {ip[2]} 잔여기간 <b>전환(CR)·타겟 리텐션으로 낙폭 축소</b>가 관건(행사 자체는 양년 공통이라 증분 액션이 격차 결정)")
+        nxt.append(f"금주 <b>{cur_nm}</b> 진행 중 — {ip_elapsed}일차까지 거래액 전년비 <b>{_pct(ip_yoy)}</b>"
+                   f"(전년 동일 행사 대비). 잔여 {ip_rem}일 반등 없으면 행사주도 전년비 마이너스 마감")
+        nxt.append(f"→ {cur_nm} 잔여기간 <b>전환(CR)·타겟 리텐션으로 낙폭 축소</b>가 관건(행사 자체는 양년 공통이라 증분 액션이 격차 결정)")
+    elif je and ip_yoy is not None:
+        nxt.append(f"<b>{cur_nm} 종료</b>({_mdrange(je[0], _lsend)}) — 최종 거래액 전년비 <b>{_pct(ip_yoy)}</b>"
+                   f"(전년 동일 행사 대비). 행사 상세는 5)행사별 참고")
     elif geum:
         lp, lg, tp = _wk_sales(PREV, period), _wk_sales(PREV, geum), _wk_sales(CUR, period)
         if lp and lg and tp:
@@ -1518,8 +1533,8 @@ def final_direction(wk_all, cur_mo, cutoff):
         scen = sales - cr            # 전환을 작년 수준으로 회복(CR 격차 만회)
         half = sales - cr / 2
         nxt.append(f"이번 주 <b>즉효 레버는 전환(CR {_pct(cr)})</b> — 방문(DAU)은 9주째 구조적이라 단기 반전이 어렵지만, "
-                   f"전환은 {evnm} 고트래픽 위에서 전술로 당길 수 있음")
-        nxt.append(f"{evnm}주 전환율을 작년 수준까지 회복하면 거래액 전년비 <b>{_pct(sales)} → {_pct(scen)}</b>"
+                   f"전환은 {evnm_t} 고트래픽 위에서 전술로 당길 수 있음")
+        nxt.append(f"{evnm_t}주 전환율을 작년 수준까지 회복하면 거래액 전년비 <b>{_pct(sales)} → {_pct(scen)}</b>"
                    f"(절반만 잡아도 {_pct(half)}) — 방문 회복(구조)은 다음 분기 과제로 병행")
     if ce:
         nxt.append(f"이후 <b>{ce[0]}</b>({ce[1].month}/{ce[1].day}) 전관행사가 이어져 반등 흐름 연장 가능")
@@ -1531,7 +1546,7 @@ def final_direction(wk_all, cur_mo, cutoff):
         if tactical:
             scen = sales - cr
             head = (f"지난주 {_pct(sales)}는 <span class='k'>방문·전환 동반 부진</span> — 방문(DAU)은 구조적이라 오래 걸리니, "
-                    f"이번 주 <span class='k'>{evnm} 고트래픽에서 '전환(CR)'을 끌어올리는 것</span>이 즉효 레버"
+                    f"이번 주 <span class='k'>{evnm_t} 고트래픽에서 '전환(CR)'을 끌어올리는 것</span>이 즉효 레버"
                     f"(작년 전환율 회복 시 <span class='k'>{_pct(sales)}→{_pct(scen)}</span>)")
         else:
             head = f"지난주 거래액 {_pct(sales)} — 방문(DAU) 구조 회복이 근본 과제"
@@ -1655,27 +1670,32 @@ _dg_mb = yoy(dmean("유효회원수", CUR, cur_mo, cutoff), dmean("유효회원�
 _u26, _m26 = dmean("DAU", CUR, cur_mo, cutoff), dmean("유효회원수", CUR, cur_mo, cutoff)
 _u25, _m25 = dmean("DAU", PREV, cur_mo, cutoff), dmean("유효회원수", PREV, cur_mo, cutoff)
 _dg_vr = f"{_u25/_m25*100:.1f}→{_u26/_m26*100:.1f}%" if all(x for x in (_u26, _m26, _u25, _m25)) else "—"
-# 진행 중 전관행사 일차별 전년비(경과일 정렬) — 자동
+# 진행 중/직전 종료 전관행사 일차별 전년비(경과일 정렬) — 자동. 실질 마지막 판매일(10시 마감) 기준
 _dg_ev = ""
 _ipo = sorted([o for o in event_occurrences(CUR, only_major=True) if _dg and o[0] <= _dg], key=lambda o: o[0])
-_ipo = _ipo[-1] if _ipo and _ipo[-1][1] > _dg else None
+_ipo = _ipo[-1] if _ipo else None
 if _ipo:
-    _pvv = find_prior_event(_ipo[2], _ipo[0])
-    if _pvv:
-        _el = (min(_ipo[1], _dg) - _ipo[0]).days + 1
-        _days = []
-        for _i in range(min(_el, 8)):
-            _cd_ = _ipo[0] + datetime.timedelta(days=_i)
-            _pd_ = _pvv[0] + datetime.timedelta(days=_i)
-            _yy = yoy(range_metric(SALES, CUR, _cd_, _cd_), range_metric(SALES, PREV, _pd_, _pd_))
-            if _yy is not None:
-                _days.append(f"{_i+1}일차 {_pct(_yy)}")
-        _cum = yoy(range_metric(SALES, CUR, _ipo[0], min(_ipo[1], _dg)),
-                   range_metric(SALES, PREV, _pvv[0], _pvv[0] + datetime.timedelta(days=_el - 1)))
-        if _days:
-            _dg_ev = (f"<br>· <b>{_ipo[2]}({_ipo[0].month}/{_ipo[0].day}~) 진행 중: "
-                      + " → ".join(_days) + f"</b> (누적 {_pct(_cum)}, 전년 동일 행사 경과일 정렬) — "
-                      "1일차 부진은 행사탭(EP) 정상·직접 채널 부진 구도로 상시 트래픽 구조 문제의 반복")
+    _se_ = sell_end(_ipo[0], _ipo[1])
+    _inp = _se_ > _dg
+    _recent = 0 <= (_dg - _se_).days <= 5            # 종료 후 5일까지는 결과 유지 표시
+    if (_inp or _recent):
+        _pvv = find_prior_event(_ipo[2], _ipo[0])
+        if _pvv:
+            _el = (min(_se_, _dg) - _ipo[0]).days + 1
+            _days = []
+            for _i in range(min(_el, 8)):
+                _cd_ = _ipo[0] + datetime.timedelta(days=_i)
+                _pd_ = _pvv[0] + datetime.timedelta(days=_i)
+                _yy = yoy(range_metric(SALES, CUR, _cd_, _cd_), range_metric(SALES, PREV, _pd_, _pd_))
+                if _yy is not None:
+                    _days.append(f"{_i+1}일차 {_pct(_yy)}")
+            _cum = yoy(range_metric(SALES, CUR, _ipo[0], min(_se_, _dg)),
+                       range_metric(SALES, PREV, _pvv[0], _pvv[0] + datetime.timedelta(days=_el - 1)))
+            _stt = "진행 중" if _inp else f"종료({_mdrange(_ipo[0], _se_)})"
+            if _days:
+                _dg_ev = (f"<br>· <b>{_ipo[2]} {_stt}: " + " → ".join(_days)
+                          + f"</b> (누적 {_pct(_cum)}, 전년 동일 행사 경과일 정렬) — "
+                          "1일차 부진은 행사탭(EP) 정상·직접 채널 부진 구도로 상시 트래픽 구조 문제의 반복")
 st.markdown(
     "<div style='font-size:12px;line-height:1.7;color:#5b4a32;background:#fdf9f1;"
     "border-left:3px solid #d9b45c;padding:8px 12px;border-radius:4px;margin-top:6px'>"
@@ -1730,21 +1750,24 @@ _started = sorted([o for o in event_occurrences(CUR, only_major=True) if _ld and
 
 
 def _evsel_label(o):
-    if o[1] > _ld:                                   # 진행중
+    _s = sell_end(o[0], o[1])                        # 실질 마지막 판매일('M/D 10시' 마감 관례)
+    if _s > _ld:                                     # 진행중
         return f"{o[2]} · 진행중 {(_ld - o[0]).days + 1}일차 ({_mdrange(o[0], _ld)})"
-    return f"{o[2]} · 종료 ({_mdrange(o[0], o[1])})"
+    return f"{o[2]} · 종료 ({_mdrange(o[0], _s)})"
 
 
 if _started:
     sel_ev = st.selectbox("전관행사 선택", _started[::-1], index=0, key="ev_week", format_func=_evsel_label)
     cs, ce, nm = sel_ev[0], sel_ev[1], sel_ev[2]
-    inprog = ce > _ld
-    ce_eff = min(ce, _ld)                            # 올해 유효 종료일(진행중이면 집계일)
+    _se = sell_end(cs, ce)                           # 실질 마지막 판매일(종료 표기 'M/D 10시' 관례)
+    inprog = _se > _ld
+    ce_eff = min(_se, _ld)                           # 올해 유효 종료일(진행중이면 집계일)
     elapsed = (ce_eff - cs).days + 1
     prev = find_prior_event(nm, cs)
     if prev:
         ps, pe, pn = prev
-        pe_eff = (ps + datetime.timedelta(days=elapsed - 1)) if inprog else pe   # 전년 같은 경과일
+        # 전년도 같은 규칙(실질 판매일)으로 정렬: 진행중=같은 경과일, 종료=전년 실질 판매기간 전체
+        pe_eff = (ps + datetime.timedelta(days=elapsed - 1)) if inprog else sell_end(ps, pe)
         unit = f"{nm} {elapsed}일차까지" if inprog else f"{nm} 기간"
         pm = find_prev_month_event(nm, cs)          # 직전월 동종 행사(L+DAY 등)
         ms = me = None
