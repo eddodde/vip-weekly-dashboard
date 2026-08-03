@@ -1236,14 +1236,28 @@ def forecast_month(mo, cutoff):
     mtd26, mtd25, rem25 = s(CUR, 1, cutoff), s(PREV, 1, cutoff), s(PREV, cutoff + 1, dim)
     if mtd25 <= 0:
         return None
-    # 잔여일은 전년 동월 실적(반복 행사 포함)에 올해 MTD 수준(전년비 ratio)을 반영.
-    # 월 단위 집계라 행사가 1~2일 이동해도 총액 영향은 미미 → 전년비는 MTD와 일관(=ratio−1).
-    ratio = mtd26 / mtd25
+    # 잔여일은 전년 동월 실적(반복 행사 포함)에 올해 수준(전년비 ratio)을 반영.
+    # ★ 월초엔 MTD 표본이 며칠뿐이라 요일 편향(주말만 포함 등)·노이즈로 ratio가 튄다
+    #   → MTD 14일 미만이면 '최근 28일 전년동요일 대비 추세'와 가중 블렌딩(표본이 쌓일수록 MTD 비중↑).
+    mtd_ratio = mtd26 / mtd25
+    ratio, blended = mtd_ratio, False
+    if cutoff < 14:
+        c28 = p28 = 0.0
+        for i in range(28):
+            d0 = datetime.date(CUR, mo, cutoff) - datetime.timedelta(days=i)
+            d1 = d0 - datetime.timedelta(days=364)
+            a, b_ = dv(CUR, d0.month, d0.day), dv(PREV, d1.month, d1.day)
+            if a and b_:
+                c28 += a; p28 += b_
+        if p28 > 0:
+            w = cutoff / 14.0                      # MTD 표본 비중(0~1)
+            ratio = w * mtd_ratio + (1 - w) * (c28 / p28)
+            blended = True
     proj_total = mtd26 + rem25 * ratio
     proj_daily = proj_total / dim
     ev = [nm for nm, d in upcoming_major(datetime.date(CUR, mo, cutoff), horizon=dim - cutoff)]
     return dict(daily=proj_daily, total=proj_total, dim=dim, ratio=ratio, rem=dim - cutoff,
-                yoy=ratio - 1, events=ev)
+                yoy=ratio - 1, events=ev, blended=blended, mtd_ratio=mtd_ratio)
 
 
 def insight_trend(wk_all):
@@ -1647,8 +1661,10 @@ st.markdown(monthly_table(cur_months, cutoff), unsafe_allow_html=True)
 fc = forecast_month(cur_mo, cutoff) if cur_mo else None
 if fc and fc["yoy"] is not None:
     basis = (f"{cur_mo}월 1~{cutoff}일 실적 + 잔여 {fc['rem']}일은 전년 동월 같은 일자 실적에 "
-             f"올해 MTD 수준(전년비 {fc['ratio']*100-100:+.0f}%)을 반영해 추정. "
-             f"전년 대비 행사 컨텐츠 동일·일자만 1~2일 이동 가정(월 총액 영향 미미)"
+             f"올해 수준(전년비 {fc['ratio']*100-100:+.0f}%)을 반영해 추정. "
+             + (f"※ MTD가 {cutoff}일뿐이라 요일 편향이 커, MTD({fc['mtd_ratio']*100-100:+.0f}%)와 "
+                f"최근 28일 추세를 가중 블렌딩한 값 적용. " if fc.get("blended") else "")
+             + f"전년 대비 행사 컨텐츠 동일·일자만 1~2일 이동 가정(월 총액 영향 미미)"
              + (f". 잔여기간 전년 반복 행사: {', '.join(fc['events'][:3])}" if fc["events"] else "") + ".")
     st.markdown(
         f"<div style='font-size:12px;line-height:1.55;color:#5b6472;background:#f7f9fc;"
