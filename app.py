@@ -1231,15 +1231,46 @@ def forecast_month(mo, cutoff):
     dim = calendar.monthrange(CUR, mo)[1]
     if cutoff >= dim:
         return None
-    def s(year, lo, hi):
+    def s_cal(year, lo, hi):                       # 달력 기준(전년 같은 '날짜')
         return sum(v for v in (dv(year, mo, d) for d in range(lo, hi + 1)) if v is not None)
-    mtd26, mtd25, rem25 = s(CUR, 1, cutoff), s(PREV, 1, cutoff), s(PREV, cutoff + 1, dim)
-    if mtd25 <= 0:
+
+    # 전년 같은 달의 요일별 평균(월 경계 보정용)
+    _byw = {}
+    for d in range(1, calendar.monthrange(PREV, mo)[1] + 1):
+        x = dv(PREV, mo, d)
+        if x is not None:
+            _byw.setdefault(datetime.date(PREV, mo, d).weekday(), []).append(x)
+    wavg = {w: sum(v) / len(v) for w, v in _byw.items()}
+
+    def s_wd(lo, hi):                              # 동요일 기준(전년 −364일) + 결측일수
+        tot = 0.0; miss = 0
+        for d in range(lo, hi + 1):
+            cd = datetime.date(CUR, mo, d)
+            p = cd - datetime.timedelta(days=364)
+            # ★ −364일이 월 경계를 넘으면 시즌이 달라짐(예: 8월 예측에 전년 9/1 가을 신상 유입)
+            #   → 그런 날은 '전년 같은 달의 같은 요일 평균'으로 대체해 시즌·요일 모두 정렬.
+            x = dv(PREV, p.month, p.day) if p.month == mo else wavg.get(cd.weekday())
+            if x is None:
+                x = wavg.get(cd.weekday())
+            if x is None:
+                miss += 1
+            else:
+                tot += x
+        return tot, miss
+
+    mtd26 = s_cal(CUR, 1, cutoff)
+    # ★ 기저는 '전년 동요일' 정렬이 정확(월별로 요일 구성이 밀려 달력 비교는 편향).
+    #   예: 2026-08은 월5·금4, 2025-08은 금5·월4 → 달력 기저가 2% 낮게 잡힘.
+    b_mtd, m1 = s_wd(1, cutoff)
+    b_rem, m2 = s_wd(cutoff + 1, dim)
+    aligned = (m1 == 0 and m2 == 0 and b_mtd > 0)
+    if not aligned:                                # 전년 동요일 결측(손상 제외 구간 등) → 달력 폴백
+        b_mtd, b_rem = s_cal(PREV, 1, cutoff), s_cal(PREV, cutoff + 1, dim)
+    if b_mtd <= 0:
         return None
-    # 잔여일은 전년 동월 실적(반복 행사 포함)에 올해 수준(전년비 ratio)을 반영.
-    # ★ 월초엔 MTD 표본이 며칠뿐이라 요일 편향(주말만 포함 등)·노이즈로 ratio가 튄다
-    #   → MTD 14일 미만이면 '최근 28일 전년동요일 대비 추세'와 가중 블렌딩(표본이 쌓일수록 MTD 비중↑).
-    mtd_ratio = mtd26 / mtd25
+    # 월초엔 MTD 표본이 며칠뿐이라 노이즈가 커 ratio가 튐
+    #   → MTD 14일 미만이면 '최근 28일(요일 4주기 포함) 추세'와 가중 블렌딩.
+    mtd_ratio = mtd26 / b_mtd
     ratio, blended = mtd_ratio, False
     if cutoff < 14:
         c28 = p28 = 0.0
@@ -1253,11 +1284,14 @@ def forecast_month(mo, cutoff):
             w = cutoff / 14.0                      # MTD 표본 비중(0~1)
             ratio = w * mtd_ratio + (1 - w) * (c28 / p28)
             blended = True
-    proj_total = mtd26 + rem25 * ratio
+    proj_total = mtd26 + b_rem * ratio
     proj_daily = proj_total / dim
+    # 전년비는 실제 비교 기준(전년 월 마감 = 달력 총액) 대비로 표기
+    cal_base = s_cal(PREV, 1, dim)
+    yoy = (proj_total / cal_base - 1) if cal_base > 0 else None
     ev = [nm for nm, d in upcoming_major(datetime.date(CUR, mo, cutoff), horizon=dim - cutoff)]
     return dict(daily=proj_daily, total=proj_total, dim=dim, ratio=ratio, rem=dim - cutoff,
-                yoy=ratio - 1, events=ev, blended=blended, mtd_ratio=mtd_ratio)
+                yoy=yoy, events=ev, blended=blended, mtd_ratio=mtd_ratio, aligned=aligned)
 
 
 def insight_trend(wk_all):
@@ -1660,11 +1694,13 @@ st.markdown(monthly_table(cur_months, cutoff), unsafe_allow_html=True)
 # 하단 참고: 예상 마감(추정치) — 작게, 표 아래에
 fc = forecast_month(cur_mo, cutoff) if cur_mo else None
 if fc and fc["yoy"] is not None:
-    basis = (f"{cur_mo}월 1~{cutoff}일 실적 + 잔여 {fc['rem']}일은 전년 동월 같은 일자 실적에 "
-             f"올해 수준(전년비 {fc['ratio']*100-100:+.0f}%)을 반영해 추정. "
-             + (f"※ MTD가 {cutoff}일뿐이라 요일 편향이 커, MTD({fc['mtd_ratio']*100-100:+.0f}%)와 "
+    basis = (f"{cur_mo}월 1~{cutoff}일 실적 + 잔여 {fc['rem']}일은 "
+             + ("전년 <b>동요일</b>(−364일) 실적" if fc.get("aligned") else "전년 동월 같은 일자 실적")
+             + f"에 올해 수준({fc['ratio']*100-100:+.0f}%)을 반영해 추정"
+             + ("(요일 구성 차이 보정, 월 경계일은 전년 같은 달 동일 요일 평균 사용)" if fc.get("aligned") else "") + ". "
+             + (f"※ MTD가 {cutoff}일뿐이라 표본이 짧아, MTD({fc['mtd_ratio']*100-100:+.0f}%)와 "
                 f"최근 28일 추세를 가중 블렌딩한 값 적용. " if fc.get("blended") else "")
-             + f"전년 대비 행사 컨텐츠 동일·일자만 1~2일 이동 가정(월 총액 영향 미미)"
+             + "전년비는 전년 월 마감(달력) 대비"
              + (f". 잔여기간 전년 반복 행사: {', '.join(fc['events'][:3])}" if fc["events"] else "") + ".")
     st.markdown(
         f"<div style='font-size:12px;line-height:1.55;color:#5b6472;background:#f7f9fc;"
