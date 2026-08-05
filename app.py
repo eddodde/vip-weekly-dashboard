@@ -1610,6 +1610,30 @@ def wk_label(p):
     if wk_partial and p == latest_wk and _ldt:
         return f"{lbl}(~{_ldt.month}/{_ldt.day})"
     return lbl
+
+
+def partial_line(kind="perf"):
+    """진행중 주 요약 한 줄. 완료주 인사이트와 섞이지 않게 [진행중] 배지로 구분 표기."""
+    if not wk_partial or not latest_wk:
+        return None
+    rows = ([("거래액", SALES), ("DAU", "DAU"), ("CR", "CR"), ("객단가", "일평균객단가")] if kind == "perf"
+            else [(nm, sg) for nm, sg in CH_ROWS if nm != "TTL"])
+    parts = []
+    for nm, key in rows:
+        if kind == "perf":
+            r = yoy(V("week", "overall", key, "TOTAL", "", CUR, latest_wk),
+                    V("week", "overall", key, "TOTAL", "", PREV, latest_wk))
+        else:
+            r = yoy(V("week", "overall", SALES, key, "", CUR, latest_wk),
+                    V("week", "overall", SALES, key, "", PREV, latest_wk))
+        if r is not None:
+            parts.append(f"{nm} {_pct(r)}")
+    if not parts:
+        return None
+    return ('<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
+            'font-weight:600;margin-right:6px">진행중</span>'
+            f'<b>{wk_label(latest_wk)}</b> ' + " · ".join(parts)
+            + ' <span style="color:#93a0b3">— 부분 집계(전년 동주 전체 대비)라 참고용</span>')
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
@@ -1761,18 +1785,16 @@ st.markdown(
 
 # ---- 3) 주차별 ----
 st.header("3) 주차별", anchor="s3")
-render_insight(insight_perf("week", snap_wk, f"최신 완료주({week_pretty(snap_wk)})"))
-if wk_partial:
-    st.caption(f"※ 인사이트는 **최신 완료주({week_pretty(snap_wk)})** 기준 · "
-               f"표의 **{wk_label(latest_wk)}**는 진행중(부분 집계)이라 전년 동주 전체와 비교돼 전년비는 참고용")
+_b3 = insight_perf("week", snap_wk, f"최신 완료주({week_pretty(snap_wk)})")
+_p3 = partial_line("perf")
+render_insight(_b3 + [_p3] if _p3 else _b3)
 st.markdown(perf_table("week", wk_periods, wk_periods, wk_label, bold_period=latest_wk), unsafe_allow_html=True)
 
 # ---- 4) 주차별·채널별 ----
 st.header("4) 주차별·채널별", anchor="s4")
-render_insight(insight_channel(snap_wk))
-if wk_partial:
-    st.caption(f"※ 인사이트는 **최신 완료주({week_pretty(snap_wk)})** 기준 · "
-               f"**{wk_label(latest_wk)}** 열은 진행중(부분 집계)")
+_b4 = insight_channel(snap_wk)
+_p4 = partial_line("channel")
+render_insight(_b4 + [_p4] if _p4 else _b4)
 for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("③ CR", "CR")]:
     st.subheader(tag)
     st.markdown(channel_table(met, wk_periods, bold_period=latest_wk, pretty=wk_label), unsafe_allow_html=True)
@@ -1832,9 +1854,12 @@ if not df[df.perspective == "product"].empty:
     pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
     sel = pwk_all[-1] if pwk_all else None            # 최신 주(진행중이면 라벨에 '(~m/d)')
     if sel:
-        if wk_partial and sel == latest_wk:
-            st.caption(f"※ **{wk_label(sel)}**는 진행중(부분 집계) — 전년 동주 전체와 비교되므로 전년비는 참고용")
-        render_insight(insight_product(sel))   # 상단 전체 요약(파란 박스)
+        _b6 = insight_product(sel)             # 상단 전체 요약(파란 박스)
+        if wk_partial and sel == latest_wk and _b6:
+            _b6 = ['<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
+                   'font-weight:600;margin-right:6px">진행중</span>'
+                   f'<b>{wk_label(sel)}</b> 기준 <span style="color:#93a0b3">— 부분 집계(전년 동주 전체 대비)라 참고용</span>'] + _b6
+        render_insight(_b6)
         # 영업별 소계 요약(회색 줄)
         _subs = []
         for _ye in YEONG:
