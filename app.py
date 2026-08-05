@@ -1165,7 +1165,7 @@ def _insight_sales(g, unit_label, event=False):
     defend = [k for k in comp if (comp[k] > 0) == neg]
     lead = "가 하락을 주도" if neg else "가 성장을 견인"
     also = " 동반 약세" if neg else " 동반 개선"
-    b = [f"{unit_label} 거래액 <b>{_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>{lead}"
+    b = [f"{unit_label} 거래액 <b>전년비 {_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>{lead}"
          + (f", {drags[0]}({_pct(comp[drags[0]])}){also}" if drags else "")]
     if defend:
         b.append(("상쇄 요인" if neg else "제약 요인") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
@@ -1314,7 +1314,9 @@ def insight_month(mo, cutoff, is_cur, unit_label):
     if is_cur and mo > 1 and b:
         mom = yoy(month_value("일평균거래액", CUR, mo, maxd), month_value("일평균거래액", CUR, mo - 1, cutoff))
         if mom is not None:
-            b.insert(1, f"전월비(동일기간 MTD) 거래액 <b>{_pct(mom)}</b>")
+            # 첫 줄(전년비)과 헷갈리지 않게 '올해 지난달 같은 기간'임을 명시
+            b.insert(1, f"<b>전월비</b> 거래액 <b>{_pct(mom)}</b> "
+                        f"<span style='color:#93a0b3'>({CUR}년 {mo-1}월 1~{cutoff}일 대비 · 위는 전년비)</span>")
     if is_cur:
         fc = forecast_month(mo, cutoff)
         if fc and fc["yoy"] is not None:
