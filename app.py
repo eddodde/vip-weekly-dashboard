@@ -161,25 +161,29 @@ MONTHLY_LEVEL = ["일평균거래액", "일평균고객수", "DAU", "유효회�
 
 
 def _corrupt_keys(df):
-    """손상 (grain,year,period): 유효회원수 또는 DAU(TOTAL)가 연중앙값의 1.5배를 넘는 구간.
-    유효회원수는 55~59k 고정이라 배증이 확실한 신호, DAU는 손상 구간 경계 주차 보완용."""
-    ck = set()
-    for met in (EFF_METRIC, "DAU"):
+    """손상 (grain,year,period) 판정. 지표별로 파급 범위가 다르므로 두 종류로 분리한다.
+      · DAU(TOTAL)가 연중앙값 1.5배 초과 → 트래픽 데이터 전반 오류 → 그 구간 '전 지표' 폐기
+      · 유효회원수만 초과 → 해당 지표만 손상(2025-08 1주차: 유효회원수만 정확히 2배이고
+        거래액·고객수·DAU는 일자별 집계와 완전 일치) → '유효회원수만' 폐기
+    반환: (전지표 폐기 키, 유효회원수만 폐기 키)"""
+    def over(met):
         s = df[(df.perspective == "overall") & (df.metric == met) & (df.seg1 == "TOTAL")].copy()
         if s.empty:
-            continue
+            return set()
         s["med"] = s.groupby(["grain", "year"])["value"].transform("median")
         bad = s[s["value"] > s["med"] * 1.5]
-        ck |= set(zip(bad.grain, bad.year, bad.period))
-    return ck
+        return set(zip(bad.grain, bad.year, bad.period))
+    dau_bad, eff_bad = over("DAU"), over(EFF_METRIC)
+    return dau_bad, (eff_bad - dau_bad)
 
 
 def _drop_corrupt(df):
-    ck = _corrupt_keys(df)
-    if not ck:
+    ck, eff_only = _corrupt_keys(df)
+    if not ck and not eff_only:
         return df, ck
-    keys = zip(df["grain"], df["year"], df["period"])
-    keep = [k not in ck for k in keys]
+    keys = list(zip(df["grain"], df["year"], df["period"]))
+    keep = [(k not in ck) and not (k in eff_only and m == EFF_METRIC)
+            for k, m in zip(keys, df["metric"])]
     return df[keep].copy(), ck
 
 
