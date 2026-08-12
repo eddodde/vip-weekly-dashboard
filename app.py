@@ -1144,8 +1144,14 @@ def chart_channel_yoy(wkp, pretty=None):
 # ----------------------------------------------------------------------------- insights (분석형)
 # 섹션 인사이트엔 '핵심 레버'만(짧게). 상세 액션(전술)은 최하단 종합 방향성에서만 노출.
 # 회원번호별 월 방문일수(별도 추출) — 시드 밖 데이터라 상수로 관리. 갱신 시 month/수치만 교체.
-VISIT_DECOMP = {"month": 7, "members": 85_203, "members_yoy": 0.045, "days": 8.53, "days_yoy": -0.102,
-                "f1_yoy": 0.21, "f23_yoy": 0.14, "heavy_yoy": -0.11}
+# DAU 감소는 '빈도 하락'이 아니라 '헤비 방문층 이탈'에서 발생 → 구간별 방문일 증감(기여량)으로 판단.
+VISIT_DECOMP = {"month": 7,
+                "heavy_n": 16_982, "heavy_n_prev": 19_032,      # 월 16일 이상 방문 회원수
+                "heavy_days_chg": -54_413,                       # 해당 구간 방문일 증감
+                "total_days_chg": -47_748,                       # 전체 방문일 증감
+                "light_days_chg": 12_797,                        # 1~7일 구간 증감(상쇄분)
+                "churn_rate": 0.283,                             # 전년 헤비층 중 올해 완전 미방문 비중
+                "decay": "1월 10.0일 → 7월 1.1일"}                # 이탈군 방문일 감소 경로
 
 DRIVER_LEVER = {"DAU": "방문(DAU) 회복이 가장 중요", "CR": "잔존 방문의 구매전환(CR) 제고가 실질 레버",
                 "객단가": "객단가 방어가 실질 레버"}
@@ -1341,10 +1347,14 @@ def insight_month(mo, cutoff, is_cur, unit_label):
             trend = (" → ".join(f"{m}월 {_pct(d)}" for m, d in dseq)) if len(dseq) >= 2 else ""
             b.insert(max(len(b) - 1, 0),
                      "<b>DAU 역신장폭 축소</b>" + (f"({trend})" if trend else "") + " — "
-                     f"방문 회원수는 <b>{v['members']:,}명({_pct(v['members_yoy'])})</b>으로 증가, "
-                     f"감소는 인당 방문일수({v['days']}일 {_pct(v['days_yoy'])})에서 발생<br>"
-                     f"<span style='padding-left:2px'>월 1회 방문 {_pct(v['f1_yoy'])}·2~3회 {_pct(v['f23_yoy'])} 증가 vs "
-                     f"16일 이상 {_pct(v['heavy_yoy'])} → <b>저빈도 방문의 재방문 전환</b>이 DAU 회복 경로</span> "
+                     f"감소는 <b>헤비 방문층 이탈</b>에서 발생: 월 16일 이상 방문 회원 "
+                     f"<b>{v['heavy_n']:,}명</b>(전년 {v['heavy_n_prev']:,}명, "
+                     f"{v['heavy_n']-v['heavy_n_prev']:+,}명)이 줄며 방문일 {v['heavy_days_chg']:+,}일 — "
+                     f"전체 감소분({v['total_days_chg']:+,}일)을 상회. "
+                     f"저빈도(1~7일)는 {v['light_days_chg']:+,}일로 일부 상쇄 중<br>"
+                     f"<span style='padding-left:2px'>전년 헤비층의 <b>{v['churn_rate']*100:.1f}%</b>가 올해 완전 미방문 전환. "
+                     f"다만 이탈은 점진 진행({v['decay']}) → <b>방문 빈도가 연속 하락 중인 헤비층 조기 타겟</b>이 "
+                     f"DAU 회복의 실질 경로</span> "
                      f"<span style='color:#93a0b3'>({v['month']}월 · 회원번호별 방문일수 기준)</span>")
         fc = forecast_month(mo, cutoff)
         if fc and fc["yoy"] is not None:
