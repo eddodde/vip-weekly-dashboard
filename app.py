@@ -722,11 +722,6 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .bfk .y{font-size:13px;font-weight:800;margin-top:1px;}
 .bfk .p{font-size:10.5px;color:#9aa1ad;margin-top:1px;}
 .bfup{color:#2c7a5c;} .bfdn{color:#c0454a;}
-.bfins{background:#fff;border:1px solid #e3e8f0;border-radius:6px;padding:11px 15px;margin-bottom:8px;
-  font-size:13.5px;line-height:1.65;}
-.bfins .t{font-weight:800;font-size:11px;letter-spacing:.04em;color:#13294b;background:#e8eef9;
-  padding:2px 7px;border-radius:3px;margin-right:7px;}
-.bfins b{color:#13294b;}
 .bfact{background:#fafbfd;border:1px solid #e3e8f0;border-radius:6px;padding:11px 15px;font-size:13px;line-height:1.7;}
 .bfact h5{margin:0 0 5px;font-size:12.5px;font-weight:800;color:#13294b;letter-spacing:.02em;}
 .bfact ul{margin:0;padding-left:16px;}
@@ -1670,96 +1665,11 @@ st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
 
 # ---- 0) 주간 브리프 (보고용 요약) ----------------------------------------------
-# 수치는 자동 갱신. 결론·액션 문구는 아래 BRIEF_* 상수에서 관리(주간 보고 시 여기만 수정).
-def brief_insights(mo, cd, wkp):
-    """브리프 인사이트 — 시드에서 자동 생성. '무엇이 빠졌나'가 아니라 '무엇을 해야 하나'가 갈리는 각도로.
-       ① 상품: 안 팔리는 게 아니라 안 보이는 것인지(UV↓·CR↑) 분리
-       ② 채널: 유입 1명당 전환 효율 — 어디로 트래픽을 늘려야 남는지
-       ③ 행사: 행사 때와 평상시 중 어디가 새는지"""
-    out = []
-    p = wkp[-1] if wkp else None
-
-    # ① 노출 문제 vs 상품력 문제 — 상품UV·상품CR 분리
-    if p:
-        expo, conv = [], []
-        for ca in CATS_ORDER:
-            g = lambda y, m: sum(V("week", "product", m, ye, ca, y, p) or 0 for ye in YEONG)
-            v26, v25 = g(CUR, SALES), g(PREV, SALES)
-            u26, u25 = g(CUR, "상품UV"), g(PREV, "상품UV")
-            c26, c25 = g(CUR, "상품CR"), g(PREV, "상품CR")
-            if min(v25, u25, c25) <= 0 or v25 < 5e6:
-                continue
-            uy, cy, vy = u26 / u25 - 1, c26 / c25 - 1, v26 / v25 - 1
-            if uy < -0.05 and cy > 0:          # 조회는 줄었는데 사는 비율은 올라간 = 노출 부족
-                expo.append((ca, uy, cy, v26 - v25))
-            elif cy < -0.05 and uy > -0.05:    # 보고도 안 산 = 상품력·가격
-                conv.append((ca, uy, cy, v26 - v25))
-        if expo:
-            expo.sort(key=lambda x: x[3])
-            nm = ", ".join(f"<b>{c}</b>(UV {_pct(u)}·구매전환 {_pct(v)})" for c, u, v, _ in expo[:3])
-            out.append(("상품",
-                f"<b>부진 카테고리 상당수는 ‘안 팔린 것’이 아니라 ‘안 보인 것’</b><br>"
-                f"{week_pretty(p)} 기준 {nm} — <b>상품 조회수는 줄었는데 본 사람의 구매전환은 오히려 상승</b>. "
-                f"상품력이 아니라 노출·진입 동선 문제 → <b>기획전·추천영역 배치로 회복 가능</b>"))
-        if conv:
-            conv.sort(key=lambda x: x[3])
-            nm = ", ".join(f"<b>{c}</b>(구매전환 {_pct(v)})" for c, u, v, _ in conv[:3])
-            out.append(("상품",
-                f"<b>노출은 유지됐는데 전환이 빠진 카테고리</b><br>"
-                f"{nm} — 조회는 전년 수준인데 구매로 이어지지 않음. "
-                f"가격·구색·리뷰 등 <b>상품 경쟁력 점검 대상</b>"))
-
-    # ② 채널: 유입 1명당 전환 효율 → 트래픽 투자 우선순위
-    if p:
-        ch = []
-        for nm in ("직접", "광고", "EP", "PUSH", "제휴"):
-            du = V("week", "overall", "DAU", nm, "", CUR, p)
-            cr = V("week", "overall", "CR", nm, "", CUR, p)
-            du0 = V("week", "overall", "DAU", nm, "", PREV, p)
-            if du and cr and du0 and du > 300:
-                ch.append((nm, cr, yoy(du, du0), du))
-        if len(ch) >= 2:
-            ch.sort(key=lambda x: -x[1])
-            top, low = ch[0], ch[-1]
-            grew = max(ch, key=lambda x: (x[2] or -9))
-            out.append(("채널",
-                f"<b>유입을 늘릴 곳과 실제로 늘린 곳이 다르다</b><br>"
-                f"방문 1명당 구매전환은 <b>{top[0]} {top[1]*100:.1f}%</b>로 "
-                f"{low[0]}({low[1]*100:.1f}%)의 <b>{top[1]/low[1]:.1f}배</b>인데, "
-                f"이번 주 유입이 가장 늘어난 곳은 <b>{grew[0]}({_pct(grew[2])})</b> — "
-                f"<b>고전환 채널({top[0]}) 유입 확대가 같은 트래픽으로 더 남는 구조</b>"))
-
-    # ③ 행사 때 vs 평상시 — 어디가 새는지
-    if mo and cd:
-        maj = set()
-        for o in event_occurrences(CUR, only_major=True):
-            dd = o[0]
-            while dd <= sell_end(o[0], o[1]):
-                maj.add(dd); dd += datetime.timedelta(days=1)
-        on, off = [], []
-        for i in range(1, cd + 1):
-            c, b = dv(CUR, mo, i), dv(PREV, mo, i)
-            if c and b:
-                (on if datetime.date(CUR, mo, i) in maj else off).append(c / b - 1)
-        if on and off and len(off) >= 3:
-            mo_on, mo_off = sum(on) / len(on), sum(off) / len(off)
-            gap = (mo_on - mo_off) * 100
-            if abs(gap) >= 2:
-                lead = ("행사 기간은 전년 수준을 지키는데 <b>평상시가 새고 있다</b>" if mo_on > mo_off
-                        else "평상시는 버티는데 <b>행사 성과가 전년에 못 미친다</b>")
-                out.append(("구조",
-                    f"<b>{lead}</b><br>"
-                    f"{mo}월 전관행사 기간 <b>{_pct(mo_on)}</b>({len(on)}일) vs 비행사일 "
-                    f"<b>{_pct(mo_off)}</b>({len(off)}일), 격차 <b>{gap:+.1f}%p</b> → "
-                    + ("행사 의존을 줄이려면 <b>비행사 기간 상시 유입·전환 설계</b>가 필요"
-                       if mo_on > mo_off else "<b>행사 기획·타겟 소구 강화</b>가 우선")))
-    return out[:4]
-BRIEF_NOW = ["<b>노출 부족 카테고리 우선 배치</b> — 조회는 줄었으나 전환은 오른 잡화·리빙·골프를 "
-             "브랜드 페스타(8/17~) 기획전·추천영역 상단에 편성 요청",
-             "<b>행사탭(EP) 유입 확대</b> — 전환율이 가장 높은 채널로 발송 랜딩을 통일해 같은 발송량 대비 성과 극대화"]
-BRIEF_NEXT = ["<b>비행사 기간 상시 유입 설계</b> — 행사일과 평상시 격차가 큰 만큼, 행사 종료 직후 "
-              "재방문 유도 발송으로 낙폭 구간 방어",
-              "<b>노출 보강 효과 검증</b> — 금주 배치한 카테고리의 조회수·전환 회복 여부 확인 후 편성 확대 판단"]
+# 수치·차트는 자동 갱신. 액션 문구는 아래 BRIEF_* 상수에서 관리(주간 보고 시 여기만 수정).
+BRIEF_NOW = ["<b>브랜드 페스타(8/17~24) 사전 알림</b> — 최근 미방문 VIP 세그먼트 대상 문자·알림톡 발송",
+             "<b>지원금 미사용자 사용 유도</b> — 20만원↑ 조건 활용해 객단가 방어하며 전환 유도"]
+BRIEF_NEXT = ["<b>브랜드 페스타 기간 전환 집중</b> — 행사 유입객 대상 장바구니·쿠폰 리마인드",
+              "<b>발송 성과 확인</b> — 세그먼트별 재방문·구매 전환 실측 후 소구·발송 주기 조정"]
 
 _bmo, _bcd = (_ldt.month, _ldt.day) if _ldt else (None, None)
 if _bmo and PAGE.startswith("📋"):
@@ -1813,9 +1723,6 @@ if _bmo and PAGE.startswith("📋"):
     _g1.plotly_chart(_f1, use_container_width=True)
     _g2.plotly_chart(_f2, use_container_width=True)
 
-    for tag, txt in brief_insights(_bmo, _bcd, wk_all_closed[-5:]):
-        st.markdown(f"<div class='bfins'><span class='t'>{tag}</span>{_redneg(txt)}</div>",
-                    unsafe_allow_html=True)
     _c1, _c2 = st.columns(2)
     _t1 = _ldt + datetime.timedelta(days=1)                      # 금주 = 집계 다음날부터 일요일까지
     _t1e = _t1 + datetime.timedelta(days=(6 - _t1.weekday()) % 7)
