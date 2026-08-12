@@ -717,7 +717,10 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   border:1px solid #e3e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;}
 .bfk{background:#fff;padding:10px 12px 11px;}
 .bfk .l{font-size:11px;color:#6b7382;letter-spacing:.02em;}
-.bfk .v{font-size:20px;font-weight:800;margin-top:3px;letter-spacing:-.02em;}
+.bfk .v{font-size:20px;font-weight:800;margin-top:2px;letter-spacing:-.03em;color:#161a21;}
+.bfk .v .u{font-size:11.5px;font-weight:600;margin-left:1px;color:#6b7382;letter-spacing:0;}
+.bfk .y{font-size:13px;font-weight:800;margin-top:1px;}
+.bfk .p{font-size:10.5px;color:#9aa1ad;margin-top:1px;}
 .bfup{color:#2c7a5c;} .bfdn{color:#c0454a;}
 .bfins{background:#fff;border:1px solid #e3e8f0;border-radius:6px;padding:11px 15px;margin-bottom:8px;
   font-size:13.5px;line-height:1.65;}
@@ -1738,19 +1741,35 @@ if _bmo and PAGE.startswith("📋"):
           ("DAU", "DAU"), ("객단가", "일평균객단가")]
     _cells = []
     for lab, met in _K:
-        cur_v = _byoy(met, _bmo, _bcd)
+        cur_v = _byoy(met, _bmo, _bcd)                     # 전년비
+        raw = month_value(met, CUR, _bmo, _bcd)            # 실적 절대값
+        prv = month_value(met, PREV, _bmo, _bcd)
         cls = "bfdn" if (cur_v is not None and cur_v < 0) else "bfup"
+        if met == SALES:
+            v_txt = f"{raw/1e6:,.0f}<span class='u'>백만</span>" if raw else "-"
+            p_txt = f"전년 {prv/1e6:,.0f}백만" if prv else ""
+        elif met in ("CR", "유입율"):
+            v_txt = f"{raw*100:.1f}<span class='u'>%</span>" if raw else "-"
+            p_txt = f"전년 {prv*100:.1f}%" if prv else ""
+        else:
+            v_txt = f"{raw:,.0f}<span class='u'>명</span>" if (raw and met != "일평균객단가") else \
+                    (f"{raw:,.0f}<span class='u'>원</span>" if raw else "-")
+            p_txt = f"전년 {prv:,.0f}" if prv else ""
         _cells.append(f"<div class='bfk'><div class='l'>{lab}</div>"
-                      f"<div class='v {cls}'>{_pct(cur_v)}</div></div>")
-    _hs, _hc = _byoy(SALES, _bmo, _bcd), _byoy("일평균고객수", _bmo, _bcd)
-    _hcr = _byoy("CR", _bmo, _bcd)
+                      f"<div class='v'>{v_txt}</div>"
+                      f"<div class='y {cls}'>{_pct(cur_v)}</div>"
+                      f"<div class='p'>{p_txt}</div></div>")
+    # 헤드라인: 전년비 기준으로만 구성(전월비 혼용 금지) — 거래액 = 방문 × 전환 × 객단가 분해
+    _hs = _byoy(SALES, _bmo, _bcd)
+    _hu, _hcr, _ha = _byoy("DAU", _bmo, _bcd), _byoy("CR", _bmo, _bcd), _byoy("일평균객단가", _bmo, _bcd)
     _hd = ""
-    if _pm and _hc is not None and _byoy("일평균고객수", _pm) is not None:
-        _imp = (_hc - _byoy("일평균고객수", _pm)) * 100
-        if _imp > 0:
-            _hd = (f" — 구매고객수 <b>{_imp:+.1f}%p</b>·전환율 "
-                   f"<b>{(_hcr - _byoy('CR', _pm))*100:+.1f}%p</b> 개선으로 회복 트렌드")
-    st.markdown(f"<div class='bfhead'>{_bmo}월({_bcd}일까지) 거래액 <b>{_pct(_hs)}</b>{_hd}</div>",
+    if None not in (_hu, _hcr, _ha):
+        _dn = [f"{n} {_pct(v)}" for n, v in (("방문", _hu), ("전환", _hcr), ("객단가", _ha)) if v < 0]
+        _up = [f"{n} {_pct(v)}" for n, v in (("방문", _hu), ("전환", _hcr), ("객단가", _ha)) if v >= 0]
+        _hd = (f" — {'·'.join(_dn)} 부진을 {'·'.join(_up)}가 상쇄" if _dn and _up
+               else (f" — {'·'.join(_dn)} 동반 부진" if _dn else " — 전 지표 개선"))
+    st.markdown(f"<div class='bfhead'>{_bmo}월(~{_bcd}일) 거래액 <b>{_pct(_hs)}</b>{_hd}"
+                f"<span style='font-weight:400;opacity:.72;font-size:13px'> · 전년 동기 대비</span></div>",
                 unsafe_allow_html=True)
     st.markdown(f"<div class='bfkpi'>{''.join(_cells)}</div>", unsafe_allow_html=True)
     st.caption(f"※ {_bmo}월 1~{_bcd}일 MTD · 전년 동일 기간 대비")
