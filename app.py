@@ -340,6 +340,8 @@ st.sidebar.markdown("---")
 
 st.sidebar.markdown(
     "#### 🧭 바로가기\n"
+    "**보고**\n"
+    "- [📋 주간 브리프](#s0)\n\n"
     "**실적 흐름**\n"
     "- [1) 거래액 트렌드](#s1)\n"
     "- [2) 월별](#s2)\n"
@@ -705,6 +707,29 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .sumtbl th.curcol{border-top:2px solid #1f5fbf;}
 .sumtbl .curbot{border-bottom:2px solid #1f5fbf;}
 .sumwrap{overflow-x:auto;border:1px solid #e6e6e6;border-radius:6px;}
+/* 📋 주간 브리프(보고용 요약) */
+.bfhead{background:#13294b;color:#fff;border-radius:6px;padding:13px 18px;margin:2px 0 12px;
+  font-size:15px;font-weight:700;line-height:1.55;letter-spacing:-.01em;}
+.bfhead b{background:rgba(255,255,255,.18);padding:1px 6px;border-radius:3px;}
+.bfkpi{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#e3e8f0;
+  border:1px solid #e3e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;}
+.bfk{background:#fff;padding:10px 12px 11px;}
+.bfk .l{font-size:11px;color:#6b7382;letter-spacing:.02em;}
+.bfk .v{font-size:19px;font-weight:800;margin-top:2px;letter-spacing:-.02em;}
+.bfk .d{font-size:11px;color:#8a919e;margin-top:1px;}
+.bfk .d em{font-style:normal;font-weight:700;}
+.bfup{color:#2c7a5c;} .bfdn{color:#c0454a;}
+.bfins{background:#fff;border:1px solid #e3e8f0;border-radius:6px;padding:11px 15px;margin-bottom:8px;
+  font-size:13.5px;line-height:1.65;}
+.bfins .t{font-weight:800;font-size:11px;letter-spacing:.04em;color:#13294b;background:#e8eef9;
+  padding:2px 7px;border-radius:3px;margin-right:7px;}
+.bfins b{color:#13294b;}
+.bfact{background:#fafbfd;border:1px solid #e3e8f0;border-radius:6px;padding:11px 15px;font-size:13px;line-height:1.7;}
+.bfact h5{margin:0 0 5px;font-size:12.5px;font-weight:800;color:#13294b;letter-spacing:.02em;}
+.bfact ul{margin:0;padding-left:16px;}
+.bfask{background:#fdf6e8;border:1px solid #d9b45c;border-radius:6px;padding:10px 15px;
+  font-size:13px;line-height:1.6;margin-top:8px;}
+.bfask b{color:#8a6b23;}
 .insight{background:#f0f6ff;border-left:4px solid #1f5fbf;border-radius:4px;
   padding:8px 14px 8px 16px;margin:2px 0 12px;font-size:13.5px;line-height:1.7;}
 .insight ul{margin:0;padding-left:18px;}
@@ -1643,6 +1668,71 @@ def partial_line(kind="perf"):
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
+
+# ---- 0) 주간 브리프 (보고용 요약) ----------------------------------------------
+# 수치는 자동 갱신. 결론·액션 문구는 아래 BRIEF_* 상수에서 관리(주간 보고 시 여기만 수정).
+BRIEF_INSIGHTS = [
+    ("진단", "<b>DAU 하락은 이탈이 아니라 ‘방문 빈도’ 문제</b> — 월 1회 이상 방문 VIP는 전년비 "
+             "<b>+4.5%</b>로 오히려 증가, 감소분은 전부 인당 월 방문일수(9.5일→8.5일)에서 발생. "
+             "과제는 이탈 방어가 아닌 <b>빈도 회복</b>"),
+    ("상품", "<b>슈즈 부진은 대체 구색 공백</b> — 슈즈 △33%이나 ’25.9월 철수한 핏플랍이 전년 슈즈의 52%. "
+             "<b>핏플랍 제외 시 슈즈는 +41% 성장</b>으로 수요는 유지, 받아줄 상품이 부재"),
+    ("채널", "<b>자동화 문자(LMS) 유입 전년비 +43%</b> — 앱푸시 △21%·email △61%로 CRM 채널이 축소되는 중 "
+             "유일한 성장 채널. 단 DAU 인과는 발송군 대조로 별도 검증 필요"),
+]
+BRIEF_NOW = ["브랜드 페스타(8/17~24) 사전 타겟팅 — 방문 빈도 하락 VIP 중심 문자·알림톡 집중",
+             "지원금 미사용자 사용 유도 지속(20만원↑ 조건 = 객단가 희석 없는 전환 경로)"]
+BRIEF_NEXT = ["자동화 문자 <b>순효과 검증</b> — 발송군·미발송군 방문 빈도 비교",
+              "효과 확인 시 상시 운영 전환 및 발송 세그먼트 확대"]
+BRIEF_ASK = ("<b>MD 협의 요청</b> — 슈즈는 대체 브랜드 확보 없이 회복이 어렵습니다. "
+             "핏플랍 공백(전년 슈즈의 52%)을 메울 컴포트 샌들 구색을 <b>성수기 종료 전</b> 확보 요청드립니다.")
+
+_bmo, _bcd = (_ldt.month, _ldt.day) if _ldt else (None, None)
+if _bmo:
+    st.header("📋 주간 브리프", anchor="s0")
+    _pm = _bmo - 1 if _bmo > 1 else None            # 직전 완료월(개선폭 비교용)
+
+    def _byoy(met, mo, dmax=None):
+        return yoy(month_value(met, CUR, mo, dmax), month_value(met, PREV, mo, dmax))
+
+    _K = [("거래액", SALES), ("구매고객수", "일평균고객수"), ("전환율 CR", "CR"),
+          ("DAU", "DAU"), ("객단가", "일평균객단가")]
+    _cells = []
+    for lab, met in _K:
+        cur_v = _byoy(met, _bmo, _bcd)
+        prv_v = _byoy(met, _pm) if _pm else None
+        cls = "bfdn" if (cur_v is not None and cur_v < 0) else "bfup"
+        sub = "—"
+        if cur_v is not None and prv_v is not None:
+            dd = (cur_v - prv_v) * 100
+            # 객단가는 상승폭 축소가 오히려 긍정(단가 의존 완화) → 개선 색 판정에서 제외
+            _cls2 = "" if met == "일평균객단가" else ("bfup" if dd > 0 else "bfdn")
+            tail = " (의존도 완화)" if (met == "일평균객단가" and dd < 0) else ""
+            sub = f"{_pm}월 {_pct(prv_v)} <em class='{_cls2}'>→ {dd:+.1f}%p</em>{tail}"
+        _cells.append(f"<div class='bfk'><div class='l'>{lab}</div>"
+                      f"<div class='v {cls}'>{_pct(cur_v)}</div><div class='d'>{sub}</div></div>")
+    _hs, _hc = _byoy(SALES, _bmo, _bcd), _byoy("일평균고객수", _bmo, _bcd)
+    _hcr = _byoy("CR", _bmo, _bcd)
+    _hd = ""
+    if _pm and _hc is not None and _byoy("일평균고객수", _pm) is not None:
+        _imp = (_hc - _byoy("일평균고객수", _pm)) * 100
+        if _imp > 0:
+            _hd = (f" — 구매고객수 <b>{_imp:+.1f}%p</b>·전환율 "
+                   f"<b>{(_hcr - _byoy('CR', _pm))*100:+.1f}%p</b> 개선으로 회복 국면")
+    st.markdown(f"<div class='bfhead'>{_bmo}월({_bcd}일까지) 거래액 <b>{_pct(_hs)}</b>{_hd}</div>",
+                unsafe_allow_html=True)
+    st.markdown(f"<div class='bfkpi'>{''.join(_cells)}</div>", unsafe_allow_html=True)
+    st.caption(f"※ {_bmo}월은 1~{_bcd}일 MTD(전년 동일 기간 대비) · 비교는 {_pm}월 마감 전년비 대비 개선폭")
+    for tag, txt in BRIEF_INSIGHTS:
+        st.markdown(f"<div class='bfins'><span class='t'>{tag}</span>{_redneg(txt)}</div>",
+                    unsafe_allow_html=True)
+    _c1, _c2 = st.columns(2)
+    _c1.markdown("<div class='bfact'><h5>금주 실행</h5><ul>"
+                 + "".join(f"<li>{x}</li>" for x in BRIEF_NOW) + "</ul></div>", unsafe_allow_html=True)
+    _c2.markdown("<div class='bfact'><h5>차주 계획</h5><ul>"
+                 + "".join(f"<li>{x}</li>" for x in BRIEF_NEXT) + "</ul></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='bfask'>{BRIEF_ASK}</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
 # 사이드바 최상단 스냅샷(예약 슬롯 채우기) — 최신주 전년비 KPI
 if latest_wk:
