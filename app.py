@@ -729,9 +729,6 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .bfact{background:#fafbfd;border:1px solid #e3e8f0;border-radius:6px;padding:11px 15px;font-size:13px;line-height:1.7;}
 .bfact h5{margin:0 0 5px;font-size:12.5px;font-weight:800;color:#13294b;letter-spacing:.02em;}
 .bfact ul{margin:0;padding-left:16px;}
-.bfask{background:#fdf6e8;border:1px solid #d9b45c;border-radius:6px;padding:10px 15px;
-  font-size:13px;line-height:1.6;margin-top:8px;}
-.bfask b{color:#8a6b23;}
 .insight{background:#f0f6ff;border-left:4px solid #1f5fbf;border-radius:4px;
   padding:8px 14px 8px 16px;margin:2px 0 12px;font-size:13.5px;line-height:1.7;}
 .insight ul{margin:0;padding-left:18px;}
@@ -1122,44 +1119,6 @@ def chart_daily(wk_labels=("", "")):
             lab += " 진행중"
         fig.add_annotation(x=gi + (seg - 1) / 2, xref="x", yref="paper", y=1.0, yanchor="bottom",
                            text=f"<b>{lab}</b>", showarrow=False, font=dict(size=10, color="#1f3b73"))
-    return fig
-
-
-def brief_chart_trend(cur_mo, cutoff):
-    """브리프용: 월별 거래액·고객수·CR 전년비 추이(회복 국면 가시화)."""
-    xs, sers = [], {"거래액": [], "구매고객수": [], "전환율 CR": []}
-    for mo in range(1, (cur_mo or 12) + 1):
-        dm = cutoff if mo == cur_mo else None
-        xs.append(f"{mo}월" + (f"(~{cutoff}일)" if mo == cur_mo else ""))
-        sers["거래액"].append(yoy(month_value(SALES, CUR, mo, dm), month_value(SALES, PREV, mo, dm)))
-        sers["구매고객수"].append(yoy(month_value("일평균고객수", CUR, mo, dm),
-                                 month_value("일평균고객수", PREV, mo, dm)))
-        sers["전환율 CR"].append(yoy(month_value("CR", CUR, mo, dm), month_value("CR", PREV, mo, dm)))
-    fig = _fig("월별 전년비 추이 — 6~7월 저점 이후 회복", xs,
-               {"거래액": (sers["거래액"], "#1f3b73", "solid"),
-                "구매고객수": (sers["구매고객수"], "#4f7cc0", "solid"),
-                "전환율 CR": (sers["전환율 CR"], "#c0392b", "solid")}, ypct=True)
-    fig.update_layout(height=290)
-    return fig
-
-
-def brief_chart_bars(title, rows, note=None):
-    """브리프용: 가로 막대(전년비 비교). rows=[(라벨, 값(비율), 색)]"""
-    fig = go.Figure()
-    labs = [r[0] for r in rows]
-    fig.add_trace(go.Bar(x=[r[1] for r in rows], y=labs, orientation="h",
-                         marker=dict(color=[r[2] for r in rows]),
-                         text=[f"{r[1]*100:+.1f}%" for r in rows],
-                         textposition="outside", textfont=dict(size=12),
-                         hovertemplate="%{y}: %{x:.1%}<extra></extra>"))
-    fig.update_layout(title=dict(text=title, font=dict(size=13)), height=180,
-                      margin=dict(t=38, b=24, l=8, r=40), plot_bgcolor="white", showlegend=False)
-    fig.update_xaxes(tickformat=".0%", zeroline=True, zerolinecolor="#333", showgrid=True,
-                     gridcolor="#eee", tickfont=dict(size=9))
-    fig.update_yaxes(tickfont=dict(size=11), autorange="reversed")
-    if note:
-        fig.add_annotation(text=note, showarrow=False, xref="paper", yref="paper",
-                           x=0, y=-0.22, font=dict(size=10, color="#8a919e"), align="left")
     return fig
 
 
@@ -1724,8 +1683,6 @@ BRIEF_NOW = ["브랜드 페스타(8/17~24) 사전 타겟팅 — 방문 빈도 �
              "지원금 미사용자 사용 유도 지속(20만원↑ 조건 = 객단가 희석 없는 전환 경로)"]
 BRIEF_NEXT = ["자동화 문자 <b>순효과 검증</b> — 발송군·미발송군 방문 빈도 비교",
               "효과 확인 시 상시 운영 전환 및 발송 세그먼트 확대"]
-BRIEF_ASK = ("<b>MD 협의 요청</b> — 슈즈는 대체 브랜드 확보 없이 회복이 어렵습니다. "
-             "핏플랍 공백(전년 슈즈의 52%)을 메울 컴포트 샌들 구색을 <b>성수기 종료 전</b> 확보 요청드립니다.")
 
 _bmo, _bcd = (_ldt.month, _ldt.day) if _ldt else (None, None)
 if _bmo and PAGE.startswith("📋"):
@@ -1763,23 +1720,13 @@ if _bmo and PAGE.startswith("📋"):
     st.markdown(f"<div class='bfkpi'>{''.join(_cells)}</div>", unsafe_allow_html=True)
     st.caption(f"※ {_bmo}월은 1~{_bcd}일 MTD(전년 동일 기간 대비) · 비교는 {_pm}월 마감 전년비 대비 개선폭")
 
-    # 실적 회복 근거 차트 + 진단 차트
-    _g1, _g2 = st.columns([1.35, 1])
-    _g1.plotly_chart(brief_chart_trend(_bmo, _bcd), use_container_width=True)
-    with _g2:
-        st.plotly_chart(brief_chart_bars(
-            "DAU 분해 — 이탈이 아닌 '빈도' 문제",
-            [("월 1회+ 방문 VIP 수", 0.045, "#2c7a5c"),
-             ("인당 월 방문일수", -0.102, "#c0392b"),
-             ("= DAU", _byoy("DAU", _bmo, _bcd) or 0, "#9aa0a6")],
-            note="회원 단위 방문일수 기준 · 7월"), use_container_width=True)
-    _g3, _g4 = st.columns([1, 1.35])
-    with _g3:
-        st.plotly_chart(brief_chart_bars(
-            "슈즈 — 카테고리가 아닌 '구색 공백'",
-            [("슈즈 전체", -0.33, "#c0392b"), ("핏플랍 제외", 0.41, "#2c7a5c")],
-            note="핏플랍(’25.9월 철수)이 전년 슈즈의 52%"), use_container_width=True)
-    _g4.plotly_chart(chart_daily(), use_container_width=True)
+    # 추이 차트 2종(상세와 동일 형식) — 일자별·월별만
+    _g1, _g2 = st.columns(2)
+    _wl = (week_pretty(wk_all[-2]) if len(wk_all) >= 2 else "", wk_label(latest_wk) if latest_wk else "")
+    _f1 = chart_daily(_wl); _f1.update_layout(height=250)
+    _f2 = chart_monthly(); _f2.update_layout(height=250)
+    _g1.plotly_chart(_f1, use_container_width=True)
+    _g2.plotly_chart(_f2, use_container_width=True)
 
     for tag, txt in BRIEF_INSIGHTS:
         st.markdown(f"<div class='bfins'><span class='t'>{tag}</span>{_redneg(txt)}</div>",
@@ -1789,7 +1736,6 @@ if _bmo and PAGE.startswith("📋"):
                  + "".join(f"<li>{x}</li>" for x in BRIEF_NOW) + "</ul></div>", unsafe_allow_html=True)
     _c2.markdown("<div class='bfact'><h5>차주 계획</h5><ul>"
                  + "".join(f"<li>{x}</li>" for x in BRIEF_NEXT) + "</ul></div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='bfask'>{BRIEF_ASK}</div>", unsafe_allow_html=True)
     st.caption("상세 지표·행사·상품별 실적은 사이드바에서 **📊 상세 대시보드**를 선택하세요.")
     st.stop()      # ← 브리프는 독립 화면: 이하 상세 섹션은 렌더하지 않음
 
