@@ -338,10 +338,6 @@ st.sidebar.caption("주간회의 'Summary' 시트 2.실적 양식")
 snap_slot = st.sidebar.container()   # 이번 주 스냅샷 자리(최상단) — 내용은 데이터 로드 후 채움
 st.sidebar.markdown("---")
 
-PAGE = st.sidebar.radio("화면", ["📋 주간 브리프", "📊 상세 대시보드"], index=1,
-                        key="page_mode", label_visibility="collapsed")
-st.sidebar.markdown("---")
-
 st.sidebar.markdown(
     "#### 🧭 바로가기\n"
     "**실적 흐름**\n"
@@ -709,22 +705,6 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .sumtbl th.curcol{border-top:2px solid #1f5fbf;}
 .sumtbl .curbot{border-bottom:2px solid #1f5fbf;}
 .sumwrap{overflow-x:auto;border:1px solid #e6e6e6;border-radius:6px;}
-/* 📋 주간 브리프(보고용 요약) */
-.bfhead{background:#13294b;color:#fff;border-radius:6px;padding:13px 18px;margin:2px 0 12px;
-  font-size:15px;font-weight:700;line-height:1.55;letter-spacing:-.01em;}
-.bfhead b{background:rgba(255,255,255,.18);padding:1px 6px;border-radius:3px;}
-.bfkpi{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#e3e8f0;
-  border:1px solid #e3e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;}
-.bfk{background:#fff;padding:10px 12px 11px;}
-.bfk .l{font-size:11px;color:#6b7382;letter-spacing:.02em;}
-.bfk .v{font-size:20px;font-weight:800;margin-top:2px;letter-spacing:-.03em;color:#161a21;}
-.bfk .v .u{font-size:11.5px;font-weight:600;margin-left:1px;color:#6b7382;letter-spacing:0;}
-.bfk .y{font-size:13px;font-weight:800;margin-top:1px;}
-.bfk .p{font-size:10.5px;color:#9aa1ad;margin-top:1px;}
-.bfup{color:#2c7a5c;} .bfdn{color:#c0454a;}
-.bfact{background:#fafbfd;border:1px solid #e3e8f0;border-radius:6px;padding:11px 15px;font-size:13px;line-height:1.7;}
-.bfact h5{margin:0 0 5px;font-size:12.5px;font-weight:800;color:#13294b;letter-spacing:.02em;}
-.bfact ul{margin:0;padding-left:16px;}
 .insight{background:#f0f6ff;border-left:4px solid #1f5fbf;border-radius:4px;
   padding:8px 14px 8px 16px;margin:2px 0 12px;font-size:13.5px;line-height:1.7;}
 .insight ul{margin:0;padding-left:18px;}
@@ -1663,76 +1643,6 @@ def partial_line(kind="perf"):
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
-
-# ---- 0) 주간 브리프 (보고용 요약) ----------------------------------------------
-# 수치·차트는 자동 갱신. 액션 문구는 아래 BRIEF_* 상수에서 관리(주간 보고 시 여기만 수정).
-BRIEF_NOW = ["<b>브랜드 페스타(8/17~24) 사전 알림</b> — 최근 미방문 VIP 세그먼트 대상 문자·알림톡 발송",
-             "<b>지원금 미사용자 사용 유도</b> — 20만원↑ 조건 활용해 객단가 방어하며 전환 유도"]
-BRIEF_NEXT = ["<b>브랜드 페스타 기간 전환 집중</b> — 행사 유입객 대상 장바구니·쿠폰 리마인드",
-              "<b>발송 성과 확인</b> — 세그먼트별 재방문·구매 전환 실측 후 소구·발송 주기 조정"]
-
-_bmo, _bcd = (_ldt.month, _ldt.day) if _ldt else (None, None)
-if _bmo and PAGE.startswith("📋"):
-    _pm = _bmo - 1 if _bmo > 1 else None            # 직전 완료월(개선폭 비교용)
-
-    def _byoy(met, mo, dmax=None):
-        return yoy(month_value(met, CUR, mo, dmax), month_value(met, PREV, mo, dmax))
-
-    _K = [("거래액", SALES), ("구매고객수", "일평균고객수"), ("전환율 CR", "CR"),
-          ("DAU", "DAU"), ("객단가", "일평균객단가")]
-    _cells = []
-    for lab, met in _K:
-        cur_v = _byoy(met, _bmo, _bcd)                     # 전년비
-        raw = month_value(met, CUR, _bmo, _bcd)            # 실적 절대값
-        prv = month_value(met, PREV, _bmo, _bcd)
-        cls = "bfdn" if (cur_v is not None and cur_v < 0) else "bfup"
-        if met == SALES:
-            v_txt = f"{raw/1e6:,.0f}<span class='u'>백만</span>" if raw else "-"
-            p_txt = f"전년 {prv/1e6:,.0f}백만" if prv else ""
-        elif met in ("CR", "유입율"):
-            v_txt = f"{raw*100:.1f}<span class='u'>%</span>" if raw else "-"
-            p_txt = f"전년 {prv*100:.1f}%" if prv else ""
-        else:
-            v_txt = f"{raw:,.0f}<span class='u'>명</span>" if (raw and met != "일평균객단가") else \
-                    (f"{raw:,.0f}<span class='u'>원</span>" if raw else "-")
-            p_txt = f"전년 {prv:,.0f}" if prv else ""
-        _cells.append(f"<div class='bfk'><div class='l'>{lab}</div>"
-                      f"<div class='v'>{v_txt}</div>"
-                      f"<div class='y {cls}'>{_pct(cur_v)}</div>"
-                      f"<div class='p'>{p_txt}</div></div>")
-    # 헤드라인: 전년비 기준으로만 구성(전월비 혼용 금지) — 거래액 = 방문 × 전환 × 객단가 분해
-    _hs = _byoy(SALES, _bmo, _bcd)
-    _hu, _hcr, _ha = _byoy("DAU", _bmo, _bcd), _byoy("CR", _bmo, _bcd), _byoy("일평균객단가", _bmo, _bcd)
-    _hd = ""
-    if None not in (_hu, _hcr, _ha):
-        _dn = [f"{n} {_pct(v)}" for n, v in (("방문", _hu), ("전환", _hcr), ("객단가", _ha)) if v < 0]
-        _up = [f"{n} {_pct(v)}" for n, v in (("방문", _hu), ("전환", _hcr), ("객단가", _ha)) if v >= 0]
-        _hd = (f" — {'·'.join(_dn)} 부진을 {'·'.join(_up)}가 상쇄" if _dn and _up
-               else (f" — {'·'.join(_dn)} 동반 부진" if _dn else " — 전 지표 개선"))
-    st.markdown(f"<div class='bfhead'>{_bmo}월(~{_bcd}일) 거래액 <b>{_pct(_hs)}</b>{_hd}"
-                f"<span style='font-weight:400;opacity:.72;font-size:13px'> · 전년 동기 대비</span></div>",
-                unsafe_allow_html=True)
-    st.markdown(f"<div class='bfkpi'>{''.join(_cells)}</div>", unsafe_allow_html=True)
-    st.caption(f"※ {_bmo}월 1~{_bcd}일 MTD · 전년 동일 기간 대비")
-
-    # 추이 차트 2종(상세와 동일 형식) — 일자별·월별만
-    _g1, _g2 = st.columns(2)
-    _wl = (week_pretty(wk_all[-2]) if len(wk_all) >= 2 else "", wk_label(latest_wk) if latest_wk else "")
-    _f1 = chart_daily(_wl); _f1.update_layout(height=250)
-    _f2 = chart_monthly(); _f2.update_layout(height=250)
-    _g1.plotly_chart(_f1, use_container_width=True)
-    _g2.plotly_chart(_f2, use_container_width=True)
-
-    _c1, _c2 = st.columns(2)
-    _t1 = _ldt + datetime.timedelta(days=1)                      # 금주 = 집계 다음날부터 일요일까지
-    _t1e = _t1 + datetime.timedelta(days=(6 - _t1.weekday()) % 7)
-    _t2, _t2e = _t1e + datetime.timedelta(days=1), _t1e + datetime.timedelta(days=7)
-    _c1.markdown(f"<div class='bfact'><h5>금주 실행 ({_t1.month}/{_t1.day}~{_t1e.month}/{_t1e.day})</h5><ul>"
-                 + "".join(f"<li>{x}</li>" for x in BRIEF_NOW) + "</ul></div>", unsafe_allow_html=True)
-    _c2.markdown(f"<div class='bfact'><h5>차주 계획 ({_t2.month}/{_t2.day}~{_t2e.month}/{_t2e.day})</h5><ul>"
-                 + "".join(f"<li>{x}</li>" for x in BRIEF_NEXT) + "</ul></div>", unsafe_allow_html=True)
-    st.caption("상세 지표·행사·상품별 실적은 사이드바에서 **📊 상세 대시보드**를 선택하세요.")
-    st.stop()      # ← 브리프는 독립 화면: 이하 상세 섹션은 렌더하지 않음
 
 # 사이드바 최상단 스냅샷(예약 슬롯 채우기) — 최신주 전년비 KPI
 if latest_wk:
