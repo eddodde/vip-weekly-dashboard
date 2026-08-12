@@ -717,9 +717,7 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   border:1px solid #e3e8f0;border-radius:6px;overflow:hidden;margin-bottom:12px;}
 .bfk{background:#fff;padding:10px 12px 11px;}
 .bfk .l{font-size:11px;color:#6b7382;letter-spacing:.02em;}
-.bfk .v{font-size:19px;font-weight:800;margin-top:2px;letter-spacing:-.02em;}
-.bfk .d{font-size:11px;color:#8a919e;margin-top:1px;}
-.bfk .d em{font-style:normal;font-weight:700;}
+.bfk .v{font-size:20px;font-weight:800;margin-top:3px;letter-spacing:-.02em;}
 .bfup{color:#2c7a5c;} .bfdn{color:#c0454a;}
 .bfins{background:#fff;border:1px solid #e3e8f0;border-radius:6px;padding:11px 15px;margin-bottom:8px;
   font-size:13.5px;line-height:1.65;}
@@ -1671,18 +1669,22 @@ st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트
 # ---- 0) 주간 브리프 (보고용 요약) ----------------------------------------------
 # 수치는 자동 갱신. 결론·액션 문구는 아래 BRIEF_* 상수에서 관리(주간 보고 시 여기만 수정).
 BRIEF_INSIGHTS = [
-    ("진단", "<b>DAU 하락은 이탈이 아니라 ‘방문 빈도’ 문제</b> — 월 1회 이상 방문 VIP는 전년비 "
-             "<b>+4.5%</b>로 오히려 증가, 감소분은 전부 인당 월 방문일수(9.5일→8.5일)에서 발생. "
-             "과제는 이탈 방어가 아닌 <b>빈도 회복</b>"),
-    ("상품", "<b>슈즈 부진은 대체 구색 공백</b> — 슈즈 △33%이나 ’25.9월 철수한 핏플랍이 전년 슈즈의 52%. "
-             "<b>핏플랍 제외 시 슈즈는 +41% 성장</b>으로 수요는 유지, 받아줄 상품이 부재"),
-    ("채널", "<b>자동화 문자(LMS) 유입 전년비 +43%</b> — 앱푸시 △21%·email △61%로 CRM 채널이 축소되는 중 "
-             "유일한 성장 채널. 단 DAU 인과는 발송군 대조로 별도 검증 필요"),
+    ("진단", "<b>DAU 하락은 이탈이 아니라 ‘방문 빈도’ 문제</b><br>"
+             "월 1회 이상 방문 VIP <b>82,149→85,203명(전년비 +4.5%)</b>으로 오히려 증가한 반면, "
+             "인당 월 방문일수는 <b>9.5일→8.5일(△10.2%)</b>로 감소. DAU 감소분이 전부 빈도에서 발생 "
+             "→ 이탈 방어가 아닌 <b>재방문 유도</b>가 과제"),
+    ("상품", "<b>슈즈 부진은 카테고리가 아닌 대체 구색 공백</b><br>"
+             "슈즈 거래액 <b>△33%</b>이나, ’25.9월 철수한 핏플랍이 전년 슈즈의 <b>52%</b>(구매 VIP 15,077명). "
+             "<b>핏플랍 제외 시 슈즈 +41%</b>로 수요는 유지 중이며, 기구매 고객의 <b>71.7%가 올해 슈즈 미구매</b>"),
+    ("채널", "<b>CRM 채널 중 자동화 문자(LMS)만 성장</b><br>"
+             "LMS 유입 <b>전년비 +43%</b>(일 1,182→1,687명) vs 앱푸시 <b>△21%</b>·email <b>△61%</b>. "
+             "재방문 유도 수단으로 실질 가동되는 채널은 문자가 유일"),
 ]
-BRIEF_NOW = ["브랜드 페스타(8/17~24) 사전 타겟팅 — 방문 빈도 하락 VIP 중심 문자·알림톡 집중",
-             "지원금 미사용자 사용 유도 지속(20만원↑ 조건 = 객단가 희석 없는 전환 경로)"]
-BRIEF_NEXT = ["자동화 문자 <b>순효과 검증</b> — 발송군·미발송군 방문 빈도 비교",
-              "효과 확인 시 상시 운영 전환 및 발송 세그먼트 확대"]
+BRIEF_NOW = ["<b>핏플랍 기구매 VIP 타겟 발송</b> — 올해 슈즈 미구매 7,859명 대상 킨·우포스 등 대체 샌들 소구"
+             "(샌들 성수기 잔여기간 활용, 별도 비용 없음)",
+             "<b>브랜드 페스타(8/17~) 사전 알림</b> — 방문 빈도 하락 VIP 세그먼트 추출·문자 발송 준비"]
+BRIEF_NEXT = ["<b>브랜드 페스타 기간 재방문 유도</b> — 성장 채널인 문자 중심으로 미방문 VIP 집중 발송",
+              "<b>발송 효과 실측</b> — 금주 발송한 슈즈 타겟의 구매 전환 확인 후 세그먼트·소구 조정"]
 
 _bmo, _bcd = (_ldt.month, _ldt.day) if _ldt else (None, None)
 if _bmo and PAGE.startswith("📋"):
@@ -1696,17 +1698,9 @@ if _bmo and PAGE.startswith("📋"):
     _cells = []
     for lab, met in _K:
         cur_v = _byoy(met, _bmo, _bcd)
-        prv_v = _byoy(met, _pm) if _pm else None
         cls = "bfdn" if (cur_v is not None and cur_v < 0) else "bfup"
-        sub = "—"
-        if cur_v is not None and prv_v is not None:
-            dd = (cur_v - prv_v) * 100
-            # 객단가는 상승폭 축소가 오히려 긍정(단가 의존 완화) → 개선 색 판정에서 제외
-            _cls2 = "" if met == "일평균객단가" else ("bfup" if dd > 0 else "bfdn")
-            tail = " (의존도 완화)" if (met == "일평균객단가" and dd < 0) else ""
-            sub = f"{_pm}월 {_pct(prv_v)} <em class='{_cls2}'>→ {dd:+.1f}%p</em>{tail}"
         _cells.append(f"<div class='bfk'><div class='l'>{lab}</div>"
-                      f"<div class='v {cls}'>{_pct(cur_v)}</div><div class='d'>{sub}</div></div>")
+                      f"<div class='v {cls}'>{_pct(cur_v)}</div></div>")
     _hs, _hc = _byoy(SALES, _bmo, _bcd), _byoy("일평균고객수", _bmo, _bcd)
     _hcr = _byoy("CR", _bmo, _bcd)
     _hd = ""
@@ -1714,11 +1708,11 @@ if _bmo and PAGE.startswith("📋"):
         _imp = (_hc - _byoy("일평균고객수", _pm)) * 100
         if _imp > 0:
             _hd = (f" — 구매고객수 <b>{_imp:+.1f}%p</b>·전환율 "
-                   f"<b>{(_hcr - _byoy('CR', _pm))*100:+.1f}%p</b> 개선으로 회복 국면")
+                   f"<b>{(_hcr - _byoy('CR', _pm))*100:+.1f}%p</b> 개선으로 회복 트렌드")
     st.markdown(f"<div class='bfhead'>{_bmo}월({_bcd}일까지) 거래액 <b>{_pct(_hs)}</b>{_hd}</div>",
                 unsafe_allow_html=True)
     st.markdown(f"<div class='bfkpi'>{''.join(_cells)}</div>", unsafe_allow_html=True)
-    st.caption(f"※ {_bmo}월은 1~{_bcd}일 MTD(전년 동일 기간 대비) · 비교는 {_pm}월 마감 전년비 대비 개선폭")
+    st.caption(f"※ {_bmo}월 1~{_bcd}일 MTD · 전년 동일 기간 대비")
 
     # 추이 차트 2종(상세와 동일 형식) — 일자별·월별만
     _g1, _g2 = st.columns(2)
@@ -1732,9 +1726,12 @@ if _bmo and PAGE.startswith("📋"):
         st.markdown(f"<div class='bfins'><span class='t'>{tag}</span>{_redneg(txt)}</div>",
                     unsafe_allow_html=True)
     _c1, _c2 = st.columns(2)
-    _c1.markdown("<div class='bfact'><h5>금주 실행</h5><ul>"
+    _t1 = _ldt + datetime.timedelta(days=1)                      # 금주 = 집계 다음날부터 일요일까지
+    _t1e = _t1 + datetime.timedelta(days=(6 - _t1.weekday()) % 7)
+    _t2, _t2e = _t1e + datetime.timedelta(days=1), _t1e + datetime.timedelta(days=7)
+    _c1.markdown(f"<div class='bfact'><h5>금주 실행 ({_t1.month}/{_t1.day}~{_t1e.month}/{_t1e.day})</h5><ul>"
                  + "".join(f"<li>{x}</li>" for x in BRIEF_NOW) + "</ul></div>", unsafe_allow_html=True)
-    _c2.markdown("<div class='bfact'><h5>차주 계획</h5><ul>"
+    _c2.markdown(f"<div class='bfact'><h5>차주 계획 ({_t2.month}/{_t2.day}~{_t2e.month}/{_t2e.day})</h5><ul>"
                  + "".join(f"<li>{x}</li>" for x in BRIEF_NEXT) + "</ul></div>", unsafe_allow_html=True)
     st.caption("상세 지표·행사·상품별 실적은 사이드바에서 **📊 상세 대시보드**를 선택하세요.")
     st.stop()      # ← 브리프는 독립 화면: 이하 상세 섹션은 렌더하지 않음
