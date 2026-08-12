@@ -1668,23 +1668,64 @@ st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트
 
 # ---- 0) 주간 브리프 (보고용 요약) ----------------------------------------------
 # 수치는 자동 갱신. 결론·액션 문구는 아래 BRIEF_* 상수에서 관리(주간 보고 시 여기만 수정).
-BRIEF_INSIGHTS = [
-    ("진단", "<b>DAU 하락은 이탈이 아니라 ‘방문 빈도’ 문제</b><br>"
-             "월 1회 이상 방문 VIP <b>82,149→85,203명(전년비 +4.5%)</b>으로 오히려 증가한 반면, "
-             "인당 월 방문일수는 <b>9.5일→8.5일(△10.2%)</b>로 감소. DAU 감소분이 전부 빈도에서 발생 "
-             "→ 이탈 방어가 아닌 <b>재방문 유도</b>가 과제"),
-    ("상품", "<b>슈즈 부진은 카테고리가 아닌 대체 구색 공백</b><br>"
-             "슈즈 거래액 <b>△33%</b>이나, ’25.9월 철수한 핏플랍이 전년 슈즈의 <b>52%</b>(구매 VIP 15,077명). "
-             "<b>핏플랍 제외 시 슈즈 +41%</b>로 수요는 유지 중이며, 기구매 고객의 <b>71.7%가 올해 슈즈 미구매</b>"),
-    ("채널", "<b>CRM 채널 중 자동화 문자(LMS)만 성장</b><br>"
-             "LMS 유입 <b>전년비 +43%</b>(일 1,182→1,687명) vs 앱푸시 <b>△21%</b>·email <b>△61%</b>. "
-             "재방문 유도 수단으로 실질 가동되는 채널은 문자가 유일"),
-]
-BRIEF_NOW = ["<b>핏플랍 기구매 VIP 타겟 발송</b> — 올해 슈즈 미구매 7,859명 대상 킨·우포스 등 대체 샌들 소구"
-             "(샌들 성수기 잔여기간 활용, 별도 비용 없음)",
-             "<b>브랜드 페스타(8/17~) 사전 알림</b> — 방문 빈도 하락 VIP 세그먼트 추출·문자 발송 준비"]
-BRIEF_NEXT = ["<b>브랜드 페스타 기간 재방문 유도</b> — 성장 채널인 문자 중심으로 미방문 VIP 집중 발송",
-              "<b>발송 효과 실측</b> — 금주 발송한 슈즈 타겟의 구매 전환 확인 후 세그먼트·소구 조정"]
+def brief_insights(mo, cd, wkp):
+    """브리프 인사이트 — 업로드된 시드(전체·상품관점)에서 자동 생성. 매주 데이터만 갱신하면 따라 바뀜."""
+    out = []
+    yy = lambda met, dm=cd: yoy(month_value(met, CUR, mo, dm), month_value(met, PREV, mo, dm))
+    # ① 회원은 유지되는데 방문율이 빠진다 → 이탈이 아닌 방문 빈도 문제
+    mb = yy("유효회원수")
+    u26, m26 = dmean("DAU", CUR, mo, cd), dmean("유효회원수", CUR, mo, cd)
+    u25, m25 = dmean("DAU", PREV, mo, cd), dmean("유효회원수", PREV, mo, cd)
+    if all(x for x in (u26, m26, u25, m25)):
+        out.append(("진단",
+            f"<b>DAU 하락은 회원 이탈이 아닌 ‘방문 빈도’ 문제</b><br>"
+            f"유효회원 수는 <b>{m26:,.0f}명({_pct(mb)})</b>으로 유지되는 반면 "
+            f"방문율(DAU/유효회원)은 <b>{u25/m25*100:.1f}% → {u26/m26*100:.1f}%"
+            f"({(u26/m26-u25/m25)*100:+.1f}%p)</b>로 하락 → 신규 확보보다 <b>재방문 유도</b>가 과제"))
+    # ② 거래액 = DAU × CR × 객단가 분해로 어디가 새는지
+    s, dau, cr, aov = yy(SALES), yy("DAU"), yy("CR"), yy("일평균객단가")
+    if None not in (s, dau, cr, aov):
+        out.append(("실적",
+            f"<b>거래액 {_pct(s)} — 방문 감소를 객단가가 상쇄하는 구조</b><br>"
+            f"방문 <b>{_pct(dau)}</b>·전환 <b>{_pct(cr)}</b>이 하락 요인, 객단가 <b>{_pct(aov)}</b>가 상쇄. "
+            f"객단가 의존은 지속성이 낮아 <b>방문·전환 회복</b> 없이는 개선 한계"))
+    # ③ 채널: 하락 주도 채널과 방어 채널(최근 완료주)
+    if wkp:
+        p = wkp[-1]
+        ch = []
+        for nm in ("직접", "광고", "EP", "PUSH", "제휴"):
+            a = V("week", "overall", SALES, nm, "", CUR, p)
+            b = V("week", "overall", SALES, nm, "", PREV, p)
+            if a and b:
+                ch.append((nm, a - b, yoy(a, b)))
+        if ch:
+            worst = min(ch, key=lambda x: x[1]); best = max(ch, key=lambda x: x[1])
+            out.append(("채널",
+                f"<b>하락은 ‘직접 유입’에 집중 — 유료·행사 채널이 방어 중</b><br>"
+                f"{week_pretty(p)} 기준 <b>{worst[0]} {_pct(worst[2])}</b>"
+                f"(거래액 {abs(worst[1])/1e6:,.0f}백만 감소)가 하락을 주도, "
+                f"<b>{best[0]} {_pct(best[2])}</b>가 상쇄. 자연 유입 회복이 구조적 과제"))
+    # ④ 상품: 규모 있는 카테고리 중 최대 부진/선전
+    if wkp:
+        p = wkp[-1]
+        rows = []
+        for ca in CATS_ORDER:
+            a = sum(V("week", "product", SALES, ye, ca, CUR, p) or 0 for ye in YEONG)
+            b = sum(V("week", "product", SALES, ye, ca, PREV, p) or 0 for ye in YEONG)
+            if b > 5e6:
+                rows.append((ca, a - b, yoy(a, b), a))
+        if rows:
+            w = min(rows, key=lambda x: x[1]); g = max(rows, key=lambda x: x[1])
+            out.append(("상품",
+                f"<b>{w[0]} 부진이 상품 하락을 주도, {g[0]}은 방어</b><br>"
+                f"{week_pretty(p)} 기준 <b>{w[0]} {_pct(w[2])}</b>(거래액 {abs(w[1])/1e6:,.0f}백만 감소) · "
+                f"<b>{g[0]} {_pct(g[2])}</b>. 부진 카테고리는 구색·노출 점검 필요"))
+    return out
+BRIEF_NOW = ["<b>미방문 VIP 재방문 유도</b> — 방문율 하락(진단①)에 대응해 최근 4주 미방문 세그먼트 추출, "
+             "브랜드 페스타(8/17~) 사전 알림 발송 준비",
+             "<b>부진 카테고리 노출 보강</b> — 잡화·슈즈 등 낙폭 큰 카테고리의 기획전·추천 영역 점검"]
+BRIEF_NEXT = ["<b>브랜드 페스타 기간 전환 집중</b> — 행사 유입객 대상 장바구니·쿠폰 리마인드로 CR 방어",
+              "<b>직접 유입 회복 시험</b> — 발송 세그먼트별 재방문·전환 실측 후 소구·주기 조정"]
 
 _bmo, _bcd = (_ldt.month, _ldt.day) if _ldt else (None, None)
 if _bmo and PAGE.startswith("📋"):
@@ -1722,7 +1763,7 @@ if _bmo and PAGE.startswith("📋"):
     _g1.plotly_chart(_f1, use_container_width=True)
     _g2.plotly_chart(_f2, use_container_width=True)
 
-    for tag, txt in BRIEF_INSIGHTS:
+    for tag, txt in brief_insights(_bmo, _bcd, wk_all_closed[-5:]):
         st.markdown(f"<div class='bfins'><span class='t'>{tag}</span>{_redneg(txt)}</div>",
                     unsafe_allow_html=True)
     _c1, _c2 = st.columns(2)
