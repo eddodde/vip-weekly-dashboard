@@ -1672,63 +1672,94 @@ st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트
 # ---- 0) 주간 브리프 (보고용 요약) ----------------------------------------------
 # 수치는 자동 갱신. 결론·액션 문구는 아래 BRIEF_* 상수에서 관리(주간 보고 시 여기만 수정).
 def brief_insights(mo, cd, wkp):
-    """브리프 인사이트 — 업로드된 시드(전체·상품관점)에서 자동 생성. 매주 데이터만 갱신하면 따라 바뀜."""
+    """브리프 인사이트 — 시드에서 자동 생성. '무엇이 빠졌나'가 아니라 '무엇을 해야 하나'가 갈리는 각도로.
+       ① 상품: 안 팔리는 게 아니라 안 보이는 것인지(UV↓·CR↑) 분리
+       ② 채널: 유입 1명당 전환 효율 — 어디로 트래픽을 늘려야 남는지
+       ③ 행사: 행사 때와 평상시 중 어디가 새는지"""
     out = []
-    yy = lambda met, dm=cd: yoy(month_value(met, CUR, mo, dm), month_value(met, PREV, mo, dm))
-    # ① 회원은 유지되는데 방문율이 빠진다 → 이탈이 아닌 방문 빈도 문제
-    mb = yy("유효회원수")
-    u26, m26 = dmean("DAU", CUR, mo, cd), dmean("유효회원수", CUR, mo, cd)
-    u25, m25 = dmean("DAU", PREV, mo, cd), dmean("유효회원수", PREV, mo, cd)
-    if all(x for x in (u26, m26, u25, m25)):
-        out.append(("진단",
-            f"<b>DAU 하락은 회원 이탈이 아닌 ‘방문 빈도’ 문제</b><br>"
-            f"유효회원 수는 <b>{m26:,.0f}명({_pct(mb)})</b>으로 유지되는 반면 "
-            f"방문율(DAU/유효회원)은 <b>{u25/m25*100:.1f}% → {u26/m26*100:.1f}%"
-            f"({(u26/m26-u25/m25)*100:+.1f}%p)</b>로 하락 → 신규 확보보다 <b>재방문 유도</b>가 과제"))
-    # ② 거래액 = DAU × CR × 객단가 분해로 어디가 새는지
-    s, dau, cr, aov = yy(SALES), yy("DAU"), yy("CR"), yy("일평균객단가")
-    if None not in (s, dau, cr, aov):
-        out.append(("실적",
-            f"<b>거래액 {_pct(s)} — 방문 감소를 객단가가 상쇄하는 구조</b><br>"
-            f"방문 <b>{_pct(dau)}</b>·전환 <b>{_pct(cr)}</b>이 하락 요인, 객단가 <b>{_pct(aov)}</b>가 상쇄. "
-            f"객단가 의존은 지속성이 낮아 <b>방문·전환 회복</b> 없이는 개선 한계"))
-    # ③ 채널: 하락 주도 채널과 방어 채널(최근 완료주)
-    if wkp:
-        p = wkp[-1]
+    p = wkp[-1] if wkp else None
+
+    # ① 노출 문제 vs 상품력 문제 — 상품UV·상품CR 분리
+    if p:
+        expo, conv = [], []
+        for ca in CATS_ORDER:
+            g = lambda y, m: sum(V("week", "product", m, ye, ca, y, p) or 0 for ye in YEONG)
+            v26, v25 = g(CUR, SALES), g(PREV, SALES)
+            u26, u25 = g(CUR, "상품UV"), g(PREV, "상품UV")
+            c26, c25 = g(CUR, "상품CR"), g(PREV, "상품CR")
+            if min(v25, u25, c25) <= 0 or v25 < 5e6:
+                continue
+            uy, cy, vy = u26 / u25 - 1, c26 / c25 - 1, v26 / v25 - 1
+            if uy < -0.05 and cy > 0:          # 조회는 줄었는데 사는 비율은 올라간 = 노출 부족
+                expo.append((ca, uy, cy, v26 - v25))
+            elif cy < -0.05 and uy > -0.05:    # 보고도 안 산 = 상품력·가격
+                conv.append((ca, uy, cy, v26 - v25))
+        if expo:
+            expo.sort(key=lambda x: x[3])
+            nm = ", ".join(f"<b>{c}</b>(UV {_pct(u)}·구매전환 {_pct(v)})" for c, u, v, _ in expo[:3])
+            out.append(("상품",
+                f"<b>부진 카테고리 상당수는 ‘안 팔린 것’이 아니라 ‘안 보인 것’</b><br>"
+                f"{week_pretty(p)} 기준 {nm} — <b>상품 조회수는 줄었는데 본 사람의 구매전환은 오히려 상승</b>. "
+                f"상품력이 아니라 노출·진입 동선 문제 → <b>기획전·추천영역 배치로 회복 가능</b>"))
+        if conv:
+            conv.sort(key=lambda x: x[3])
+            nm = ", ".join(f"<b>{c}</b>(구매전환 {_pct(v)})" for c, u, v, _ in conv[:3])
+            out.append(("상품",
+                f"<b>노출은 유지됐는데 전환이 빠진 카테고리</b><br>"
+                f"{nm} — 조회는 전년 수준인데 구매로 이어지지 않음. "
+                f"가격·구색·리뷰 등 <b>상품 경쟁력 점검 대상</b>"))
+
+    # ② 채널: 유입 1명당 전환 효율 → 트래픽 투자 우선순위
+    if p:
         ch = []
         for nm in ("직접", "광고", "EP", "PUSH", "제휴"):
-            a = V("week", "overall", SALES, nm, "", CUR, p)
-            b = V("week", "overall", SALES, nm, "", PREV, p)
-            if a and b:
-                ch.append((nm, a - b, yoy(a, b)))
-        if ch:
-            worst = min(ch, key=lambda x: x[1]); best = max(ch, key=lambda x: x[1])
+            du = V("week", "overall", "DAU", nm, "", CUR, p)
+            cr = V("week", "overall", "CR", nm, "", CUR, p)
+            du0 = V("week", "overall", "DAU", nm, "", PREV, p)
+            if du and cr and du0 and du > 300:
+                ch.append((nm, cr, yoy(du, du0), du))
+        if len(ch) >= 2:
+            ch.sort(key=lambda x: -x[1])
+            top, low = ch[0], ch[-1]
+            grew = max(ch, key=lambda x: (x[2] or -9))
             out.append(("채널",
-                f"<b>하락은 ‘직접 유입’에 집중 — 유료·행사 채널이 방어 중</b><br>"
-                f"{week_pretty(p)} 기준 <b>{worst[0]} {_pct(worst[2])}</b>"
-                f"(거래액 {abs(worst[1])/1e6:,.0f}백만 감소)가 하락을 주도, "
-                f"<b>{best[0]} {_pct(best[2])}</b>가 상쇄. 자연 유입 회복이 구조적 과제"))
-    # ④ 상품: 규모 있는 카테고리 중 최대 부진/선전
-    if wkp:
-        p = wkp[-1]
-        rows = []
-        for ca in CATS_ORDER:
-            a = sum(V("week", "product", SALES, ye, ca, CUR, p) or 0 for ye in YEONG)
-            b = sum(V("week", "product", SALES, ye, ca, PREV, p) or 0 for ye in YEONG)
-            if b > 5e6:
-                rows.append((ca, a - b, yoy(a, b), a))
-        if rows:
-            w = min(rows, key=lambda x: x[1]); g = max(rows, key=lambda x: x[1])
-            out.append(("상품",
-                f"<b>{w[0]} 부진이 상품 하락을 주도, {g[0]}은 방어</b><br>"
-                f"{week_pretty(p)} 기준 <b>{w[0]} {_pct(w[2])}</b>(거래액 {abs(w[1])/1e6:,.0f}백만 감소) · "
-                f"<b>{g[0]} {_pct(g[2])}</b>. 부진 카테고리는 구색·노출 점검 필요"))
-    return out
-BRIEF_NOW = ["<b>미방문 VIP 재방문 유도</b> — 방문율 하락(진단①)에 대응해 최근 4주 미방문 세그먼트 추출, "
-             "브랜드 페스타(8/17~) 사전 알림 발송 준비",
-             "<b>부진 카테고리 노출 보강</b> — 잡화·슈즈 등 낙폭 큰 카테고리의 기획전·추천 영역 점검"]
-BRIEF_NEXT = ["<b>브랜드 페스타 기간 전환 집중</b> — 행사 유입객 대상 장바구니·쿠폰 리마인드로 CR 방어",
-              "<b>직접 유입 회복 시험</b> — 발송 세그먼트별 재방문·전환 실측 후 소구·주기 조정"]
+                f"<b>유입을 늘릴 곳과 실제로 늘린 곳이 다르다</b><br>"
+                f"방문 1명당 구매전환은 <b>{top[0]} {top[1]*100:.1f}%</b>로 "
+                f"{low[0]}({low[1]*100:.1f}%)의 <b>{top[1]/low[1]:.1f}배</b>인데, "
+                f"이번 주 유입이 가장 늘어난 곳은 <b>{grew[0]}({_pct(grew[2])})</b> — "
+                f"<b>고전환 채널({top[0]}) 유입 확대가 같은 트래픽으로 더 남는 구조</b>"))
+
+    # ③ 행사 때 vs 평상시 — 어디가 새는지
+    if mo and cd:
+        maj = set()
+        for o in event_occurrences(CUR, only_major=True):
+            dd = o[0]
+            while dd <= sell_end(o[0], o[1]):
+                maj.add(dd); dd += datetime.timedelta(days=1)
+        on, off = [], []
+        for i in range(1, cd + 1):
+            c, b = dv(CUR, mo, i), dv(PREV, mo, i)
+            if c and b:
+                (on if datetime.date(CUR, mo, i) in maj else off).append(c / b - 1)
+        if on and off and len(off) >= 3:
+            mo_on, mo_off = sum(on) / len(on), sum(off) / len(off)
+            gap = (mo_on - mo_off) * 100
+            if abs(gap) >= 2:
+                lead = ("행사 기간은 전년 수준을 지키는데 <b>평상시가 새고 있다</b>" if mo_on > mo_off
+                        else "평상시는 버티는데 <b>행사 성과가 전년에 못 미친다</b>")
+                out.append(("구조",
+                    f"<b>{lead}</b><br>"
+                    f"{mo}월 전관행사 기간 <b>{_pct(mo_on)}</b>({len(on)}일) vs 비행사일 "
+                    f"<b>{_pct(mo_off)}</b>({len(off)}일), 격차 <b>{gap:+.1f}%p</b> → "
+                    + ("행사 의존을 줄이려면 <b>비행사 기간 상시 유입·전환 설계</b>가 필요"
+                       if mo_on > mo_off else "<b>행사 기획·타겟 소구 강화</b>가 우선")))
+    return out[:4]
+BRIEF_NOW = ["<b>노출 부족 카테고리 우선 배치</b> — 조회는 줄었으나 전환은 오른 잡화·리빙·골프를 "
+             "브랜드 페스타(8/17~) 기획전·추천영역 상단에 편성 요청",
+             "<b>행사탭(EP) 유입 확대</b> — 전환율이 가장 높은 채널로 발송 랜딩을 통일해 같은 발송량 대비 성과 극대화"]
+BRIEF_NEXT = ["<b>비행사 기간 상시 유입 설계</b> — 행사일과 평상시 격차가 큰 만큼, 행사 종료 직후 "
+              "재방문 유도 발송으로 낙폭 구간 방어",
+              "<b>노출 보강 효과 검증</b> — 금주 배치한 카테고리의 조회수·전환 회복 여부 확인 후 편성 확대 판단"]
 
 _bmo, _bcd = (_ldt.month, _ldt.day) if _ldt else (None, None)
 if _bmo and PAGE.startswith("📋"):
