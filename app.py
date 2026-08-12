@@ -1143,6 +1143,10 @@ def chart_channel_yoy(wkp, pretty=None):
 
 # ----------------------------------------------------------------------------- insights (분석형)
 # 섹션 인사이트엔 '핵심 레버'만(짧게). 상세 액션(전술)은 최하단 종합 방향성에서만 노출.
+# 회원번호별 월 방문일수(별도 추출) — 시드 밖 데이터라 상수로 관리. 갱신 시 month/수치만 교체.
+VISIT_DECOMP = {"month": 7, "members": 85_203, "members_yoy": 0.045, "days": 8.53, "days_yoy": -0.102,
+                "f1_yoy": 0.21, "f23_yoy": 0.14, "heavy_yoy": -0.11}
+
 DRIVER_LEVER = {"DAU": "방문(DAU) 회복이 가장 중요", "CR": "잔존 방문의 구매전환(CR) 제고가 실질 레버",
                 "객단가": "객단가 방어가 실질 레버"}
 DRIVER_ACTION = {"DAU": "최근 미방문 VIP 자동화 문자·출석체크·개인화 추천으로 재방문 유도",
@@ -1322,6 +1326,26 @@ def insight_month(mo, cutoff, is_cur, unit_label):
             b.insert(1, f"<b>전월비</b> 거래액 <b>{_pct(mom)}</b> "
                         f"<span style='color:#93a0b3'>({CUR}년 {mo-1}월 1~{cutoff}일 대비 · 위는 전년비)</span>")
     if is_cur:
+        # DAU 역신장폭이 3개월 연속 축소 중이면, 방문 분해(회원수 vs 빈도)로 근거를 붙인다.
+        dseq = []
+        for k in (2, 1, 0):
+            m2 = mo - k
+            if m2 < 1:
+                continue
+            d = yoy(month_value("DAU", CUR, m2, maxd if k == 0 else None),
+                    month_value("DAU", PREV, m2, maxd if k == 0 else None))
+            if d is not None:
+                dseq.append((m2, d))
+        if b:
+            v = VISIT_DECOMP
+            trend = (" → ".join(f"{m}월 {_pct(d)}" for m, d in dseq)) if len(dseq) >= 2 else ""
+            b.insert(max(len(b) - 1, 0),
+                     "<b>DAU 역신장폭 축소</b>" + (f"({trend})" if trend else "") + " — "
+                     f"방문 회원수는 <b>{v['members']:,}명({_pct(v['members_yoy'])})</b>으로 증가, "
+                     f"감소는 인당 방문일수({v['days']}일 {_pct(v['days_yoy'])})에서 발생<br>"
+                     f"<span style='padding-left:2px'>월 1회 방문 {_pct(v['f1_yoy'])}·2~3회 {_pct(v['f23_yoy'])} 증가 vs "
+                     f"16일 이상 {_pct(v['heavy_yoy'])} → <b>저빈도 방문의 재방문 전환</b>이 DAU 회복 경로</span> "
+                     f"<span style='color:#93a0b3'>({v['month']}월 · 회원번호별 방문일수 기준)</span>")
         fc = forecast_month(mo, cutoff)
         if fc and fc["yoy"] is not None:
             evtxt = f" (잔여기간 {', '.join(fc['events'][:2])} 등 전년 반복 행사 포함)" if fc["events"] else ""
