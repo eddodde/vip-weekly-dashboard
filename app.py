@@ -1969,7 +1969,9 @@ if "user_comment" not in st.session_state:
 
 st.markdown("---")
 with st.expander("✍️ 액션 방향 · 코멘트 (직접 작성)", expanded=bool(st.session_state.get("user_comment"))):
-    st.caption("보고용 메모 — 데이터 갱신(재업로드)돼도 유지됩니다. '저장'하면 파일에도 남고, 아래로 내려받아 보관도 가능.")
+    st.caption("보고용 메모 — 데이터 갱신·새로고침에는 유지되지만, **앱이 재배포되면 초기화**됩니다"
+               "(코드·시드를 올리면 컨테이너가 새로 만들어져 저장 파일이 git 버전으로 되돌아감). "
+               "작성 후 **⬇️ 내려받기로 꼭 백업**하세요.")
     st.text_area("메모", key="user_comment", height=180,
                  placeholder="예) 금주 방향: DAU 회복(미방문 리텐션)에 집중, L+DAY 전환 극대화 …\n차주: SUMMER VACANCE 대비 …",
                  label_visibility="collapsed")
@@ -1978,7 +1980,7 @@ with st.expander("✍️ 액션 방향 · 코멘트 (직접 작성)", expanded=b
         try:
             with open(COMMENT_FILE, "w", encoding="utf-8") as _f:
                 _f.write(st.session_state.user_comment or "")
-            st.success("저장했습니다.")
+            st.success("저장했습니다 — 재배포 시에는 사라지니 **⬇️ 내려받기로 백업**해두세요.")
         except Exception as _e:  # noqa
             st.warning(f"파일 저장 실패(세션엔 유지됨): {_e}")
     _b2.download_button("⬇️ 내려받기", st.session_state.get("user_comment", ""),
