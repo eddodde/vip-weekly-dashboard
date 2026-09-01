@@ -1321,7 +1321,19 @@ def insight_perf(grain, period, unit_label):
     return _insight_sales(g, unit_label)
 
 
+MO_MIN_DAYS = 5                                   # 당월 경과일이 이 미만이면 전월(마감) 기준으로 대체
+
+
 def insight_month(mo, cutoff, is_cur, unit_label):
+    # 당월이 1~4일치뿐이면 표본이 얇아 오독 위험 → 직전 마감월 인사이트로 대체
+    if is_cur and cutoff and cutoff < MO_MIN_DAYS and mo > 1:
+        pm = mo - 1
+        gp = lambda m: yoy(month_value(m, CUR, pm, None), month_value(m, PREV, pm, None))
+        bp = _insight_sales(gp, f"{pm}월 마감")
+        if bp:
+            bp.append(f"<span style='color:#93a0b3'>당월({mo}월)은 {cutoff}일치라 "
+                      f"표본이 부족해 <b>{pm}월 마감 기준</b>으로 표시합니다</span>")
+        return bp
     maxd = cutoff if is_cur else None
     g = lambda m: yoy(month_value(m, CUR, mo, maxd), month_value(m, PREV, mo, maxd))
     b = _insight_sales(g, unit_label)
@@ -1652,10 +1664,22 @@ def wk_label(p):
     return lbl
 
 
+# 진행중 주의 경과일수(월=1 … 일=7). 1~2일이면 전년 주 전체와 비교되어 왜곡이 커짐.
+wk_elapsed = (_ldt.weekday() + 1) if (wk_partial and _ldt) else 0
+WK_MIN_DAYS = 3                                   # 이 미만이면 수치를 접고 마감 기준만 노출
+
+
 def partial_line(kind="perf"):
-    """진행중 주 요약 한 줄. 완료주 인사이트와 섞이지 않게 [진행중] 배지로 구분 표기."""
+    """진행중 주 요약 한 줄. 완료주 인사이트와 섞이지 않게 [진행중] 배지로 구분 표기.
+       경과 3일 미만이면 전년 동주 전체와의 비교가 무의미해 수치 대신 안내만 표기."""
     if not wk_partial or not latest_wk:
         return None
+    if wk_elapsed and wk_elapsed < WK_MIN_DAYS:   # 하루~이틀치는 비교 자체를 노출하지 않음
+        return ('<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
+                'font-weight:600;margin-right:6px">진행중</span>'
+                f'<b>{wk_label(latest_wk)}</b>는 {wk_elapsed}일치라 전년 동주(7일) 대비 수치가 왜곡됩니다 — '
+                f'<b>위 인사이트는 마감 기준({week_pretty(snap_wk)})</b>이며, '
+                '진행중 주는 3일 이상 누적 후 표기합니다')
     rows = ([("거래액", SALES), ("DAU", "DAU"), ("CR", "CR"), ("객단가", "일평균객단가")] if kind == "perf"
             else [(nm, sg) for nm, sg in CH_ROWS if nm != "TTL"])
     parts = []
@@ -1672,7 +1696,7 @@ def partial_line(kind="perf"):
         return None
     return ('<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
             'font-weight:600;margin-right:6px">진행중</span>'
-            f'<b>{wk_label(latest_wk)}</b> ' + " · ".join(parts)
+            f'<b>{wk_label(latest_wk)}</b>({wk_elapsed}일치) ' + " · ".join(parts)
             + ' <span style="color:#93a0b3">— 부분 집계(전년 동주 전체 대비)라 참고용</span>')
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
