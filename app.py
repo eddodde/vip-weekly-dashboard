@@ -1347,7 +1347,16 @@ def insight_month(mo, cutoff, is_cur, unit_label):
     if is_cur and cutoff and cutoff < MO_MIN_DAYS and mo > 1:
         pm = mo - 1
         gp = lambda m: yoy(month_value(m, CUR, pm, None), month_value(m, PREV, pm, None))
-        bp = _insight_sales(gp, f"{pm}월 마감")
+        # 대체 표시(마감월) 경로에서도 '그 전달 대비 변화'를 첫 줄로 노출
+        pc2, plabel2 = None, ""
+        if pm > 1:
+            pc2 = {}
+            for _m, _k in (("DAU", "DAU"), ("CR", "CR"), ("일평균객단가", "객단가")):
+                _v = yoy(month_value(_m, CUR, pm - 1, None), month_value(_m, PREV, pm - 1, None))
+                if _v is not None:
+                    pc2[_k] = _v
+            plabel2 = f"{pm-1}월"
+        bp = _insight_sales(gp, f"{pm}월 마감", _prev_comp=pc2, _prev_label=plabel2)
         if bp:
             bp.append(f"<span style='color:#93a0b3'>당월({mo}월)은 {cutoff}일치라 "
                       f"표본이 부족해 <b>{pm}월 마감 기준</b>으로 표시합니다</span>")
