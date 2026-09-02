@@ -1164,10 +1164,11 @@ def _pct(r):
     return yoy_disp(r)[0]
 
 
-def _insight_sales(g, unit_label, event=False):
+def _insight_sales(g, unit_label, event=False, _prev_comp=None, _prev_label=""):
     """거래액=DAU×CR×객단가 분해로 주동인·상쇄요인·핵심레버 도출(단순 현상 나열 X). g=지표→전년비.
     event=True(전관행사): VIP 기준 EP는 유입(DAU) 견인 효과가 제한적이고 CR(전환)에 효과 →
-    DAU는 구조적 변수로 두고 CR을 우선 레버로 제시(방문 회복은 부수)."""
+    DAU는 구조적 변수로 두고 CR을 우선 레버로 제시(방문 회복은 부수).
+    _prev_comp: 직전 기간의 {지표: 전년비} — 주면 '전기 대비 방향 전환'을 첫 줄로 노출."""
     sales = g("일평균거래액")
     comp = {"DAU": g("DAU"), "CR": g("CR"), "객단가": g("일평균객단가")}
     comp = {k: v for k, v in comp.items() if v is not None}
@@ -1181,6 +1182,23 @@ def _insight_sales(g, unit_label, event=False):
     also = " 동반 약세" if neg else " 동반 개선"
     b = [f"{unit_label} 거래액 <b>전년비 {_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>{lead}"
          + (f", {drags[0]}({_pct(comp[drags[0]])}){also}" if drags else "")]
+    # 'DAU가 하락 주도'는 연중 상시 상태라 그 자체로는 새 정보가 아님.
+    # → 직전 기간 대비 '방향 전환'이 있으면 그것을 첫 인사이트로 끌어올림.
+    if _prev_comp:
+        moves = []
+        for k in ("DAU", "CR", "객단가"):
+            cv, pv2 = comp.get(k), _prev_comp.get(k)
+            if cv is None or pv2 is None:
+                continue
+            dlt = (cv - pv2) * 100
+            if abs(dlt) >= 0.5:                        # 0.5%p 이상 움직인 것만
+                moves.append((abs(dlt), k, cv, pv2, dlt))
+        if moves:
+            moves.sort(reverse=True)
+            _, k, cv, pv2, dlt = moves[0]
+            word = "개선" if dlt > 0 else "악화"
+            b.insert(0, f"<b>{k} 낙폭 {word}</b>: {_pct(pv2)} → <b>{_pct(cv)}</b>"
+                        f"({dlt:+.1f}%p, {_prev_label} 대비) — 전월 대비 가장 크게 움직인 지표")
     if defend:
         b.append(("상쇄 요인" if neg else "제약 요인") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
     if event:
@@ -1336,7 +1354,16 @@ def insight_month(mo, cutoff, is_cur, unit_label):
         return bp
     maxd = cutoff if is_cur else None
     g = lambda m: yoy(month_value(m, CUR, mo, maxd), month_value(m, PREV, mo, maxd))
-    b = _insight_sales(g, unit_label)
+    # 직전 달의 '전년비'(월 전체 기준)를 함께 넘겨 '이번 달에 달라진 점'을 우선 노출
+    pc, plabel = None, ""
+    if mo > 1:
+        pc = {}
+        for _m, _k in (("DAU", "DAU"), ("CR", "CR"), ("일평균객단가", "객단가")):
+            _v = yoy(month_value(_m, CUR, mo - 1, None), month_value(_m, PREV, mo - 1, None))
+            if _v is not None:
+                pc[_k] = _v
+        plabel = f"{mo-1}월"
+    b = _insight_sales(g, unit_label, _prev_comp=pc, _prev_label=plabel)
     if is_cur and mo > 1 and b:
         mom = yoy(month_value("일평균거래액", CUR, mo, maxd), month_value("일평균거래액", CUR, mo - 1, cutoff))
         if mom is not None:
