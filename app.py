@@ -370,6 +370,27 @@ with st.sidebar.expander("🔄 데이터 업데이트", expanded=False):
             # 기존 + 신규 병합(같은 구간은 신규가 우선, 나머지는 유지) → 재집계
             st.session_state.df = finalize(pd.concat([base, newdf], ignore_index=True))
             st.success(f"{len(ups)}개 파일 병합 · 총 {len(st.session_state.df):,}행")
+
+    # ★ 업로드분은 session_state(메모리)에만 있어 새로고침·세션만료·재배포 시 시드로 되돌아감.
+    #   → 시드 파일로 굳히거나(같은 컨테이너 한정), CSV로 내려받아 git에 커밋해 영구 보존.
+    _cur = st.session_state.get("df")
+    _up_rows = len(_cur) if (_cur is not None and not _cur.empty) else 0
+    _seed_rows = len(load_seed())
+    if _up_rows and _up_rows != _seed_rows:
+        st.warning(f"⚠️ 업로드분({_up_rows:,}행)이 시드({_seed_rows:,}행)와 다릅니다 — "
+                   "**저장하지 않으면 새로고침·재배포 시 시드로 되돌아갑니다.**")
+        _c1, _c2 = st.columns(2)
+        if _c1.button("💾 시드로 저장"):
+            try:
+                _cur.to_csv(SEED_CSV, index=False, encoding="utf-8-sig")
+                load_seed.clear()
+                st.success("시드 파일에 저장했습니다. 다만 **재배포하면 git 버전으로 되돌아가니**, "
+                           "아래로 내려받아 커밋해두시는 게 안전합니다.")
+            except Exception as _e:  # noqa
+                st.error(f"저장 실패: {_e}")
+        _c2.download_button("⬇️ CSV 내려받기", _cur.to_csv(index=False).encode("utf-8-sig"),
+                            file_name="perf_long.csv", mime="text/csv")
+
     if st.button("시드 데이터로 되돌리기"):
         load_seed.clear()
         st.session_state.df = load_seed()
