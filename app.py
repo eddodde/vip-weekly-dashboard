@@ -1963,28 +1963,39 @@ if not df[df.perspective == "product"].empty:
     st.header("6) 상품별 (e-영업 × 카테고리)", anchor="s5")
     pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
     sel = pwk_all[-1] if pwk_all else None            # 최신 주(진행중이면 라벨에 '(~m/d)')
+    # 진행중 주가 1~2일치뿐이면 전년 동주 전체와 비교되어 왜곡 → 직전 마감주 기준으로 표시
+    _p6_short = bool(wk_partial and sel == latest_wk and wk_elapsed and wk_elapsed < WK_MIN_DAYS)
+    _sel6 = sel
+    if _p6_short and len(pwk_all) >= 2:
+        _sel6 = pwk_all[-2]
     if sel:
-        _b6 = insight_product(sel)             # 상단 전체 요약(파란 박스)
-        if wk_partial and sel == latest_wk and _b6:
+        _b6 = insight_product(_sel6)           # 상단 전체 요약(파란 박스)
+        if _p6_short and _sel6 != sel and _b6:
+            _b6 = _b6 + ['<span style="color:#93a0b3">'
+                         f'{wk_label(sel)}는 {wk_elapsed}일치라 전년 동주(7일) 대비 왜곡이 커, '
+                         f'위 인사이트는 <b>마감 기준({week_pretty(_sel6)})</b>입니다</span>']
+        elif wk_partial and sel == latest_wk and _b6:
             _b6 = ['<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
                    'font-weight:600;margin-right:6px">진행중</span>'
-                   f'<b>{wk_label(sel)}</b> 기준 <span style="color:#93a0b3">— 부분 집계(전년 동주 전체 대비)라 참고용</span>'] + _b6
+                   f'<b>{wk_label(sel)}</b>({wk_elapsed}일치) 기준 '
+                   '<span style="color:#93a0b3">— 부분 집계(전년 동주 전체 대비)라 참고용</span>'] + _b6
         render_insight(_b6)
-        # 영업별 소계 요약(회색 줄)
+        # 영업별 소계 요약(회색 줄) — 인사이트와 동일 기준(_sel6) 사용
         _subs = []
         for _ye in YEONG:
-            _c = V("week", "product", "일평균거래액", _ye, "TOTAL", CUR, sel)
-            _p = V("week", "product", "일평균거래액", _ye, "TOTAL", PREV, sel)
+            _c = V("week", "product", "일평균거래액", _ye, "TOTAL", CUR, _sel6)
+            _p = V("week", "product", "일평균거래액", _ye, "TOTAL", PREV, _sel6)
             if _c is not None:
                 _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f}백만 {_pct(yoy(_c, _p))}")
+        _base_lbl = (f"{week_pretty(_sel6)} 마감" if _sel6 != sel else wk_label(sel))
         st.markdown(
             f"<div style='font-size:12px;color:#5b6472;background:#f7f9fc;border-left:3px solid #c5d3e8;"
-            f"padding:6px 12px;border-radius:4px;margin:2px 0 8px'>기준: {wk_label(sel)} · 거래액 일평균(백만) · "
+            f"padding:6px 12px;border-radius:4px;margin:2px 0 8px'>기준: {_base_lbl} · 거래액 일평균(백만) · "
             + _redneg("  |  ".join(_subs)) + "</div>", unsafe_allow_html=True)
         _tabs = st.tabs(YEONG)
         for _tab, _ye in zip(_tabs, YEONG):
             with _tab:
-                render_gray_insight(insight_yeong(_ye, sel))   # 탭 인사이트는 회색 박스
+                render_gray_insight(insight_yeong(_ye, _sel6))  # 탭 인사이트는 회색 박스
                 st.markdown(product_table_one(sel, _ye), unsafe_allow_html=True)
 
 # ---- 종합 방향성 (BCG 스타일: 헤드라인 + 진단/실행/임팩트) ----
