@@ -1197,8 +1197,8 @@ def _insight_sales(g, unit_label, event=False, _prev_comp=None, _prev_label=""):
             moves.sort(reverse=True)
             _, k, cv, pv2, dlt = moves[0]
             word = "개선" if dlt > 0 else "악화"
-            b.insert(0, f"<b>{k} 낙폭 {word}</b>: {_pct(pv2)} → <b>{_pct(cv)}</b>"
-                        f"({dlt:+.1f}%p, {_prev_label} 대비) — 전월 대비 가장 크게 움직인 지표")
+            b.insert(1, f"<b>{_prev_label} 대비 변화</b>: {k} {_pct(pv2)} → <b>{_pct(cv)}</b>"
+                        f"({dlt:+.1f}%p {word})로 가장 크게 움직임")
     if defend:
         b.append(("상쇄 요인" if neg else "제약 요인") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
     if event:
