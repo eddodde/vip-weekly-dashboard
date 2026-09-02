@@ -1433,9 +1433,29 @@ def insight_dau(period):
             cons += 1
         else:
             break
-    b = [f"DAU가 <b>{cons}주 연속</b> 전년보다 낮음(잠깐이 아니라 계속되는 하락) — "
-         f"특히 <b>{worst[0]} 채널</b>에서 많이 빠짐({_pct(worst[2])})"]
-    b.append('<span class="imp">→ 행사 때 잠깐 오는 방문이 아니라 <b>평상시 방문</b>(안 오던 VIP 다시 부르기·앱 재방문) 회복이 핵심</span>')
+    # 연속 음수 주차만 세면 '낙폭이 줄고 있는 국면'을 놓침 → 최근 4주 평균 대비 개선폭 병기
+    _cur = yoy(V("week", "overall", "DAU", "TOTAL", "", CUR, period),
+               V("week", "overall", "DAU", "TOTAL", "", PREV, period))
+    _hist = []
+    try:
+        _i = wa.index(period)
+        for _p in wa[max(0, _i - 4):_i]:
+            _r = yoy(V("week", "overall", "DAU", "TOTAL", "", CUR, _p),
+                     V("week", "overall", "DAU", "TOTAL", "", PREV, _p))
+            if _r is not None:
+                _hist.append(_r)
+    except ValueError:
+        pass
+    _delta = ((_cur - sum(_hist) / len(_hist)) * 100) if (_cur is not None and len(_hist) >= 2) else None
+    if _delta is not None and _delta >= 1.0:
+        b = [f"DAU {_pct(_cur)} — {cons}주 연속 전년 하회이나 <b>직전 4주 대비 낙폭 {_delta:+.1f}%p 축소</b>. "
+             f"감소는 <b>{worst[0]} 채널</b>에 집중({_pct(worst[2])})"]
+        b.append('<span class="imp">→ 회복 흐름 유지가 관건 — 재방문 유도 발송을 이어가되 '
+                 '<b>평상시 방문</b>(안 오던 VIP 다시 부르기) 전환까지 확장</span>')
+    else:
+        b = [f"DAU가 <b>{cons}주 연속</b> 전년보다 낮음(잠깐이 아니라 계속되는 하락) — "
+             f"특히 <b>{worst[0]} 채널</b>에서 많이 빠짐({_pct(worst[2])})"]
+        b.append('<span class="imp">→ 행사 때 잠깐 오는 방문이 아니라 <b>평상시 방문</b>(안 오던 VIP 다시 부르기·앱 재방문) 회복이 핵심</span>')
     return b
 
 
@@ -1599,13 +1619,41 @@ def final_direction(wk_all, cur_mo, cutoff):
     # 즉효(전술) 레버 = 전환(CR): 행사 고트래픽 위에서 단기에 움직임 / 구조 레버 = 방문(DAU)
     tactical = "CR" if (cr is not None and cr < 0) else None
 
+    # 지표별 '최근 흐름' 판정: 직전 4주 전년비 평균과 비교해 개선/악화를 구분.
+    # (음수라도 낙폭이 크게 줄었으면 '부진'이 아니라 '개선 중'으로 읽어야 함)
+    def _trend(metric_key):
+        met = {"DAU": "DAU", "CR": "CR", "객단가": "일평균객단가"}[metric_key]
+        try:
+            idx = wk_all.index(period)
+        except ValueError:
+            return None
+        hist = []
+        for p in wk_all[max(0, idx - 4):idx]:
+            r = yoy(V("week", "overall", met, "TOTAL", "", CUR, p),
+                    V("week", "overall", met, "TOTAL", "", PREV, p))
+            if r is not None:
+                hist.append(r)
+        cur_v = comp.get(metric_key)
+        if cur_v is None or len(hist) < 2:
+            return None
+        return (cur_v - sum(hist) / len(hist)) * 100     # %p, 양수면 개선
+
     diag, now, nxt = [], [], []
-    # 진단: 퍼널 어디가 새는지 + DAU 구조성
+    # 진단: 퍼널 어디가 새는지 + 최근 개선/악화 흐름
     if sales is not None:
-        drag_txt = "·".join(f"{k}({_pct(comp[k])})" for k in drags) or "-"
-        buf_txt = (", ".join(f"{k}({_pct(comp[k])})" for k in buf) + "만 상방 기여") if buf else ""
-        diag.append(f"거래액 <b>{_pct(sales)}</b> = <b>{drag_txt} 동반 부진</b>{('; ' + buf_txt) if buf_txt else ''} "
-                    f"→ 새는 곳은 <b>상단(방문)·중단(전환) 퍼널</b>, 고가치 구매층은 유지")
+        _improving = [k for k in drags if (_trend(k) or 0) >= 1.0]     # 낙폭 1%p 이상 축소
+        _worsening = [k for k in drags if k not in _improving]
+        parts = []
+        if _worsening:
+            parts.append("<b>" + "·".join(f"{k}({_pct(comp[k])})" for k in _worsening)
+                         + ("가 하방" if len(_worsening) == 1 else " 동반 하방") + "</b>")
+        if _improving:
+            parts.append("·".join(f"{k}({_pct(comp[k])}, 낙폭 {_trend(k):+.1f}%p)" for k in _improving)
+                         + "는 <b>직전 4주 대비 개선</b>")
+        if buf:
+            parts.append(", ".join(f"{k}({_pct(comp[k])})" for k in buf) + "는 상방 기여")
+        diag.append(f"거래액 <b>{_pct(sales)}</b> = " + "; ".join(parts) if parts else
+                    f"거래액 <b>{_pct(sales)}</b>")
     diag += insight_dau(period)     # DAU 지속성·주도채널·평상시 방문
     # 금주 액션(진행중): 전환(CR)을 최우선으로
     if tactical and (ip or ge):
@@ -1645,7 +1693,11 @@ def final_direction(wk_all, cur_mo, cutoff):
     if tactical:
         scen = sales - cr            # 전환을 작년 수준으로 회복(CR 격차 만회)
         half = sales - cr / 2
-        nxt.append(f"이번 주 <b>즉효 레버는 전환(CR {_pct(cr)})</b> — 방문(DAU)은 9주째 구조적이라 단기 반전이 어렵지만, "
+        _dt2 = _trend("DAU")
+        _dau_txt = (f"방문(DAU)은 낙폭이 줄고 있으나({_dt2:+.1f}%p) 절대 수준 회복엔 시간이 걸리는 반면"
+                    if (_dt2 is not None and _dt2 >= 1.0) else
+                    "방문(DAU)은 구조적이라 단기 반전이 어렵지만")
+        nxt.append(f"이번 주 <b>즉효 레버는 전환(CR {_pct(cr)})</b> — {_dau_txt}, "
                    f"전환은 {evnm_t} 고트래픽 위에서 전술로 당길 수 있음")
         nxt.append(f"{evnm_t}주 전환율을 작년 수준까지 회복하면 거래액 전년비 <b>{_pct(sales)} → {_pct(scen)}</b>"
                    f"(절반만 잡아도 {_pct(half)}) — 방문 회복(구조)은 다음 분기 과제로 병행")
@@ -1658,8 +1710,14 @@ def final_direction(wk_all, cur_mo, cutoff):
     if sales is not None:
         if tactical:
             scen = sales - cr
-            head = (f"지난주 {_pct(sales)}는 <span class='k'>방문·전환 동반 부진</span> — 방문(DAU)은 구조적이라 오래 걸리니, "
-                    f"이번 주 <span class='k'>{evnm_t} 고트래픽에서 '전환(CR)'을 끌어올리는 것</span>이 즉효 레버"
+            _dt = _trend("DAU")
+            if _dt is not None and _dt >= 1.0:
+                # DAU 낙폭이 줄고 있으면 '동반 부진'이 아니라 'CR이 병목'으로 진단해야 함
+                lead = (f"지난주 {_pct(sales)} — 방문(DAU {_pct(dau)})은 직전 4주 대비 낙폭 {_dt:+.1f}%p 축소된 반면 "
+                        f"<span class='k'>전환(CR {_pct(cr)})이 병목</span>")
+            else:
+                lead = (f"지난주 {_pct(sales)}는 <span class='k'>방문·전환 동반 부진</span> — 방문(DAU)은 구조적이라 오래 걸림")
+            head = (lead + f" → 이번 주 <span class='k'>{evnm_t} 고트래픽에서 '전환(CR)'을 끌어올리는 것</span>이 즉효 레버"
                     f"(작년 전환율 회복 시 <span class='k'>{_pct(sales)}→{_pct(scen)}</span>)")
         else:
             head = f"지난주 거래액 {_pct(sales)} — 방문(DAU) 구조 회복이 근본 과제"
