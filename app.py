@@ -1178,12 +1178,12 @@ def _insight_sales(g, unit_label, event=False, _prev_comp=None, _prev_label=""):
     main = (min if neg else max)(comp, key=comp.get)
     drags = [k for k in comp if (comp[k] < 0) == neg and k != main]
     defend = [k for k in comp if (comp[k] > 0) == neg]
-    lead = "가 하락을 주도" if neg else "가 성장을 견인"
-    also = " 동반 약세" if neg else " 동반 개선"
-    b = [f"{unit_label} 거래액 <b>전년비 {_pct(sales)}</b> — <b>{main}({_pct(comp[main])})</b>{lead}"
-         + (f", {drags[0]}({_pct(comp[drags[0]])}){also}" if drags else "")]
-    # 'DAU가 하락 주도'는 연중 상시 상태라 그 자체로는 새 정보가 아님.
-    # → 직전 기간 대비 '방향 전환'이 있으면 그것을 첫 인사이트로 끌어올림.
+    # 첫 줄은 거래액(최상위 지표)과 구성 분해만. 'DAU가 하락을 주도' 같은 서술은
+    # 연중 상시 상태라 새 정보가 아니므로 쓰지 않음(분해 수치로 대체).
+    _order = [k for k in ("DAU", "CR", "객단가") if k in comp]
+    b = [f"{unit_label} 거래액 <b>전년비 {_pct(sales)}</b> "
+         + "(" + " · ".join(f"{k} {_pct(comp[k])}" for k in _order) + ")"]
+    # → 직전 기간 대비 '방향 전환'이 있으면 그것을 두 번째 줄로 노출.
     if _prev_comp:
         moves = []
         for k in ("DAU", "CR", "객단가"):
@@ -1199,8 +1199,7 @@ def _insight_sales(g, unit_label, event=False, _prev_comp=None, _prev_label=""):
             word = "개선" if dlt > 0 else "악화"
             b.insert(1, f"<b>{_prev_label} 대비 변화</b>: {k} {_pct(pv2)} → <b>{_pct(cv)}</b>"
                         f"({dlt:+.1f}%p {word})로 가장 크게 움직임")
-    if defend:
-        b.append(("상쇄 요인" if neg else "제약 요인") + ": " + ", ".join(f"{k} {_pct(comp[k])}" for k in defend))
+    # 상쇄/제약 요인은 첫 줄 분해에 부호와 함께 이미 드러나므로 별도 줄로 반복하지 않음.
     if event:
         # 전관행사: DAU(유입)는 EP로 안 움직이는 구조 변수 → CR(전환)을 우선 레버, 방문은 부수.
         cr = comp.get("CR")
