@@ -1134,10 +1134,12 @@ def chart_monthly():
                {f"{CUR}": (y26, BLUE_CUR, "solid"), f"{PREV}": (y25, BLUE_PREV, "solid")})
     # 당월 예상 마감(전망) 마커 — 호버 시 근거
     fc = forecast_month(cm, cd) if cm else None
-    if fc:
+    if fc and not fc.get("unavailable"):          # 추정 불가(전년 결손 과다)면 마커 자체를 그리지 않음
         ht = (f"{cm}월 예상마감 {fc['daily']/1e6:,.0f}백만<br>"
               f"근거: {cm}/1~{cd} 실적 + 잔여 {fc['rem']}일 전년 동월 실적×MTD수준"
-              + (f"<br>전년 반복행사: {', '.join(fc['events'][:2])}" if fc["events"] else "") + "<extra></extra>")
+              + (f"<br>전년 반복행사: {', '.join(fc['events'][:2])}" if fc["events"] else "")
+              + (f"<br>전년 손상 폐기일 {fc['gap']*100:.0f}%는 정상일 평균으로 보정"
+                 if fc.get("gap") else "") + "<extra></extra>")
         fig.add_trace(go.Scatter(x=[xlab[cm - 1]], y=[fc["daily"] / 1e6], name="예상마감",
                                  mode="markers", marker=dict(symbol="star", size=13, color="#ED7D31"),
                                  hovertemplate=ht))
@@ -1266,27 +1268,58 @@ def resolve_weeks(latest_wk):
     return geum, cha
 
 
+MAX_GAP_RATIO = 0.30     # 전년 결손일이 월의 이 비율을 넘으면 잔여일 추정 근거가 얇아 예상마감 미표시
+
+
 def forecast_month(mo, cutoff):
     """당월 예상 마감. 잔여일은 '전년 동요일(−364)' 실적으로 채우고(반복 행사·주말 자동 반영),
-    올해 MTD 수준(전년 동기比)만큼 스케일. → 행사 일자가 1~2일 달라도 요일 기준으로 정렬됨."""
+    올해 MTD 수준(전년 동기比)만큼 스케일. → 행사 일자가 1~2일 달라도 요일 기준으로 정렬됨.
+
+    ★ 전년 손상 폐기일(2025-09말·10월 등 _drop_corrupt 구간)은 dv()가 None이라 합계에서 빠지는데
+      분모는 월 전체(dim)라, 보정 없이 두면 결손일수만큼 예상치가 통째로 과소평가된다
+      (2026-09 기준 8일 결손 → 일평균 26% 과소). → 결손일을 '보유일 평균'으로 채워 합계를 만들고,
+      결손률이 MAX_GAP_RATIO를 넘으면 추정을 포기한다(unavailable)."""
     if not cutoff or _DAY.empty:
         return None
     dim = calendar.monthrange(CUR, mo)[1]
     if cutoff >= dim:
         return None
-    def s_cal(year, lo, hi):                       # 달력 기준(전년 같은 '날짜')
-        return sum(v for v in (dv(year, mo, d) for d in range(lo, hi + 1)) if v is not None)
+
+    def s_cal(year, lo, hi):                       # 달력 기준(전년 같은 '날짜') → (합계, 보유일, 필요일)
+        need = hi - lo + 1
+        vals = [v for v in (dv(year, mo, d) for d in range(lo, hi + 1)) if v is not None]
+        return sum(vals), len(vals), need
+
+    def filled(year, lo, hi):
+        """결손일을 보유일 평균으로 채운 합계(보유일이 없으면 None)."""
+        s, have, need = s_cal(year, lo, hi)
+        return (s * need / have) if have else None
 
     # 기저는 달력(전년 같은 날짜) 기준. '전년 동요일(−364) 정렬'도 검토했으나 백테스트 결과
     # 평균 절대오차가 오히려 커서(0.95%p → 1.14%p) 채택하지 않음 — 월 단위로는 요일이 4~5회씩
     # 반복돼 편향이 상쇄되는 반면, 날짜가 밀리면 시즌·행사 배치가 어긋나는 부작용이 더 크다.
-    mtd26 = s_cal(CUR, 1, cutoff)
-    b_mtd, b_rem = s_cal(PREV, 1, cutoff), s_cal(PREV, cutoff + 1, dim)
+    mtd26 = filled(CUR, 1, cutoff)
+    _, mtd_have, _ = s_cal(PREV, 1, cutoff)
+    _, rem_have, _ = s_cal(PREV, cutoff + 1, dim)
+    if mtd26 is None or rem_have == 0:
+        return None
+    # 전년 결손률(월 전체) — 임계 초과면 6일 평균으로 31일을 추정하는 꼴이라 수치를 내지 않는다
+    gap = 1 - (mtd_have + rem_have) / dim
+    if gap > MAX_GAP_RATIO:
+        return dict(unavailable=True, gap=gap, dim=dim, rem=dim - cutoff, yoy=None)
+    # ratio는 '양년 모두 값이 있는 날'끼리만 비교해야 결손 때문에 튀지 않는다
+    _pairs = [(dv(CUR, mo, d), dv(PREV, mo, d)) for d in range(1, cutoff + 1)]
+    _pairs = [(a, b) for a, b in _pairs if a is not None and b is not None]
+    if not _pairs:
+        return None
+    mtd26_m = sum(a for a, _ in _pairs)
+    b_mtd = sum(b for _, b in _pairs)
+    b_rem = filled(PREV, cutoff + 1, dim)
     if b_mtd <= 0:
         return None
     # 월초엔 MTD 표본이 며칠뿐이라 노이즈가 커 ratio가 튐
     #   → MTD 14일 미만이면 '최근 28일(요일 4주기 포함) 추세'와 가중 블렌딩.
-    mtd_ratio = mtd26 / b_mtd
+    mtd_ratio = mtd26_m / b_mtd
     ratio, blended = mtd_ratio, False
     if cutoff < 14:
         c28 = p28 = 0.0
@@ -1302,12 +1335,14 @@ def forecast_month(mo, cutoff):
             blended = True
     proj_total = mtd26 + b_rem * ratio
     proj_daily = proj_total / dim
-    # 전년비는 실제 비교 기준(전년 월 마감 = 달력 총액) 대비로 표기
-    cal_base = s_cal(PREV, 1, dim)
-    yoy = (proj_total / cal_base - 1) if cal_base > 0 else None
+    # 전년비는 실제 비교 기준(전년 월 마감 = 달력 총액) 대비로 표기.
+    # 기저도 결손 보정본을 써야 분자(보정된 예상치)와 기준이 맞는다.
+    cal_base = filled(PREV, 1, dim)
+    yoy = (proj_total / cal_base - 1) if cal_base else None
     ev = [nm for nm, d in upcoming_major(datetime.date(CUR, mo, cutoff), horizon=dim - cutoff)]
     return dict(daily=proj_daily, total=proj_total, dim=dim, ratio=ratio, rem=dim - cutoff,
-                yoy=yoy, events=ev, blended=blended, mtd_ratio=mtd_ratio)
+                yoy=yoy, events=ev, blended=blended, mtd_ratio=mtd_ratio,
+                gap=gap, unavailable=False)
 
 
 def insight_trend(wk_all):
@@ -1866,7 +1901,9 @@ if fc and fc["yoy"] is not None:
              + (f"※ MTD {cutoff}일은 표본이 짧아, MTD 단독({fc['mtd_ratio']*100-100:+.0f}%) 대신 "
                 f"최근 28일 추세를 가중 블렌딩한 값 적용. " if fc.get("blended") else "")
              + "전년 대비 행사 컨텐츠 동일·일자만 1~2일 이동 가정(월 총액 영향 미미)"
-             + (f". 잔여기간 전년 반복 행사: {', '.join(fc['events'][:3])}" if fc["events"] else "") + ".")
+             + (f". 잔여기간 전년 반복 행사: {', '.join(fc['events'][:3])}" if fc["events"] else "")
+             + (f". ※ 전년 동월 손상 폐기일 {fc['gap']*100:.0f}%는 정상일 평균으로 채워 보정"
+                if fc.get("gap") else "") + ".")
     st.markdown(
         f"<div style='font-size:12px;line-height:1.55;color:#5b6472;background:#f7f9fc;"
         f"border-left:3px solid #c5d3e8;padding:7px 12px;border-radius:4px;margin-top:8px'>"
@@ -1875,6 +1912,16 @@ if fc and fc["yoy"] is not None:
         f"월 거래액 약 <b>{fc['total']/1e8:,.0f}억</b> · MTD(~{cutoff}일) 전년비 {yoy_str(fc['ratio']-1)}"
         f"<br><span style='color:#93a0b3'>근거: {basis}</span></div>",
         unsafe_allow_html=True)
+elif fc and fc.get("unavailable"):
+    # 전년 동월이 대부분 손상 폐기(2025-10은 31일 중 25일) → 몇 안 되는 정상일로 월을 추정하면
+    # 오차가 걷잡을 수 없어, 숫자를 내는 대신 이유를 표시한다.
+    st.markdown(
+        f"<div style='font-size:12px;line-height:1.55;color:#8a6d3b;background:#fdf9f1;"
+        f"border-left:3px solid #d9b45c;padding:7px 12px;border-radius:4px;margin-top:8px'>"
+        f"📌 <b>{cur_mo}월 예상 마감 — 추정 불가</b> · "
+        f"전년 동월 원본 손상으로 <b>{fc['gap']*100:.0f}%가 폐기</b>되어 잔여일 기준을 만들 수 없습니다"
+        f"(임계 {MAX_GAP_RATIO*100:.0f}%). 남은 정상일만으로 월을 추정하면 오차가 커 표시하지 않습니다."
+        f"</div>", unsafe_allow_html=True)
 
 # 하단 참고: 구조 진단 — 시드에서 계산 가능한 지표(당월 MTD·방문율·진행 행사)는 자동 갱신,
 # 외부 파일 기반 결론(브랜드 밴드·주문건수·코호트: 별도 심층분석)만 정적(기준일 표기).
@@ -2031,7 +2078,7 @@ if not df[df.perspective == "product"].empty:
         if _p6_short and _sel6 != sel and _b6:
             _b6 = _b6 + ['<span style="color:#93a0b3">'
                          f'{wk_label(sel)}는 {wk_elapsed}일치라 전년 동주(7일) 대비 왜곡이 커, '
-                         f'위 인사이트는 <b>마감 기준({week_pretty(_sel6)})</b>입니다</span>']
+                         f'이 섹션(인사이트·표)은 <b>마감 기준({week_pretty(_sel6)})</b>입니다</span>']
         elif wk_partial and sel == latest_wk and _b6:
             _b6 = ['<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
                    'font-weight:600;margin-right:6px">진행중</span>'
@@ -2054,7 +2101,9 @@ if not df[df.perspective == "product"].empty:
         for _tab, _ye in zip(_tabs, YEONG):
             with _tab:
                 render_gray_insight(insight_yeong(_ye, _sel6))  # 탭 인사이트는 회색 박스
-                st.markdown(product_table_one(sel, _ye), unsafe_allow_html=True)
+                # ★ 표도 인사이트와 같은 기준주(_sel6)여야 한다. sel(진행중 1~2일치)을 쓰면
+                #   전년 동주 7일과 비교돼 표만 딴 숫자가 나오고, 위 회색 인사이트와 어긋난다.
+                st.markdown(product_table_one(_sel6, _ye), unsafe_allow_html=True)
 
 # ---- 종합 방향성 (BCG 스타일: 헤드라인 + 진단/실행/임팩트) ----
 st.header("✅ 종합 방향성 및 전망", anchor="s6")
