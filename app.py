@@ -2177,42 +2177,46 @@ TREE_UNIT = {"sales": "백만", "cust": "명", "dau": "명", "members": "명",
 TREE_ALERT = -0.05
 
 
+def _tree_channels(wk):
+    """주차 wk의 채널 분해. 채널은 주별 집계만 존재하므로 항상 '완료된 주'로 만든다
+    (진행주를 쓰면 2일치가 전년 동주 7일과 대면해 요일 구성이 어긋난다).
+    노출 순서 = 전년 대비 거래액 갭(원). '개선하면 얼마를 되찾는가'에 직접 답하는 값이라
+    임의 가중치가 없고 회의에서 그대로 인용할 수 있다.
+      · 비중 x CR갭 같은 합성 지표는 단위가 없어 크기를 설명할 수 없고,
+        거래액이 이미 전년을 크게 넘긴 채널(광고 등)까지 개선 대상으로 끌어올린다.
+      · 갭 > 0 = 전년 미달(개선 대상), 갭 < 0 = 전년 초과(선전)"""
+    tot = V("week", "overall", SALES, "TOTAL", "", CUR, wk)
+    ch = []
+    for _, c in CH_ROWS[1:]:
+        s26 = V("week", "overall", SALES, c, "", CUR, wk)
+        s25 = V("week", "overall", SALES, c, "", PREV, wk)
+        if s26 is None:
+            continue
+        ch.append(dict(name=c, share=(s26 / tot if tot else None),
+                       dau=yoy(V("week", "overall", "DAU", c, "", CUR, wk),
+                               V("week", "overall", "DAU", c, "", PREV, wk)),
+                       cr=yoy(V("week", "overall", "CR", c, "", CUR, wk),
+                              V("week", "overall", "CR", c, "", PREV, wk)),
+                       sales=yoy(s26, s25),
+                       gap=((s25 - s26) if s25 is not None else None)))
+    short = sorted([c for c in ch if (c["gap"] or 0) > 0], key=lambda c: -c["gap"])
+    over = sorted([c for c in ch if (c["gap"] or 0) <= 0], key=lambda c: (c["gap"] or 0))
+    ch = short + over
+    lead = short[0] if short else None
+    for c in ch:
+        c["lead"] = (c is lead)
+    return ch
+
+
 def tree_values(mode, wk):
-    """mode=month|week|day → (값 dict {key:(올해 실측, 전년비)}, 기준 라벨, 비교 라벨, 채널|None).
-    모든 값은 주간 업로드 시드(일평균·총결제) 한 소스에서만 나온다."""
+    """mode=wtd|week|month → (값 dict {key:(올해 실측, 전년비)}, 기준 라벨, 비교 라벨,
+    채널 리스트|None, 채널 기준 주석|None). 모든 값은 주간 업로드 시드에서만 나온다."""
     out = {}
     if mode == "week":
         for k, met in TREE_MET.items():
             c = V("week", "overall", met, "TOTAL", "", CUR, wk)
             out[k] = (c, yoy(c, V("week", "overall", met, "TOTAL", "", PREV, wk)))
-        tot = V("week", "overall", SALES, "TOTAL", "", CUR, wk)
-        ch = []
-        for _, c in CH_ROWS[1:]:
-            s26 = V("week", "overall", SALES, c, "", CUR, wk)
-            if s26 is None:
-                continue
-            ch.append(dict(name=c, share=(s26 / tot if tot else None),
-                           dau=yoy(V("week", "overall", "DAU", c, "", CUR, wk),
-                                   V("week", "overall", "DAU", c, "", PREV, wk)),
-                           cr=yoy(V("week", "overall", "CR", c, "", CUR, wk),
-                                  V("week", "overall", "CR", c, "", PREV, wk)),
-                           sales=yoy(s26, V("week", "overall", SALES, c, "", PREV, wk))))
-        # 노출 순서 = 전년 대비 거래액 갭(원). '개선하면 얼마를 되찾는가'에 직접 답하는 값이라
-        # 임의 가중치가 없고 회의에서 그대로 인용할 수 있다.
-        #   · 비중 x CR갭 같은 합성 지표는 단위가 없어 크기를 설명할 수 없고,
-        #     거래액이 이미 전년을 크게 넘긴 채널(광고 등)까지 개선 대상으로 끌어올린다.
-        #   · 갭 > 0 = 전년 미달(개선 대상), 갭 < 0 = 전년 초과(선전)
-        for c in ch:
-            s26 = V("week", "overall", SALES, c["name"], "", CUR, wk)
-            s25 = V("week", "overall", SALES, c["name"], "", PREV, wk)
-            c["gap"] = (s25 - s26) if (s25 is not None and s26 is not None) else None
-        short = sorted([c for c in ch if (c["gap"] or 0) > 0], key=lambda c: -c["gap"])
-        over = sorted([c for c in ch if (c["gap"] or 0) <= 0], key=lambda c: (c["gap"] or 0))
-        ch = short + over
-        lead = short[0] if short else None
-        for c in ch:
-            c["lead"] = (c is lead)
-        return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", ch
+        return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", _tree_channels(wk), None
     if mode == "wtd":
         # 진행주(월요일~집계일). 전년은 −364일로 맞춰 같은 요일·같은 경과일수끼리 비교한다
         # (전년 동주 '전체'와 대면 2일치 vs 7일치가 되어 왜곡된다).
@@ -2225,14 +2229,15 @@ def tree_values(mode, wk):
             out[k] = (c, yoy(c, range_metric(met, PREV, plo, phi)))
         days = (hi - lo).days + 1
         lbl = f"{week_pretty(week_label_of(hi))} 진행중 ({lo.month}/{lo.day}~{hi.month}/{hi.day}, {days}일)"
-        return out, lbl, "전년 동요일 대비", None
+        return (out, lbl, "전년 동요일 대비", _tree_channels(wk),
+                f"채널은 주별 집계만 있어 직전 마감주({week_pretty(wk)}) 기준")
     ld = last_daily_date()
     mo = (ld.month if (ld and ld.day >= calendar.monthrange(ld.year, ld.month)[1])
           else max((ld.month - 1) if ld else 1, 1))
     for k, met in TREE_MET.items():
         c = month_value(met, CUR, mo, None)
         out[k] = (c, yoy(c, month_value(met, PREV, mo, None)))
-    return out, f"{CUR}년 {mo}월 마감", "전년 동월 대비", None
+    return out, f"{CUR}년 {mo}월 마감", "전년 동월 대비", None, None
 
 
 def _dt_node(key, label, sub, pair, cls=""):
@@ -2451,7 +2456,7 @@ _TMODES = {"진행주 (집계일까지)": "wtd", "직전 마감주": "week", "�
 _tmode = st.radio("기간", list(_TMODES), index=0, horizontal=True,
                   label_visibility="collapsed", key="dt_mode")
 try:
-    _tv, _tlabel, _tcmp, _tch = tree_values(_TMODES[_tmode], snap_wk)
+    _tv, _tlabel, _tcmp, _tch, _chnote = tree_values(_TMODES[_tmode], snap_wk)
     _focus = focus_keys(_tv)
     render_insight(insight_tree(_tv, _tch, _focus))
     st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
@@ -2462,7 +2467,8 @@ try:
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
                 "전년 대비 거래액 갭 순 · 갭이 있는 채널이 개선 대상, 이후는 초과 기여 순"
-                "</span></div>", unsafe_allow_html=True)
+                + (f" · {_chnote}" if _chnote else "")
+                + "</span></div>", unsafe_allow_html=True)
     st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
     st.caption("전 지표 동일 소스(주간 업로드 시드 · 일평균 · 총결제) 기준입니다. "
                "'객단가'는 1인당이 아니라 구매일당 금액입니다.")
