@@ -2204,24 +2204,20 @@ def tree_values(mode, wk):
                            cr=yoy(V("week", "overall", "CR", c, "", CUR, wk),
                                   V("week", "overall", "CR", c, "", PREV, wk)),
                            sales=yoy(s26, V("week", "overall", SALES, c, "", PREV, wk))))
-        # 개선 필요 = 규모(비중) 가중 감소가 가장 큰 채널. 전 채널이 플러스면 아무것도 표시하지 않는다
-        # (전년비 %만 보면 규모 작은 채널이 과대평가되므로 비중을 곱해 실질 기여로 판정).
-        cand = [c for c in ch if c["sales"] is not None and c["share"] and c["sales"] < 0]
-        lead = min(cand, key=lambda c: c["sales"] * c["share"]) if cand else None
+        # 노출 순서 = '개선했을 때 전체에 먹히는 크기'. 현재 증감이 아니라 개선 여지로 잡는다.
+        #   레버 크기 = 비중 × 전환 회복 여지(전년 대비 CR 갭)
+        # 현재 기여도로 줄 세우면 비중 1%짜리가 상위로 올라와 개선 대상처럼 읽히고,
+        # 거래액이 플러스여도 전환이 빠진 큰 채널(광고 등)의 회복 여지를 놓친다.
+        def _lever(c):
+            if not c["share"] or c["cr"] is None:
+                return 0.0
+            return c["share"] * max(0.0, -c["cr"])
+        for c in ch:
+            c["lever"] = _lever(c)
+        ch.sort(key=lambda c: c["lever"], reverse=True)
+        lead = ch[0] if ch and ch[0]["lever"] > 0 else None
         for c in ch:
             c["lead"] = (c is lead)
-
-        # 정렬은 두 구간으로 나눈다. 단순 오름차순이면 비중 1%짜리 플러스 채널(기여도 ~0)이
-        # 마이너스 바로 뒤에 붙어 '2순위 개선 대상'처럼 읽힌다.
-        #   ① 기여도 마이너스 = 개선 대상 → 나쁜 순
-        #   ② 기여도 플러스 = 선전 중   → 기여 큰 순
-        def _contrib(c):                   # 전체 거래액에 실제로 기여한 증감
-            if c["sales"] is None or not c["share"]:
-                return None
-            return c["sales"] * c["share"]
-        neg = sorted([c for c in ch if (_contrib(c) or 0) < 0], key=_contrib)
-        pos = sorted([c for c in ch if (_contrib(c) or 0) >= 0], key=_contrib, reverse=True)
-        ch = neg + pos
         return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", ch
     if mode == "day":
         hi = last_daily_date()
@@ -2416,12 +2412,10 @@ def insight_tree(v, ch, focus=()):
                  '— 객단가 쿠션 축소 시 역신장 전환 가능')
     if ch:
         lead = next((c for c in ch if c.get("lead")), None)
-        best = max([c for c in ch if c["dau"] is not None], key=lambda c: c["dau"], default=None)
         if lead:
-            b.append(f'<span class="imp">→ 개선 우선순위는 <b>{lead["name"]}</b>'
-                     f'(비중 {lead["share"]*100:.0f}%, 방문 {_pct(lead["dau"])}·전환 {_pct(lead["cr"])})'
-                     + (f', <b>{best["name"]}</b>({_pct(best["dau"])})는 방어 중' if best and best is not lead else "")
-                     + '</span>')
+            b.append(f'<span class="imp">→ 개선 레버가 가장 큰 채널은 <b>{lead["name"]}</b>'
+                     f'(비중 {lead["share"]*100:.0f}%, 전환 {_pct(lead["cr"])})</span>'
+                     ' <span style="color:#93a0b3">— 비중이 커 전환 회복 시 전체 영향이 가장 큼</span>')
     return b
 
 
@@ -2460,8 +2454,8 @@ try:
     st.markdown(driver_tree_html(_tv, _focus), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
-                "개선 필요 채널 우선 · 이후 거래액 기여도 높은 순 (증감률 × 비중) · "
-                "비중 5% 미만은 흐리게 표시</span></div>", unsafe_allow_html=True)
+                "개선 레버 큰 순 (비중 × 전환 회복 여지) · 비중 5% 미만은 흐리게 표시"
+                "</span></div>", unsafe_allow_html=True)
     st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
     st.caption("전 지표 동일 소스(주간 업로드 시드 · 일평균 · 총결제) 기준입니다. "
                "'객단가'는 1인당이 아니라 구매일당 금액입니다.")
