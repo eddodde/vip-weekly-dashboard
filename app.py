@@ -2178,8 +2178,9 @@ TREE_ALERT = -0.05
 
 
 def _tree_channels(wk):
-    """주차 wk의 채널 분해. 채널은 주별 집계만 존재하므로 항상 '완료된 주'로 만든다
-    (진행주를 쓰면 2일치가 전년 동주 7일과 대면해 요일 구성이 어긋난다).
+    """주차 wk의 채널 분해. 채널은 day grain에 없고 week에만 존재하지만(2025·2026 공통)
+    값이 일평균이라 진행주(2일치)도 전년 동주와 일평균끼리 비교된다 — 일수 차이는
+    정규화돼 있고 남는 것은 요일 구성 차이뿐이므로 진행주도 그대로 쓴다.
     노출 순서 = 전년 대비 거래액 갭(원). '개선하면 얼마를 되찾는가'에 직접 답하는 값이라
     임의 가중치가 없고 회의에서 그대로 인용할 수 있다.
       · 비중 x CR갭 같은 합성 지표는 단위가 없어 크기를 설명할 수 없고,
@@ -2229,8 +2230,15 @@ def tree_values(mode, wk):
             out[k] = (c, yoy(c, range_metric(met, PREV, plo, phi)))
         days = (hi - lo).days + 1
         lbl = f"{week_pretty(week_label_of(hi))} 진행중 ({lo.month}/{lo.day}~{hi.month}/{hi.day}, {days}일)"
+        # 채널은 주별 집계뿐이지만 값이 '일평균'이라 일수 차이는 이미 정규화돼 있다.
+        # 남는 차이는 요일 구성(주말 포함 여부)뿐이므로 진행주를 그대로 쓰고 그 사실만 밝힌다.
+        cw = week_label_of(hi)
+        ch = _tree_channels(cw)
+        if ch:
+            return (out, lbl, "전년 동요일 대비", ch,
+                    f"진행주 {days}일치 일평균 · 전년 동주 전체 일평균 대비")
         return (out, lbl, "전년 동요일 대비", _tree_channels(wk),
-                f"채널은 주별 집계만 있어 직전 마감주({week_pretty(wk)}) 기준")
+                f"진행주 채널 데이터 미수신 → 직전 마감주({week_pretty(wk)}) 기준")
     ld = last_daily_date()
     mo = (ld.month if (ld and ld.day >= calendar.monthrange(ld.year, ld.month)[1])
           else max((ld.month - 1) if ld else 1, 1))
