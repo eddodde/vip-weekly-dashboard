@@ -750,13 +750,13 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-rail{display:grid;grid-template-columns:var(--cols);gap:0 14px;margin:2px 0 6px;}
 .dt-rail span{font-size:10px;letter-spacing:.12em;color:#9aa7bd;font-weight:600;}
 .dt{display:grid;grid-template-columns:var(--cols);gap:0 14px;align-items:stretch;}
-.dt-col{display:flex;flex-direction:column;justify-content:center;gap:8px;}
-.dt-band{flex:1;display:flex;flex-direction:column;justify-content:center;}
+.dt-col{display:flex;flex-direction:column;justify-content:center;gap:6px;}
+.dt-sub{font-size:10px;color:#8b97ad;font-weight:600;margin:0 0 0 12px;letter-spacing:.01em;}
 .dt-grp{display:flex;flex-direction:column;gap:8px;position:relative;padding-left:12px;}
 .dt-grp::before{content:"";position:absolute;left:0;top:12px;bottom:12px;
   border-left:1.5px solid #b9c4d8;border-radius:8px 0 0 8px;}
-.dt-grp>.dt-node,.dt-grp>.dt-band>.dt-node{position:relative;}
-.dt-grp>.dt-node::before,.dt-grp>.dt-band>.dt-node::before{content:"";position:absolute;
+.dt-grp>.dt-node{position:relative;}
+.dt-grp>.dt-node::before{content:"";position:absolute;
   left:-12px;top:50%;width:12px;border-top:1.5px solid #b9c4d8;}
 .dt-node{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:7px 9px 8px;}
 /* 루트(거래액)는 테두리 굵기로만 구분한다 — 글자 크기는 전 노드 동일 */
@@ -2252,17 +2252,18 @@ def driver_tree_html(v):
         '<div class="dt-wrap"><div class="dt-rail">'
         '<span>LEVEL-I</span><span>LEVEL-II</span><span>LEVEL-III</span>'
         '<span>LEVEL-IV</span><span>LEVEL-V · 실행 레버</span></div><div class="dt">'
+        # 각 묶음이 '어느 노드를 구성하는가'는 세로선만으로는 갈리지 않는다
+        # (예: 방문·전환 묶음이 구매고객 소속인지 객단가 소속인지). → 묶음마다 소속을 명시한다.
         f'<div class="dt-col">{n("sales", "거래액", "일평균", v["sales"], "root")}</div>'
-        '<div class="dt-col"><div class="dt-grp">'
-        f'<div class="dt-band">{n("cust", "구매고객", "일평균", v["cust"])}</div>'
-        f'<div class="dt-band">{n("aov", "객단가", "", v["aov"])}</div></div></div>'
-        '<div class="dt-col">'
-        f'<div class="dt-band"><div class="dt-grp">{n("dau", "방문", "DAU", v["dau"])}'
-        f'{n("cr", "전환", "CR", v["cr"])}</div></div>'
-        '<div class="dt-band"></div></div>'   # 객단가는 이 트리에서 최말단(하위 분해는 소스가 다름)
-        '<div class="dt-col">'
-        f'<div class="dt-band"><div class="dt-grp">{n("members", "유효회원수", "", v["members"])}'
-        f'{n("visit", "유입율", "", v["visit"])}</div></div><div class="dt-band"></div></div>'
+        '<div class="dt-col"><div class="dt-sub">거래액 구성</div><div class="dt-grp">'
+        f'{n("cust", "구매고객", "일평균", v["cust"])}'
+        f'{n("aov", "객단가", "", v["aov"])}</div></div>'
+        '<div class="dt-col"><div class="dt-sub">구매고객 구성</div><div class="dt-grp">'
+        f'{n("dau", "방문", "DAU", v["dau"])}'
+        f'{n("cr", "전환", "CR", v["cr"])}</div></div>'   # 객단가는 이 트리에서 최말단
+        '<div class="dt-col"><div class="dt-sub">방문(DAU) 구성</div><div class="dt-grp">'
+        f'{n("members", "유효회원수", "", v["members"])}'
+        f'{n("visit", "유입율", "", v["visit"])}</div></div>'
         f'<div class="dt-col">{lev}</div></div></div>')
 
 
