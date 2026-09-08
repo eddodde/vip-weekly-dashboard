@@ -2192,6 +2192,12 @@ def tree_values(mode, wk):
         lead = min(cand, key=lambda c: c["sales"] * c["share"]) if cand else None
         for c in ch:
             c["lead"] = (c is lead)
+
+        def _contrib(c):                   # 전체 거래액에 실제로 기여한 증감(음수일수록 시급)
+            if c["sales"] is None or not c["share"]:
+                return float("inf")        # 값 없는 채널은 맨 뒤
+            return c["sales"] * c["share"]
+        ch.sort(key=_contrib)              # 개선 시급한 순 → 선전 중인 순
         return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", ch
     if mode == "day":
         hi = last_daily_date()
@@ -2326,8 +2332,9 @@ try:
     st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
                "선으로 이어진 오른쪽 지표들이 왼쪽 지표를 만듭니다")
     st.markdown(driver_tree_html(_tv), unsafe_allow_html=True)
-    st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해</div>",
-                unsafe_allow_html=True)
+    st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
+                "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
+                "개선 시급한 순 (거래액 증감 × 비중)</span></div>", unsafe_allow_html=True)
     st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
     st.caption("구매빈도·주문단가는 회원등급별 월간 집계(순결제) 기준이라 월별에만 표시됩니다. "
                "대시보드의 '객단가'는 1인당이 아니라 구매일당 금액입니다.")
