@@ -790,6 +790,7 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
 .dt-chc{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:8px 10px;}
 .dt-chc.lead{border:1.5px solid #c0392b;}
+.dt-chc.minor{opacity:.55;}   /* 비중 5% 미만 — 증감률이 커도 전체 영향은 미미 */
 .dt-chn{display:flex;justify-content:space-between;align-items:baseline;}
 .dt-chn b{font-size:12px;} .dt-chn span{font-size:10px;color:#9aa7bd;}
 /* .dt-chn span 보다 구체적이어야 회색·10px 규칙에 먹히지 않는다 */
@@ -2210,11 +2211,17 @@ def tree_values(mode, wk):
         for c in ch:
             c["lead"] = (c is lead)
 
-        def _contrib(c):                   # 전체 거래액에 실제로 기여한 증감(음수일수록 시급)
+        # 정렬은 두 구간으로 나눈다. 단순 오름차순이면 비중 1%짜리 플러스 채널(기여도 ~0)이
+        # 마이너스 바로 뒤에 붙어 '2순위 개선 대상'처럼 읽힌다.
+        #   ① 기여도 마이너스 = 개선 대상 → 나쁜 순
+        #   ② 기여도 플러스 = 선전 중   → 기여 큰 순
+        def _contrib(c):                   # 전체 거래액에 실제로 기여한 증감
             if c["sales"] is None or not c["share"]:
-                return float("inf")        # 값 없는 채널은 맨 뒤
+                return None
             return c["sales"] * c["share"]
-        ch.sort(key=_contrib)              # 우선순위 순(기여도 낮은 채널부터)
+        neg = sorted([c for c in ch if (_contrib(c) or 0) < 0], key=_contrib)
+        pos = sorted([c for c in ch if (_contrib(c) or 0) >= 0], key=_contrib, reverse=True)
+        ch = neg + pos
         return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", ch
     if mode == "day":
         hi = last_daily_date()
@@ -2380,7 +2387,9 @@ def driver_channels_html(ch):
                 rows += f'<div class="dt-chr"><em>{lb}</em><b style="color:{col};font-weight:600">{t}</b></div>'
         sh = f'비중 {c["share"]*100:.0f}%' if c["share"] is not None else ""
         tag = '<span class="dt-tag">개선 필요</span>' if c["lead"] else ""
-        cards.append(f'<div class="dt-chc{" lead" if c["lead"] else ""}">'
+        # 비중이 작은 채널은 증감률이 커도 전체 영향이 미미해 과대해석을 부른다 → 흐리게
+        minor = " minor" if (c["share"] is not None and c["share"] < 0.05) else ""
+        cards.append(f'<div class="dt-chc{" lead" if c["lead"] else ""}{minor}">'
                      f'<div class="dt-chn"><b>{c["name"]}{tag}</b><span>{sh}</span></div>{rows}</div>')
     return '<div class="dt-ch">' + "".join(cards) + '</div>'
 
@@ -2451,7 +2460,8 @@ try:
     st.markdown(driver_tree_html(_tv, _focus), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
-                "우선순위 순 · 거래액 기여도(증감률 × 비중) 기준</span></div>", unsafe_allow_html=True)
+                "개선 필요 채널 우선 · 이후 거래액 기여도 높은 순 (증감률 × 비중) · "
+                "비중 5% 미만은 흐리게 표시</span></div>", unsafe_allow_html=True)
     st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
     st.caption("전 지표 동일 소스(주간 업로드 시드 · 일평균 · 총결제) 기준입니다. "
                "'객단가'는 1인당이 아니라 구매일당 금액입니다.")
