@@ -746,19 +746,21 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .bcg-card .imp{color:#1f5fbf;font-weight:600;}
 /* 성과 동인 트리 — 좌(결과)→우(동인). 부모 옆에 자식 묶음을 세로선으로 걸어
    '오른쪽이 왼쪽을 만든다'를 기호 없이 보이게 한다. */
-.dt-wrap{--cols:170px 165px 165px 165px 1fr;overflow-x:auto;padding-bottom:2px;}
-.dt-rail{display:grid;grid-template-columns:var(--cols);gap:0 14px;margin:2px 0 6px;}
-.dt-rail span{font-size:10px;letter-spacing:.12em;color:#9aa7bd;font-weight:600;}
-.dt{display:grid;grid-template-columns:var(--cols);gap:0 14px;align-items:stretch;}
-.dt-col{display:flex;flex-direction:column;justify-content:center;gap:6px;}
-.dt-sub{font-size:10px;color:#8b97ad;font-weight:600;margin:0 0 0 12px;letter-spacing:.01em;}
-.dt-grp{display:flex;flex-direction:column;gap:8px;position:relative;padding-left:12px;}
-.dt-grp::before{content:"";position:absolute;left:0;top:12px;bottom:12px;
+/* 중첩 구조 — 부모(.dt-row의 첫 노드)가 자식 묶음(.dt-kids) 높이에 맞춰
+   자동으로 세로 가운데 정렬된다. 라벨 없이 위치만으로 상하관계가 읽힌다. */
+.dt-wrap{overflow-x:auto;padding-bottom:2px;}
+.dt-rail{display:flex;gap:24px;margin:2px 0 6px;}   /* 노드 간격 = row gap 12 + kids padding 12 */
+.dt-rail span{width:165px;flex:none;font-size:10px;letter-spacing:.12em;color:#9aa7bd;font-weight:600;}
+.dt-rail span:last-child{width:auto;}
+.dt-row{display:flex;align-items:center;gap:12px;}
+.dt-kids{display:flex;flex-direction:column;gap:8px;position:relative;padding-left:12px;}
+.dt-kids::before{content:"";position:absolute;left:0;top:26px;bottom:26px;
   border-left:1.5px solid #b9c4d8;border-radius:8px 0 0 8px;}
-.dt-grp>.dt-node{position:relative;}
-.dt-grp>.dt-node::before{content:"";position:absolute;
-  left:-12px;top:50%;width:12px;border-top:1.5px solid #b9c4d8;}
-.dt-node{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:7px 9px 8px;}
+.dt-kids>.dt-row{position:relative;}
+.dt-kids>.dt-row::before{content:"";position:absolute;left:-12px;top:50%;width:12px;
+  border-top:1.5px solid #b9c4d8;}
+.dt-levs{display:flex;flex-direction:column;gap:8px;margin-left:12px;}
+.dt-node{width:165px;flex:none;background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:7px 9px 8px;}
 /* 루트(거래액)는 테두리 굵기로만 구분한다 — 글자 크기는 전 노드 동일 */
 .dt-node.root{border:1.5px solid #8fa3c4;}
 /* .root 뒤에 와야 루트가 경고일 때도 빨간 테두리가 이긴다 */
@@ -2248,23 +2250,30 @@ LEVERS = [("리텐션 발송", "LMS·앱푸시 재방문 유도 — 유입율에
 def driver_tree_html(v):
     n = _dt_node
     lev = "".join(f'<div class="dt-lev"><b>{t}</b><p>{d}</p></div>' for t, d in LEVERS)
+    # 부모 노드 + 그 자식 묶음을 한 .dt-row 안에 넣어 재귀적으로 중첩한다.
+    # align-items:center 덕에 부모가 자식 묶음 전체 높이의 가운데에 놓인다.
     return (
         '<div class="dt-wrap"><div class="dt-rail">'
         '<span>LEVEL-I</span><span>LEVEL-II</span><span>LEVEL-III</span>'
-        '<span>LEVEL-IV</span><span>LEVEL-V · 실행 레버</span></div><div class="dt">'
-        # 각 묶음이 '어느 노드를 구성하는가'는 세로선만으로는 갈리지 않는다
-        # (예: 방문·전환 묶음이 구매고객 소속인지 객단가 소속인지). → 묶음마다 소속을 명시한다.
-        f'<div class="dt-col">{n("sales", "거래액", "일평균", v["sales"], "root")}</div>'
-        '<div class="dt-col"><div class="dt-sub">거래액 구성</div><div class="dt-grp">'
-        f'{n("cust", "구매고객", "일평균", v["cust"])}'
-        f'{n("aov", "객단가", "", v["aov"])}</div></div>'
-        '<div class="dt-col"><div class="dt-sub">구매고객 구성</div><div class="dt-grp">'
-        f'{n("dau", "방문", "DAU", v["dau"])}'
-        f'{n("cr", "전환", "CR", v["cr"])}</div></div>'   # 객단가는 이 트리에서 최말단
-        '<div class="dt-col"><div class="dt-sub">방문(DAU) 구성</div><div class="dt-grp">'
-        f'{n("members", "유효회원수", "", v["members"])}'
-        f'{n("visit", "유입율", "", v["visit"])}</div></div>'
-        f'<div class="dt-col">{lev}</div></div></div>')
+        '<span>LEVEL-IV</span><span>LEVEL-V · 실행 레버</span></div>'
+        '<div class="dt-row">'
+        + n("sales", "거래액", "일평균", v["sales"], "root")
+        + '<div class="dt-kids">'
+        + '<div class="dt-row">'
+        + n("cust", "구매고객", "일평균", v["cust"])
+        + '<div class="dt-kids">'
+        + '<div class="dt-row">'
+        + n("dau", "방문", "DAU", v["dau"])
+        + '<div class="dt-kids">'
+        + f'<div class="dt-row">{n("members", "유효회원수", "", v["members"])}</div>'
+        + f'<div class="dt-row">{n("visit", "유입율", "", v["visit"])}</div>'
+        + '</div></div>'
+        + f'<div class="dt-row">{n("cr", "전환", "CR", v["cr"])}</div>'   # 전환은 최말단
+        + '</div></div>'
+        + f'<div class="dt-row">{n("aov", "객단가", "", v["aov"])}</div>'  # 객단가도 최말단
+        + '</div>'
+        + f'<div class="dt-levs">{lev}</div>'
+        + '</div></div>')
 
 
 def driver_channels_html(ch):
