@@ -101,9 +101,21 @@ foreach ($file in $Src) {
     $yearOf[$c] = $cur
   }
 
-  # period labels on row 3
+  # period labels on row 3.
+  # A value column whose row-3 label is BLANK is the 'day close' variant of the period to its
+  # left (the BI marks it on row 4; we detect it structurally so no Korean literal is needed).
+  # It holds the SAME elapsed-day window for BOTH year blocks, so it is the only correct
+  # basis for comparing an in-progress week against last year. Carry the label forward and
+  # flag the column; it is stored under grain "week_wtd".
   $labelOf = @{}
-  for ($c = $valStart; $c -le $cols; $c++) { $labelOf[$c] = $v.GetValue(3, $c) }
+  $dayClose = @{}
+  $lastLab = $null
+  for ($c = $valStart; $c -le $cols; $c++) {
+    $raw = $v.GetValue(3, $c)
+    if ($null -ne $raw -and ([string]$raw).Trim() -ne "") { $lastLab = $raw; $dayClose[$c] = $false }
+    else { $dayClose[$c] = $true }
+    $labelOf[$c] = $lastLab
+  }
 
   # grain from first non-null label
   $grain = "unknown"
@@ -141,10 +153,15 @@ foreach ($file in $Src) {
       $yr = $yearOf[$c]
       $lab = $labelOf[$c]
       if ($null -eq $yr -or $null -eq $lab) { continue }
+      $g = $grain
+      if ($dayClose[$c]) {
+        if ($grain -ne "week") { continue }   # 주별 export에만 있는 구조
+        $g = "week_wtd"
+      }
       $labS = ([string]$lab).Trim()
       $sort = Get-Sort $grain $yr $labS
       $records.Add([pscustomobject]@{
-        grain = $grain
+        grain = $g
         perspective = $perspective
         year = $yr
         period = $labS

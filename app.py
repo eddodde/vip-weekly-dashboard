@@ -98,14 +98,21 @@ def parse_workbook(name, data):
     if val_start == 0:
         return []
 
-    year_of, label_of = {}, {}
-    cur = None
+    # 라벨(3행)이 빈 값 컬럼은 좌측 기간의 '일마감'(진행 중인 주를 양년 같은 경과일까지 자른 값)
+    # → 라벨을 앞에서 이어받고 별도 grain("week_wtd")으로 저장. convert.ps1과 동일 규칙.
+    year_of, label_of, day_close = {}, {}, {}
+    cur, last_lab = None, None
     for c in range(val_start, ncols + 1):
         y = _year_of(cell(1, c))
         if y is not None:
             cur = y
         year_of[c] = cur
-        label_of[c] = cell(3, c)
+        raw = cell(3, c)
+        if raw is not None and str(raw).strip() != "":
+            last_lab, day_close[c] = raw, False
+        else:
+            day_close[c] = True
+        label_of[c] = last_lab
 
     grain = "unknown"
     for c in range(val_start, ncols + 1):
@@ -140,8 +147,13 @@ def parse_workbook(name, data):
             yr, lab = year_of[c], label_of[c]
             if yr is None or lab is None:
                 continue
+            g = grain
+            if day_close[c]:
+                if grain != "week":       # 주별 export에만 있는 구조
+                    continue
+                g = "week_wtd"
             labs = str(lab).strip()
-            out.append(dict(grain=grain, perspective=perspective, year=yr,
+            out.append(dict(grain=g, perspective=perspective, year=yr,
                             period=labs, period_sort=_sort_key(grain, yr, labs),
                             seg1=seg1, seg2=seg2, metric=cur_metric,
                             value=float(val), source=name))
@@ -2177,27 +2189,27 @@ TREE_UNIT = {"sales": "백만", "cust": "명", "dau": "명", "members": "명",
 TREE_ALERT = -0.05
 
 
-def _tree_channels(wk):
-    """주차 wk의 채널 분해. 채널은 day grain에 없고 week에만 존재하지만(2025·2026 공통)
-    값이 일평균이라 진행주(2일치)도 전년 동주와 일평균끼리 비교된다 — 일수 차이는
-    정규화돼 있고 남는 것은 요일 구성 차이뿐이므로 진행주도 그대로 쓴다.
+def _tree_channels(wk, g="week"):
+    """주차 wk의 채널 분해. g="week"=주마감, "week_wtd"=일마감(양년 같은 경과일).
+    진행 중인 주는 반드시 week_wtd로 봐야 한다 — week로 보면 올해 2일치가 전년 7일 전체와
+    대면해 전년비가 실제보다 크게 나빠진다.
     노출 순서 = 전년 대비 거래액 갭(원). '개선하면 얼마를 되찾는가'에 직접 답하는 값이라
     임의 가중치가 없고 회의에서 그대로 인용할 수 있다.
       · 비중 x CR갭 같은 합성 지표는 단위가 없어 크기를 설명할 수 없고,
         거래액이 이미 전년을 크게 넘긴 채널(광고 등)까지 개선 대상으로 끌어올린다.
       · 갭 > 0 = 전년 미달(개선 대상), 갭 < 0 = 전년 초과(선전)"""
-    tot = V("week", "overall", SALES, "TOTAL", "", CUR, wk)
+    tot = V(g, "overall", SALES, "TOTAL", "", CUR, wk)
     ch = []
     for _, c in CH_ROWS[1:]:
-        s26 = V("week", "overall", SALES, c, "", CUR, wk)
-        s25 = V("week", "overall", SALES, c, "", PREV, wk)
+        s26 = V(g, "overall", SALES, c, "", CUR, wk)
+        s25 = V(g, "overall", SALES, c, "", PREV, wk)
         if s26 is None:
             continue
         ch.append(dict(name=c, share=(s26 / tot if tot else None),
-                       dau=yoy(V("week", "overall", "DAU", c, "", CUR, wk),
-                               V("week", "overall", "DAU", c, "", PREV, wk)),
-                       cr=yoy(V("week", "overall", "CR", c, "", CUR, wk),
-                              V("week", "overall", "CR", c, "", PREV, wk)),
+                       dau=yoy(V(g, "overall", "DAU", c, "", CUR, wk),
+                               V(g, "overall", "DAU", c, "", PREV, wk)),
+                       cr=yoy(V(g, "overall", "CR", c, "", CUR, wk),
+                              V(g, "overall", "CR", c, "", PREV, wk)),
                        sales=yoy(s26, s25),
                        gap=((s25 - s26) if s25 is not None else None)))
     short = sorted([c for c in ch if (c["gap"] or 0) > 0], key=lambda c: -c["gap"])
@@ -2219,26 +2231,29 @@ def tree_values(mode, wk):
             out[k] = (c, yoy(c, V("week", "overall", met, "TOTAL", "", PREV, wk)))
         return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", _tree_channels(wk), None
     if mode == "wtd":
-        # 진행주(월요일~집계일). 전년은 −364일로 맞춰 같은 요일·같은 경과일수끼리 비교한다
-        # (전년 동주 '전체'와 대면 2일치 vs 7일치가 되어 왜곡된다).
         hi = last_daily_date()
         lo = hi - datetime.timedelta(days=hi.weekday())
+        days = (hi - lo).days + 1
+        cw = week_label_of(hi)
+        lbl = f"{week_pretty(cw)} 진행중 ({lo.month}/{lo.day}~{hi.month}/{hi.day}, {days}일)"
+        # ★ BI 주별 export의 '일마감' 컬럼(grain=week_wtd)은 양년을 같은 경과일까지 잘라 주므로
+        #   진행주 비교의 정답이다. 채널까지 같은 기준으로 들어 있다.
+        #   (주마감으로 비교하면 올해 2일치가 전년 7일 전체와 대면해 전년비가 크게 왜곡된다.)
+        if (V("week_wtd", "overall", SALES, "TOTAL", "", CUR, cw) is not None
+                and V("week_wtd", "overall", SALES, "TOTAL", "", PREV, cw) is not None):
+            for k, met in TREE_MET.items():
+                c = V("week_wtd", "overall", met, "TOTAL", "", CUR, cw)
+                out[k] = (c, yoy(c, V("week_wtd", "overall", met, "TOTAL", "", PREV, cw)))
+            return (out, lbl, "전년 동주 같은 경과일 대비",
+                    _tree_channels(cw, "week_wtd"), None)
+        # 폴백: 일마감 컬럼이 없는 구버전 export → 일자별에서 −364일로 직접 정렬(채널은 불가)
         plo = hi - datetime.timedelta(days=364 + hi.weekday())
         phi = hi - datetime.timedelta(days=364)
         for k, met in TREE_MET.items():
             c = range_metric(met, CUR, lo, hi)
             out[k] = (c, yoy(c, range_metric(met, PREV, plo, phi)))
-        days = (hi - lo).days + 1
-        lbl = f"{week_pretty(week_label_of(hi))} 진행중 ({lo.month}/{lo.day}~{hi.month}/{hi.day}, {days}일)"
-        # 채널은 주별 집계뿐이지만 값이 '일평균'이라 일수 차이는 이미 정규화돼 있다.
-        # 남는 차이는 요일 구성(주말 포함 여부)뿐이므로 진행주를 그대로 쓰고 그 사실만 밝힌다.
-        cw = week_label_of(hi)
-        ch = _tree_channels(cw)
-        if ch:
-            return (out, lbl, "전년 동요일 대비", ch,
-                    f"진행주 {days}일치 일평균 · 전년 동주 전체 일평균 대비")
-        return (out, lbl, "전년 동요일 대비", _tree_channels(wk),
-                f"진행주 채널 데이터 미수신 → 직전 마감주({week_pretty(wk)}) 기준")
+        return (out, lbl, "전년 동요일 대비", None,
+                "일마감 컬럼이 없는 export라 채널 비교 불가 — 최신 주별 파일 반영 시 표시")
     ld = last_daily_date()
     mo = (ld.month if (ld and ld.day >= calendar.monthrange(ld.year, ld.month)[1])
           else max((ld.month - 1) if ld else 1, 1))
