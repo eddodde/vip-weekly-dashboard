@@ -760,7 +760,6 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   left:-12px;top:50%;width:12px;border-top:1.5px solid #b9c4d8;}
 .dt-node{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:7px 9px 8px;}
 .dt-node.root{border:1.5px solid #c3ccdd;padding:11px 12px 12px;}
-.dt-node.soft{background:#f4f6fa;}
 .dt-node.na{opacity:.55;}
 .dt-lb{font-size:12px;font-weight:600;color:#14203a;}
 .dt-lb .u{font-weight:400;font-size:10px;color:#8b97ad;margin-left:3px;}
@@ -2150,9 +2149,9 @@ if not df[df.perspective == "product"].empty:
 # ---- 🧭 성과 동인 트리 ----
 # 좌(결과지표)→우(동인) 로직 트리. 부모 옆에 자식 묶음을 세로선으로 걸어 '오른쪽이 왼쪽을
 # 만든다'를 수식기호 없이 보이게 하고, 부호막대 길이로 상쇄 관계가 눈에 들어오게 한다.
-GRADE_ASOF = datetime.date(2026, 8, 31)   # 회원등급별 월간 집계(순결제) 기준일
-GRADE_FREQ_YOY = -0.054                   # 인당 주문건수 전년비(2026-08)
-GRADE_UNIT_YOY = 0.092                    # 주문단가(건당) 전년비(2026-08)
+# ★ 구매빈도·주문단가(회원등급별 월간 집계)는 의도적으로 넣지 않는다 — 그 소스는
+#   '월간 누적 × 순결제 × 회원등급' 기준이라 이 트리('일평균 × 총결제')와 축이 둘 다 달라,
+#   한 화면에 섞으면 같은 이름의 지표가 다른 값을 갖는 혼선이 생긴다.
 TREE_MET = {"sales": SALES, "cust": "일평균고객수", "aov": "일평균객단가",
             "dau": "DAU", "cr": "CR", "members": "유효회원수", "visit": "유입율"}
 TREE_SCALE = 26.0                         # 막대 반폭(±%p)
@@ -2167,13 +2166,12 @@ def _prev_same_date(d):
 
 def tree_values(mode, wk):
     """mode=month|week|day → (값 dict, 기준 라벨, 비교 라벨, 채널 리스트|None).
-    구매빈도·주문단가는 등급별 월간 집계(별도 소스)라 월별에만 채운다."""
+    모든 값은 주간 업로드 시드(일평균·총결제) 한 소스에서만 나온다."""
     out = {}
     if mode == "week":
         for k, met in TREE_MET.items():
             out[k] = yoy(V("week", "overall", met, "TOTAL", "", CUR, wk),
                          V("week", "overall", met, "TOTAL", "", PREV, wk))
-        out["freq"] = out["unit"] = None
         tot = V("week", "overall", SALES, "TOTAL", "", CUR, wk)
         ch = []
         for _, c in CH_ROWS[1:]:
@@ -2205,16 +2203,12 @@ def tree_values(mode, wk):
         plo, phi = _prev_same_date(lo), _prev_same_date(hi)
         for k, met in TREE_MET.items():
             out[k] = yoy(range_metric(met, CUR, lo, hi), range_metric(met, PREV, plo, phi))
-        out["freq"] = out["unit"] = None
         return out, f"{lo.month}/{lo.day}~{hi.month}/{hi.day} (7일)", "전년 같은 날짜 대비", None
     ld = last_daily_date()
     mo = (ld.month if (ld and ld.day >= calendar.monthrange(ld.year, ld.month)[1])
           else max((ld.month - 1) if ld else 1, 1))
     for k, met in TREE_MET.items():
         out[k] = yoy(month_value(met, CUR, mo, None), month_value(met, PREV, mo, None))
-    fresh = bool(ld) and abs((ld - GRADE_ASOF).days) <= 45
-    out["freq"] = GRADE_FREQ_YOY if fresh else None
-    out["unit"] = GRADE_UNIT_YOY if fresh else None
     return out, f"{CUR}년 {mo}월 마감", "전년 동월 대비", None
 
 
@@ -2250,8 +2244,7 @@ def driver_tree_html(v):
         f'<div class="dt-band">{n("객단가", "", v["aov"])}</div></div></div>'
         '<div class="dt-col">'
         f'<div class="dt-band"><div class="dt-grp">{n("방문", "DAU", v["dau"])}{n("전환", "CR", v["cr"])}</div></div>'
-        f'<div class="dt-band"><div class="dt-grp">{n("구매빈도", "인당 주문", v["freq"], "soft")}'
-        f'{n("주문단가", "건당", v["unit"], "soft")}</div></div></div>'
+        '<div class="dt-band"></div></div>'   # 객단가는 이 트리에서 최말단(하위 분해는 소스가 다름)
         '<div class="dt-col">'
         f'<div class="dt-band"><div class="dt-grp">{n("유효회원수", "", v["members"])}'
         f'{n("유입율", "", v["visit"])}</div></div><div class="dt-band"></div></div>'
@@ -2336,8 +2329,8 @@ try:
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
                 "우선순위 순 · 거래액 기여도(증감률 × 비중) 기준</span></div>", unsafe_allow_html=True)
     st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
-    st.caption("구매빈도·주문단가는 회원등급별 월간 집계(순결제) 기준이라 월별에만 표시됩니다. "
-               "대시보드의 '객단가'는 1인당이 아니라 구매일당 금액입니다.")
+    st.caption("전 지표 동일 소스(주간 업로드 시드 · 일평균 · 총결제) 기준입니다. "
+               "'객단가'는 1인당이 아니라 구매일당 금액입니다.")
 except Exception as _e:  # noqa — 트리 실패가 아래 코멘트 영역까지 막지 않도록
     st.warning(f"성과 동인 트리를 그리지 못했습니다: {_e}")
 
