@@ -763,13 +763,14 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-node.na{opacity:.55;}
 .dt-lb{font-size:12px;font-weight:600;color:#14203a;}
 .dt-lb .u{font-weight:400;font-size:10px;color:#8b97ad;margin-left:3px;}
-.dt-v{font-size:15px;font-weight:700;margin-top:2px;letter-spacing:-.01em;}
+.dt-v{font-size:15px;font-weight:700;margin-top:2px;letter-spacing:-.01em;color:#14203a;
+  font-variant-numeric:tabular-nums;}
 .dt-node.root .dt-v{font-size:21px;}
-.dt-v.p{color:#1f5fbf;} .dt-v.n{color:#c0392b;} .dt-v.x{color:#9aa7bd;font-size:11px;font-weight:400;}
-.dt-bar{position:relative;height:6px;margin-top:5px;background:#eef1f7;border-radius:2px;overflow:hidden;}
-.dt-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#c3ccdd;}
-.dt-bar i{position:absolute;top:0;bottom:0;border-radius:2px;}
-.dt-bar i.p{left:50%;background:#1f5fbf;} .dt-bar i.n{right:50%;background:#c0392b;}
+.dt-v.x{color:#9aa7bd;font-weight:400;}
+.dt-yo{display:inline-block;margin-top:2px;font-size:11.5px;font-weight:600;
+  font-variant-numeric:tabular-nums;}
+.dt-node.root .dt-yo{font-size:13px;}
+.dt-yo.p{color:#1f5fbf;} .dt-yo.n{color:#c0392b;} .dt-yo.x{color:#9aa7bd;font-weight:400;}
 .dt-lev{border-left:2px solid #1f5fbf;background:#fff;border-radius:0 5px 5px 0;padding:6px 10px;}
 .dt-lev b{font-size:11.5px;color:#14203a;} .dt-lev p{margin:1px 0 0;font-size:11px;color:#4b5872;line-height:1.45;}
 .dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
@@ -2154,7 +2155,8 @@ if not df[df.perspective == "product"].empty:
 #   한 화면에 섞으면 같은 이름의 지표가 다른 값을 갖는 혼선이 생긴다.
 TREE_MET = {"sales": SALES, "cust": "일평균고객수", "aov": "일평균객단가",
             "dau": "DAU", "cr": "CR", "members": "유효회원수", "visit": "유입율"}
-TREE_SCALE = 26.0                         # 막대 반폭(±%p)
+TREE_UNIT = {"sales": "백만", "cust": "명", "dau": "명", "members": "명",
+             "aov": "원", "visit": "", "cr": ""}   # 유입율·CR은 fmt가 이미 %를 붙인다
 
 
 def _prev_same_date(d):
@@ -2165,13 +2167,13 @@ def _prev_same_date(d):
 
 
 def tree_values(mode, wk):
-    """mode=month|week|day → (값 dict, 기준 라벨, 비교 라벨, 채널 리스트|None).
+    """mode=month|week|day → (값 dict {key:(올해 실측, 전년비)}, 기준 라벨, 비교 라벨, 채널|None).
     모든 값은 주간 업로드 시드(일평균·총결제) 한 소스에서만 나온다."""
     out = {}
     if mode == "week":
         for k, met in TREE_MET.items():
-            out[k] = yoy(V("week", "overall", met, "TOTAL", "", CUR, wk),
-                         V("week", "overall", met, "TOTAL", "", PREV, wk))
+            c = V("week", "overall", met, "TOTAL", "", CUR, wk)
+            out[k] = (c, yoy(c, V("week", "overall", met, "TOTAL", "", PREV, wk)))
         tot = V("week", "overall", SALES, "TOTAL", "", CUR, wk)
         ch = []
         for _, c in CH_ROWS[1:]:
@@ -2202,27 +2204,34 @@ def tree_values(mode, wk):
         lo = hi - datetime.timedelta(days=6)
         plo, phi = _prev_same_date(lo), _prev_same_date(hi)
         for k, met in TREE_MET.items():
-            out[k] = yoy(range_metric(met, CUR, lo, hi), range_metric(met, PREV, plo, phi))
+            c = range_metric(met, CUR, lo, hi)
+            out[k] = (c, yoy(c, range_metric(met, PREV, plo, phi)))
         return out, f"{lo.month}/{lo.day}~{hi.month}/{hi.day} (7일)", "전년 같은 날짜 대비", None
     ld = last_daily_date()
     mo = (ld.month if (ld and ld.day >= calendar.monthrange(ld.year, ld.month)[1])
           else max((ld.month - 1) if ld else 1, 1))
     for k, met in TREE_MET.items():
-        out[k] = yoy(month_value(met, CUR, mo, None), month_value(met, PREV, mo, None))
+        c = month_value(met, CUR, mo, None)
+        out[k] = (c, yoy(c, month_value(met, PREV, mo, None)))
     return out, f"{CUR}년 {mo}월 마감", "전년 동월 대비", None
 
 
-def _dt_node(label, unit, v, cls=""):
-    u = f'<span class="u">{unit}</span>' if unit else ""
-    if v is None:
+def _dt_node(key, label, sub, pair, cls=""):
+    """pair=(올해 실측, 전년비). 표들과 같은 '값 | 전년비' 형식으로 노출한다."""
+    u = f'<span class="u">{sub}</span>' if sub else ""
+    cur, v = pair if pair else (None, None)
+    if cur is None:
         return (f'<div class="dt-node na {cls}"><div class="dt-lb">{label}{u}</div>'
-                f'<div class="dt-v x">월별만 제공</div></div>')
-    sign = "n" if v < 0 else "p"
-    txt = f"△{abs(v)*100:.1f}%" if v < 0 else f"{v*100:.1f}%"
-    w = min(abs(v) * 100 / TREE_SCALE * 50, 50)
+                f'<div class="dt-v x">—</div></div>')
+    val = fmt(TREE_MET[key], cur) + TREE_UNIT.get(key, "")
+    if v is None:
+        yo = '<span class="dt-yo x">전년비 —</span>'
+    else:
+        sign = "n" if v < 0 else "p"
+        txt = f"△{abs(v)*100:.1f}%" if v < 0 else f"{v*100:.1f}%"
+        yo = f'<span class="dt-yo {sign}">{txt}</span>'
     return (f'<div class="dt-node {cls}"><div class="dt-lb">{label}{u}</div>'
-            f'<div class="dt-v {sign}">{txt}</div>'
-            f'<div class="dt-bar"><i class="{sign}" style="width:{w:.1f}%"></i></div></div>')
+            f'<div class="dt-v">{val}</div>{yo}</div>')
 
 
 LEVERS = [("리텐션 발송", "LMS·앱푸시 재방문 유도 — 유입율에 직접 작용"),
@@ -2238,16 +2247,17 @@ def driver_tree_html(v):
         '<div class="dt-wrap"><div class="dt-rail">'
         '<span>LEVEL-I</span><span>LEVEL-II</span><span>LEVEL-III</span>'
         '<span>LEVEL-IV</span><span>LEVEL-V · 실행 레버</span></div><div class="dt">'
-        f'<div class="dt-col">{n("거래액", "", v["sales"], "root")}</div>'
+        f'<div class="dt-col">{n("sales", "거래액", "일평균", v["sales"], "root")}</div>'
         '<div class="dt-col"><div class="dt-grp">'
-        f'<div class="dt-band">{n("구매고객", "", v["cust"])}</div>'
-        f'<div class="dt-band">{n("객단가", "", v["aov"])}</div></div></div>'
+        f'<div class="dt-band">{n("cust", "구매고객", "일평균", v["cust"])}</div>'
+        f'<div class="dt-band">{n("aov", "객단가", "", v["aov"])}</div></div></div>'
         '<div class="dt-col">'
-        f'<div class="dt-band"><div class="dt-grp">{n("방문", "DAU", v["dau"])}{n("전환", "CR", v["cr"])}</div></div>'
+        f'<div class="dt-band"><div class="dt-grp">{n("dau", "방문", "DAU", v["dau"])}'
+        f'{n("cr", "전환", "CR", v["cr"])}</div></div>'
         '<div class="dt-band"></div></div>'   # 객단가는 이 트리에서 최말단(하위 분해는 소스가 다름)
         '<div class="dt-col">'
-        f'<div class="dt-band"><div class="dt-grp">{n("유효회원수", "", v["members"])}'
-        f'{n("유입율", "", v["visit"])}</div></div><div class="dt-band"></div></div>'
+        f'<div class="dt-band"><div class="dt-grp">{n("members", "유효회원수", "", v["members"])}'
+        f'{n("visit", "유입율", "", v["visit"])}</div></div><div class="dt-band"></div></div>'
         f'<div class="dt-col">{lev}</div></div></div>')
 
 
@@ -2274,16 +2284,19 @@ def driver_channels_html(ch):
 
 
 def insight_tree(v, ch):
+    def y(k):                              # v[k] = (실측, 전년비)
+        p = v.get(k)
+        return p[1] if p else None
     b = []
-    if v.get("cust") is not None and v.get("dau") is not None and v.get("cr") is not None:
-        both = v["dau"] < 0 and v["cr"] < 0
-        b.append(f'구매고객 <b>{_pct(v["cust"])}</b> — 방문 {_pct(v["dau"])} · 전환 {_pct(v["cr"])}'
+    if y("cust") is not None and y("dau") is not None and y("cr") is not None:
+        both = y("dau") < 0 and y("cr") < 0
+        b.append(f'구매고객 <b>{_pct(y("cust"))}</b> — 방문 {_pct(y("dau"))} · 전환 {_pct(y("cr"))}'
                  + ("가 <b>동시에</b> 하락" if both else ""))
-    if v.get("members") is not None and v.get("visit") is not None:
-        b.append(f'유효회원수는 {_pct(v["members"])}로 유지, 감소 요인은 <b>방문율({_pct(v["visit"])})</b> '
+    if y("members") is not None and y("visit") is not None:
+        b.append(f'유효회원수는 {_pct(y("members"))}로 유지, 감소 요인은 <b>방문율({_pct(y("visit"))})</b> '
                  '— 회원 이탈이 아닌 방문율 저하')
-    if v.get("aov") is not None and v.get("sales") is not None and v["aov"] > 0:
-        b.append(f'객단가 {_pct(v["aov"])}가 고객 감소를 상쇄해 거래액 <b>{_pct(v["sales"])}</b> '
+    if y("aov") is not None and y("sales") is not None and y("aov") > 0:
+        b.append(f'객단가 {_pct(y("aov"))}가 고객 감소를 상쇄해 거래액 <b>{_pct(y("sales"))}</b> '
                  '— 객단가 쿠션 축소 시 역신장 전환 가능')
     if ch:
         lead = next((c for c in ch if c.get("lead")), None)
