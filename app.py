@@ -2310,7 +2310,8 @@ with st.expander("ℹ️ 표 읽는 법 / 데이터"):
 # ---- 🧭 성과 동인 트리 (최하단 · 별도 카테고리) ----
 st.markdown("---")
 st.header("🧭 성과 동인 트리", anchor="s_tree")
-_tmode = st.radio("기간", ["월별", "주차별", "일자별"], horizontal=True,
+# 주간회의용이므로 주차별을 기본값으로 연다(채널 분해가 주별에만 있어 이 뷰가 가장 완전).
+_tmode = st.radio("기간", ["월별", "주차별", "일자별"], index=1, horizontal=True,
                   label_visibility="collapsed", key="dt_mode")
 try:
     _tv, _tlabel, _tcmp, _tch = tree_values(
