@@ -759,17 +759,16 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-grp>.dt-node::before,.dt-grp>.dt-band>.dt-node::before{content:"";position:absolute;
   left:-12px;top:50%;width:12px;border-top:1.5px solid #b9c4d8;}
 .dt-node{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:7px 9px 8px;}
-.dt-node.root{border:1.5px solid #c3ccdd;padding:11px 12px 12px;}
+/* 루트(거래액)는 테두리 굵기로만 구분한다 — 글자 크기는 전 노드 동일 */
+.dt-node.root{border:1.5px solid #8fa3c4;}
 .dt-node.na{opacity:.55;}
 .dt-lb{font-size:12px;font-weight:600;color:#14203a;}
 .dt-lb .u{font-weight:400;font-size:10px;color:#8b97ad;margin-left:3px;}
 .dt-v{font-size:15px;font-weight:700;margin-top:2px;letter-spacing:-.01em;color:#14203a;
   font-variant-numeric:tabular-nums;}
-.dt-node.root .dt-v{font-size:21px;}
 .dt-v.x{color:#9aa7bd;font-weight:400;}
 .dt-yo{display:inline-block;margin-top:2px;font-size:11.5px;font-weight:600;
   font-variant-numeric:tabular-nums;}
-.dt-node.root .dt-yo{font-size:13px;}
 .dt-yo.p{color:#1f5fbf;} .dt-yo.n{color:#c0392b;} .dt-yo.x{color:#9aa7bd;font-weight:400;}
 .dt-lev{border-left:2px solid #1f5fbf;background:#fff;border-radius:0 5px 5px 0;padding:6px 10px;}
 .dt-lev b{font-size:11.5px;color:#14203a;} .dt-lev p{margin:1px 0 0;font-size:11px;color:#4b5872;line-height:1.45;}
