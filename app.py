@@ -2260,7 +2260,7 @@ def _dt_node(key, label, sub, pair, cls=""):
 # 대상·소재·채널 같은 실무 상세는 화면에서 뺐고, 근거의 상세 수치만 title(마우스 오버)에 둔다.
 # 근거 수치는 8월 마감 분석 기준의 정적 문구이므로 기간을 바꿔도 함께 변하지 않는다.
 LEVERS = [
-    ("유입율", [
+    ("visit", "유입율", [
         ("슈즈 이탈 고객 윈백", "구매고객 감소의 84%가 슈즈", [
             "브랜드별 집계(전사) 기준",
             "슈즈 구매고객 7,262 → 3,181명 (△56.2%)",
@@ -2272,7 +2272,7 @@ LEVERS = [
             "빠지는 것은 유입율 한 축",
             "8월 발송 재개(0→23건) 구간에서 PUSH DAU 낙폭 △14.3% → △5.8%"]),
     ]),
-    ("전환 CR", [
+    ("cr", "전환 CR", [
         ("지원금 미사용 리마인드", "방문보다 전환이 더 크게 하락", [
             "엘페스타 기간 DAU는 전년 대비 증가",
             "그럼에도 구매고객 △14.4%, CR △11.3%",
@@ -2283,7 +2283,7 @@ LEVERS = [
             "광고 방문 +18.5% / 전환 △8.3%",
             "조회 후 미구매가 전환 손실의 직접 대상"]),
     ]),
-    ("객단가", [
+    ("aov", "객단가", [
         # ★ 여기에 '저가 구간 이탈'을 근거로 달지 말 것 — 그 이탈은 구색 공백에서 온 것이고
         #   대상도 '이미 나간 고객'이라 '지금 사고 있는 고객'을 움직이는 이 레버와 맞지 않는다
         #   (그 근거는 슈즈 윈백 레버에 있음). 저가층에는 20만원이 오히려 문턱이 될 수 있다.
@@ -2304,11 +2304,28 @@ LEVERS = [
 ]
 
 
-def _dt_levers():
+FOCUS_MAX = 2      # 주간 회의에서 한 번에 끌고 갈 수 있는 개선 대상 수
+
+
+def focus_keys(v):
+    """이번 기간에 가장 시급한 실행 대상 지표(최대 FOCUS_MAX개).
+    매주 6개 레버를 다 가져가면 실행이 흩어지므로, 레버가 걸린 지표(유입율·전환·객단가)
+    중 하락폭 큰 순으로 임계(TREE_ALERT) 초과 건만 고른다. 전부 양호하면 최저 1개만."""
+    cand = [(k, v[k][1]) for k, _, _ in LEVERS if v.get(k) and v[k][1] is not None]
+    if not cand:
+        return []
+    cand.sort(key=lambda x: x[1])
+    hit = [k for k, y in cand if y <= TREE_ALERT][:FOCUS_MAX]
+    return hit or [cand[0][0]]
+
+
+def _dt_levers(focus):
     """근거는 title 속성에 넣되 &#10;(개행)으로 불릿을 나눈다 — 한 줄로 이어붙이면
     툴팁이 화면 폭만큼 늘어져 읽을 수 없고 옆 카드까지 덮는다."""
     grps = []
-    for target, items in LEVERS:
+    for key, target, items in LEVERS:
+        if key not in focus:
+            continue
         cards = []
         for t, d, tips in items:
             tip = "&#10;".join(f"· {x}" for x in tips)
@@ -2318,8 +2335,8 @@ def _dt_levers():
     return f'<div class="dt-levs">{"".join(grps)}</div>'
 
 
-def driver_tree_html(v):
-    n, L = _dt_node, _dt_levers
+def driver_tree_html(v, focus):
+    n, L = _dt_node, (lambda: _dt_levers(focus))
     # 부모 노드 + 그 자식 묶음을 한 .dt-row 안에 넣어 재귀적으로 중첩한다.
     # align-items:center 덕에 부모가 자식 묶음 전체 높이의 가운데에 놓인다.
     return (
@@ -2368,11 +2385,16 @@ def driver_channels_html(ch):
     return '<div class="dt-ch">' + "".join(cards) + '</div>'
 
 
-def insight_tree(v, ch):
+def insight_tree(v, ch, focus=()):
     def y(k):                              # v[k] = (실측, 전년비)
         p = v.get(k)
         return p[1] if p else None
     b = []
+    if focus:
+        nm = {"visit": "유입율", "cr": "전환 CR", "aov": "객단가"}
+        picked = " · ".join(f'<b>{nm[k]}({_pct(y(k))})</b>' for k in focus if k in nm)
+        b.append(f'<span class="imp">금주 개선 대상: {picked}</span> '
+                 '<span style="color:#93a0b3">— 하락폭 기준 상위 항목으로 좁혀 레버를 제시합니다</span>')
     if y("cust") is not None and y("dau") is not None and y("cr") is not None:
         both = y("dau") < 0 and y("cr") < 0
         b.append(f'구매고객 <b>{_pct(y("cust"))}</b> — 방문 {_pct(y("dau"))} · 전환 {_pct(y("cr"))}'
@@ -2413,17 +2435,20 @@ with st.expander("ℹ️ 표 읽는 법 / 데이터"):
 # ---- 🧭 성과 동인 트리 (최하단 · 별도 카테고리) ----
 st.markdown("---")
 st.header("🧭 성과 동인 트리", anchor="s_tree")
-# 주간회의용이므로 주차별을 기본값으로 연다(채널 분해가 주별에만 있어 이 뷰가 가장 완전).
-_tmode = st.radio("기간", ["월별", "주차별", "일자별"], index=1, horizontal=True,
+# 주간회의는 수요일, 실적은 그 주 화요일까지 올린다 → '최근 7일'이 정확히 수~화 한 주기가
+# 되므로 이를 기본값으로 연다(직전 마감주는 회의 시점에서 3~9일 지난 데이터).
+_TMODES = {"최근 7일 (회의 기준)": "day", "직전 마감주": "week", "직전 마감월": "month"}
+_tmode = st.radio("기간", list(_TMODES), index=0, horizontal=True,
                   label_visibility="collapsed", key="dt_mode")
 try:
-    _tv, _tlabel, _tcmp, _tch = tree_values(
-        {"월별": "month", "주차별": "week", "일자별": "day"}[_tmode], snap_wk)
-    render_insight(insight_tree(_tv, _tch))
+    _tv, _tlabel, _tcmp, _tch = tree_values(_TMODES[_tmode], snap_wk)
+    _focus = focus_keys(_tv)
+    render_insight(insight_tree(_tv, _tch, _focus))
     st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
                "우측 지표가 좌측 지표를 구성합니다. "
-               f"전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락 지표는 빨간 테두리로 표시")
-    st.markdown(driver_tree_html(_tv), unsafe_allow_html=True)
+               f"전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락 지표는 빨간 테두리, "
+               "실행 레버는 금주 개선 대상으로 좁혀 표시")
+    st.markdown(driver_tree_html(_tv, _focus), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
                 "우선순위 순 · 거래액 기여도(증감률 × 비중) 기준</span></div>", unsafe_allow_html=True)
