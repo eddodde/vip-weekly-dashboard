@@ -749,17 +749,19 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 /* 중첩 구조 — 부모(.dt-row의 첫 노드)가 자식 묶음(.dt-kids) 높이에 맞춰
    자동으로 세로 가운데 정렬된다. 라벨 없이 위치만으로 상하관계가 읽힌다. */
 .dt-wrap{overflow-x:auto;padding-bottom:2px;}
-.dt-rail{display:flex;gap:24px;margin:2px 0 6px;}   /* 노드 간격 = row gap 12 + kids padding 12 */
-.dt-rail span{width:165px;flex:none;font-size:10px;letter-spacing:.12em;color:#9aa7bd;font-weight:600;}
-.dt-rail span:last-child{width:auto;}
 .dt-row{display:flex;align-items:center;gap:12px;}
 .dt-kids{display:flex;flex-direction:column;gap:8px;position:relative;padding-left:12px;}
-.dt-kids::before{content:"";position:absolute;left:0;top:26px;bottom:26px;
-  border-left:1.5px solid #b9c4d8;border-radius:8px 0 0 8px;}
 .dt-kids>.dt-row{position:relative;}
 .dt-kids>.dt-row::before{content:"";position:absolute;left:-12px;top:50%;width:12px;
   border-top:1.5px solid #b9c4d8;}
-.dt-levs{display:flex;flex-direction:column;gap:8px;margin-left:12px;}
+/* 세로선은 자식마다 반쪽씩 그려 '첫 자식 중심 ~ 마지막 자식 중심'만 잇는다.
+   묶음 전체에 한 줄로 그리면 첫/마지막 자식이 중첩 행일 때 위아래로 튀어나와
+   허공에 뜬 막대처럼 보인다(gap 8px이라 5px씩 넘겨 이어붙임). */
+.dt-kids>.dt-row::after{content:"";position:absolute;left:-12px;border-left:1.5px solid #b9c4d8;}
+.dt-kids>.dt-row:first-child::after{top:50%;bottom:-5px;}
+.dt-kids>.dt-row:last-child::after{top:-5px;bottom:50%;}
+.dt-kids>.dt-row:not(:first-child):not(:last-child)::after{top:-5px;bottom:-5px;}
+.dt-kids>.dt-row:only-child::after{display:none;}
 .dt-node{width:165px;flex:none;background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:7px 9px 8px;}
 /* 루트(거래액)는 테두리 굵기로만 구분한다 — 글자 크기는 전 노드 동일 */
 .dt-node.root{border:1.5px solid #8fa3c4;}
@@ -774,8 +776,11 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-yo{display:inline-block;margin-top:2px;font-size:11.5px;font-weight:600;
   font-variant-numeric:tabular-nums;}
 .dt-yo.p{color:#1f5fbf;} .dt-yo.n{color:#c0392b;} .dt-yo.x{color:#9aa7bd;font-weight:400;}
-.dt-lev{border-left:2px solid #1f5fbf;background:#fff;border-radius:0 5px 5px 0;padding:6px 10px;}
-.dt-lev b{font-size:11.5px;color:#14203a;} .dt-lev p{margin:1px 0 0;font-size:11px;color:#4b5872;line-height:1.45;}
+/* 실행 레버 — 지표 노드와 폭·바탕을 달리해 한눈에 구분되게 */
+.dt-lev{width:200px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
+  border-radius:0 5px 5px 0;padding:6px 10px;}
+.dt-lev b{font-size:11.5px;color:#14203a;display:block;}
+.dt-lev p{margin:1px 0 0;font-size:10.5px;color:#4b5872;line-height:1.4;}
 .dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
 .dt-chc{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:8px 10px;}
 .dt-chc.lead{border:1.5px solid #c0392b;}
@@ -2241,22 +2246,33 @@ def _dt_node(key, label, sub, pair, cls=""):
             f'<div class="dt-v">{val}</div>{yo}</div>')
 
 
-LEVERS = [("리텐션 발송", "LMS·앱푸시 재방문 유도 — 유입율에 직접 작용"),
-          ("온사이트 사전 알림", "라이브 D-3 알림 신청 → 당일 전환 확보"),
-          ("지원금·쿠폰 사용 유도", "보유·미사용 고객 리마인드 — 전환 즉효 레버"),
-          ("타겟 큐레이션", "구매 이력 기반 브랜드 소구 — 구매빈도 회복")]
+# 실행 레버는 겨냥하는 지표 아래에 붙인다(오른쪽에 몰아두면 무엇을 개선하려는지 안 보임).
+LEVERS = {
+    "visit": [("리텐션 발송", "LMS·앱푸시로 재방문 유도"),
+              ("미방문 타겟 발송", "이탈 직전 구간 우선 접촉")],
+    "cr": [("온사이트 사전 알림", "라이브 D-3 알림 신청"),
+           ("지원금·쿠폰 사용 유도", "보유·미사용 고객 리마인드")],
+    "aov": [("타겟 큐레이션", "구매 이력 기반 브랜드 소구"),
+            ("시크릿 혜택·기획전", "고관여 고객 단독 제안")],
+}
+
+
+def _dt_levers(key):
+    """해당 지표에 걸린 실행 레버를 자식 행으로."""
+    items = LEVERS.get(key)
+    if not items:
+        return ""
+    rows = "".join(f'<div class="dt-row"><div class="dt-lev"><b>{t}</b><p>{d}</p></div></div>'
+                   for t, d in items)
+    return f'<div class="dt-kids">{rows}</div>'
 
 
 def driver_tree_html(v):
-    n = _dt_node
-    lev = "".join(f'<div class="dt-lev"><b>{t}</b><p>{d}</p></div>' for t, d in LEVERS)
+    n, L = _dt_node, _dt_levers
     # 부모 노드 + 그 자식 묶음을 한 .dt-row 안에 넣어 재귀적으로 중첩한다.
     # align-items:center 덕에 부모가 자식 묶음 전체 높이의 가운데에 놓인다.
     return (
-        '<div class="dt-wrap"><div class="dt-rail">'
-        '<span>LEVEL-I</span><span>LEVEL-II</span><span>LEVEL-III</span>'
-        '<span>LEVEL-IV</span><span>LEVEL-V · 실행 레버</span></div>'
-        '<div class="dt-row">'
+        '<div class="dt-wrap"><div class="dt-row">'
         + n("sales", "거래액", "일평균", v["sales"], "root")
         + '<div class="dt-kids">'
         + '<div class="dt-row">'
@@ -2266,14 +2282,12 @@ def driver_tree_html(v):
         + n("dau", "방문", "DAU", v["dau"])
         + '<div class="dt-kids">'
         + f'<div class="dt-row">{n("members", "유효회원수", "", v["members"])}</div>'
-        + f'<div class="dt-row">{n("visit", "유입율", "", v["visit"])}</div>'
+        + f'<div class="dt-row">{n("visit", "유입율", "", v["visit"])}{L("visit")}</div>'
         + '</div></div>'
-        + f'<div class="dt-row">{n("cr", "전환", "CR", v["cr"])}</div>'   # 전환은 최말단
+        + f'<div class="dt-row">{n("cr", "전환", "CR", v["cr"])}{L("cr")}</div>'
         + '</div></div>'
-        + f'<div class="dt-row">{n("aov", "객단가", "", v["aov"])}</div>'  # 객단가도 최말단
-        + '</div>'
-        + f'<div class="dt-levs">{lev}</div>'
-        + '</div></div>')
+        + f'<div class="dt-row">{n("aov", "객단가", "", v["aov"])}{L("aov")}</div>'
+        + '</div></div></div>')
 
 
 def driver_channels_html(ch):
@@ -2352,7 +2366,8 @@ try:
     render_insight(insight_tree(_tv, _tch))
     st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
                "우측 지표가 좌측 지표를 구성합니다. "
-               f"전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락 지표는 빨간 테두리로 표시")
+               f"전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락 지표는 빨간 테두리, "
+               "파란 카드는 해당 지표를 겨냥한 실행 레버입니다")
     st.markdown(driver_tree_html(_tv), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
