@@ -761,6 +761,8 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-node{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:7px 9px 8px;}
 /* 루트(거래액)는 테두리 굵기로만 구분한다 — 글자 크기는 전 노드 동일 */
 .dt-node.root{border:1.5px solid #8fa3c4;}
+/* .root 뒤에 와야 루트가 경고일 때도 빨간 테두리가 이긴다 */
+.dt-node.warn{border:1.5px solid #c0392b;}
 .dt-node.na{opacity:.55;}
 .dt-lb{font-size:12px;font-weight:600;color:#14203a;}
 .dt-lb .u{font-weight:400;font-size:10px;color:#8b97ad;margin-left:3px;}
@@ -2156,6 +2158,9 @@ TREE_MET = {"sales": SALES, "cust": "일평균고객수", "aov": "일평균객�
             "dau": "DAU", "cr": "CR", "members": "유효회원수", "visit": "유입율"}
 TREE_UNIT = {"sales": "백만", "cust": "명", "dau": "명", "members": "명",
              "aov": "원", "visit": "", "cr": ""}   # 유입율·CR은 fmt가 이미 %를 붙인다
+# 경고 테두리 임계. 전 지표가 소폭 마이너스인 주가 많아 '음수 전부'로 잡으면
+# 대부분의 노드가 칠해져 신호가 죽는다 → 유의미한 하락폭만 표시한다.
+TREE_ALERT = -0.05
 
 
 def _prev_same_date(d):
@@ -2224,12 +2229,13 @@ def _dt_node(key, label, sub, pair, cls=""):
                 f'<div class="dt-v x">—</div></div>')
     val = fmt(TREE_MET[key], cur) + TREE_UNIT.get(key, "")
     if v is None:
-        yo = '<span class="dt-yo x">전년비 —</span>'
+        yo, warn = '<span class="dt-yo x">전년비 —</span>', ""
     else:
         sign = "n" if v < 0 else "p"
         txt = f"△{abs(v)*100:.1f}%" if v < 0 else f"{v*100:.1f}%"
         yo = f'<span class="dt-yo {sign}">{txt}</span>'
-    return (f'<div class="dt-node {cls}"><div class="dt-lb">{label}{u}</div>'
+        warn = " warn" if v <= TREE_ALERT else ""
+    return (f'<div class="dt-node {cls}{warn}"><div class="dt-lb">{label}{u}</div>'
             f'<div class="dt-v">{val}</div>{yo}</div>')
 
 
@@ -2335,7 +2341,8 @@ try:
         {"월별": "month", "주차별": "week", "일자별": "day"}[_tmode], snap_wk)
     render_insight(insight_tree(_tv, _tch))
     st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
-               "우측 지표가 좌측 지표를 구성합니다")
+               "우측 지표가 좌측 지표를 구성합니다. "
+               f"전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락 지표는 빨간 테두리로 표시")
     st.markdown(driver_tree_html(_tv), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
