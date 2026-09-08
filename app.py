@@ -2197,7 +2197,7 @@ def tree_values(mode, wk):
             if c["sales"] is None or not c["share"]:
                 return float("inf")        # 값 없는 채널은 맨 뒤
             return c["sales"] * c["share"]
-        ch.sort(key=_contrib)              # 개선 시급한 순 → 선전 중인 순
+        ch.sort(key=_contrib)              # 우선순위 순(기여도 낮은 채널부터)
         return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", ch
     if mode == "day":
         hi = last_daily_date()
@@ -2260,8 +2260,8 @@ def driver_tree_html(v):
 
 def driver_channels_html(ch):
     if not ch:
-        return ('<div style="font-size:12px;color:#8b97ad">채널 분해는 주차별 데이터에만 있습니다 '
-                '— 위에서 <b>주차별</b>로 전환해 확인하세요.</div>')
+        return ('<div style="font-size:12px;color:#8b97ad">채널 분해는 주차별 데이터에만 존재합니다. '
+                '상단 기간에서 <b>주차별</b> 선택 시 확인 가능합니다.</div>')
     cards = []
     for c in ch:
         rows = ""
@@ -2287,11 +2287,11 @@ def insight_tree(v, ch):
         b.append(f'구매고객 <b>{_pct(v["cust"])}</b> — 방문 {_pct(v["dau"])} · 전환 {_pct(v["cr"])}'
                  + ("가 <b>동시에</b> 하락" if both else ""))
     if v.get("members") is not None and v.get("visit") is not None:
-        b.append(f'회원 기반은 {_pct(v["members"])}로 유지되고 빠지는 건 <b>방문율({_pct(v["visit"])})</b> '
-                 '— 회원 이탈이 아니라 방문 문제')
+        b.append(f'유효회원수는 {_pct(v["members"])}로 유지, 감소 요인은 <b>방문율({_pct(v["visit"])})</b> '
+                 '— 회원 이탈이 아닌 방문율 저하')
     if v.get("aov") is not None and v.get("sales") is not None and v["aov"] > 0:
         b.append(f'객단가 {_pct(v["aov"])}가 고객 감소를 상쇄해 거래액 <b>{_pct(v["sales"])}</b> '
-                 '— 쿠션이 얇아지면 곧바로 역전')
+                 '— 객단가 쿠션 축소 시 역신장 전환 가능')
     if ch:
         lead = next((c for c in ch if c.get("lead")), None)
         best = max([c for c in ch if c["dau"] is not None], key=lambda c: c["dau"], default=None)
@@ -2330,11 +2330,11 @@ try:
         {"월별": "month", "주차별": "week", "일자별": "day"}[_tmode], snap_wk)
     render_insight(insight_tree(_tv, _tch))
     st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
-               "선으로 이어진 오른쪽 지표들이 왼쪽 지표를 만듭니다")
+               "우측 지표가 좌측 지표를 구성합니다")
     st.markdown(driver_tree_html(_tv), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
-                "개선 시급한 순 (거래액 증감 × 비중)</span></div>", unsafe_allow_html=True)
+                "우선순위 순 · 거래액 기여도(증감률 × 비중) 기준</span></div>", unsafe_allow_html=True)
     st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
     st.caption("구매빈도·주문단가는 회원등급별 월간 집계(순결제) 기준이라 월별에만 표시됩니다. "
                "대시보드의 '객단가'는 1인당이 아니라 구매일당 금액입니다.")
