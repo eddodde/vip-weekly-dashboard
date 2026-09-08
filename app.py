@@ -2177,13 +2177,6 @@ TREE_UNIT = {"sales": "백만", "cust": "명", "dau": "명", "members": "명",
 TREE_ALERT = -0.05
 
 
-def _prev_same_date(d):
-    try:
-        return datetime.date(PREV, d.month, d.day)
-    except ValueError:                     # 2/29 → 2/28
-        return datetime.date(PREV, d.month, d.day - 1)
-
-
 def tree_values(mode, wk):
     """mode=month|week|day → (값 dict {key:(올해 실측, 전년비)}, 기준 라벨, 비교 라벨, 채널|None).
     모든 값은 주간 업로드 시드(일평균·총결제) 한 소스에서만 나온다."""
@@ -2220,14 +2213,19 @@ def tree_values(mode, wk):
         for c in ch:
             c["lead"] = (c is lead)
         return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", ch
-    if mode == "day":
+    if mode == "wtd":
+        # 진행주(월요일~집계일). 전년은 −364일로 맞춰 같은 요일·같은 경과일수끼리 비교한다
+        # (전년 동주 '전체'와 대면 2일치 vs 7일치가 되어 왜곡된다).
         hi = last_daily_date()
-        lo = hi - datetime.timedelta(days=6)
-        plo, phi = _prev_same_date(lo), _prev_same_date(hi)
+        lo = hi - datetime.timedelta(days=hi.weekday())
+        plo = hi - datetime.timedelta(days=364 + hi.weekday())
+        phi = hi - datetime.timedelta(days=364)
         for k, met in TREE_MET.items():
             c = range_metric(met, CUR, lo, hi)
             out[k] = (c, yoy(c, range_metric(met, PREV, plo, phi)))
-        return out, f"{lo.month}/{lo.day}~{hi.month}/{hi.day} (7일)", "전년 같은 날짜 대비", None
+        days = (hi - lo).days + 1
+        lbl = f"{week_pretty(week_label_of(hi))} 진행중 ({lo.month}/{lo.day}~{hi.month}/{hi.day}, {days}일)"
+        return out, lbl, "전년 동요일 대비", None
     ld = last_daily_date()
     mo = (ld.month if (ld and ld.day >= calendar.monthrange(ld.year, ld.month)[1])
           else max((ld.month - 1) if ld else 1, 1))
@@ -2447,9 +2445,9 @@ with st.expander("ℹ️ 표 읽는 법 / 데이터"):
 # ---- 🧭 성과 동인 트리 (최하단 · 별도 카테고리) ----
 st.markdown("---")
 st.header("🧭 성과 동인 트리", anchor="s_tree")
-# 주간회의는 수요일, 실적은 그 주 화요일까지 올린다 → '최근 7일'이 정확히 수~화 한 주기가
-# 되므로 이를 기본값으로 연다(직전 마감주는 회의 시점에서 3~9일 지난 데이터).
-_TMODES = {"최근 7일 (회의 기준)": "day", "직전 마감주": "week", "직전 마감월": "month"}
+# 주간회의는 수요일, 실적은 그 주 화요일까지 올린다 → 기본은 '진행주'(월~집계일).
+# 전년 비교는 −364일로 같은 요일·같은 경과일수끼리 맞춘다.
+_TMODES = {"진행주 (집계일까지)": "wtd", "직전 마감주": "week", "직전 마감월": "month"}
 _tmode = st.radio("기간", list(_TMODES), index=0, horizontal=True,
                   label_visibility="collapsed", key="dt_mode")
 try:
