@@ -2212,8 +2212,11 @@ def _tree_channels(wk, g="week"):
                               V(g, "overall", "CR", c, "", PREV, wk)),
                        sales=yoy(s26, s25),
                        gap=((s25 - s26) if s25 is not None else None)))
+    # ① 전년 미달 채널을 갭 큰 순으로 앞에 두고, ② 나머지는 규모(비중) 순으로 잇는다.
+    # 갭만으로 줄 세우면 비중 절반짜리 채널이 전년과 비슷하다는 이유로 맨 뒤로 밀려,
+    # '거래액의 절반이 정체 중'이라는 사실이 화면에서 사라진다.
     short = sorted([c for c in ch if (c["gap"] or 0) > 0], key=lambda c: -c["gap"])
-    over = sorted([c for c in ch if (c["gap"] or 0) <= 0], key=lambda c: (c["gap"] or 0))
+    over = sorted([c for c in ch if (c["gap"] or 0) <= 0], key=lambda c: -(c["share"] or 0))
     ch = short + over
     lead = short[0] if short else None
     for c in ch:
@@ -2489,7 +2492,7 @@ try:
     st.markdown(driver_tree_html(_tv, _focus), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
-                "전년 대비 거래액 갭 순 · 갭이 있는 채널이 개선 대상, 이후는 초과 기여 순"
+                "전년 미달 채널 우선(갭 큰 순) · 이후 규모 순"
                 + (f" · {_chnote}" if _chnote else "")
                 + "</span></div>", unsafe_allow_html=True)
     st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
