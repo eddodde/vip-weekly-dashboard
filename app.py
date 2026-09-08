@@ -348,6 +348,7 @@ st.sidebar.markdown(
     "- [5) 행사별](#s_ev)\n"
     "- [6) 상품별](#s5)\n\n"
     "**진단·액션**\n"
+    "- [🧭 성과 동인 트리](#s_tree)\n"
     "- [✅ 종합 방향성 및 전망](#s6)"
 )
 st.sidebar.markdown("---")
@@ -742,6 +743,42 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .bcg-card ul{margin:8px 0 10px;padding:0 14px 0 28px;font-size:12.7px;line-height:1.65;}
 .bcg-card li{margin:5px 0;}
 .bcg-card .imp{color:#1f5fbf;font-weight:600;}
+/* 성과 동인 트리 — 좌(결과)→우(동인). 부모 옆에 자식 묶음을 세로선으로 걸어
+   '오른쪽이 왼쪽을 만든다'를 기호 없이 보이게 한다. */
+.dt-wrap{--cols:170px 165px 165px 165px 1fr;overflow-x:auto;padding-bottom:2px;}
+.dt-rail{display:grid;grid-template-columns:var(--cols);gap:0 14px;margin:2px 0 6px;}
+.dt-rail span{font-size:10px;letter-spacing:.12em;color:#9aa7bd;font-weight:600;}
+.dt{display:grid;grid-template-columns:var(--cols);gap:0 14px;align-items:stretch;}
+.dt-col{display:flex;flex-direction:column;justify-content:center;gap:8px;}
+.dt-band{flex:1;display:flex;flex-direction:column;justify-content:center;}
+.dt-grp{display:flex;flex-direction:column;gap:8px;position:relative;padding-left:12px;}
+.dt-grp::before{content:"";position:absolute;left:0;top:12px;bottom:12px;
+  border-left:1.5px solid #b9c4d8;border-radius:8px 0 0 8px;}
+.dt-grp>.dt-node,.dt-grp>.dt-band>.dt-node{position:relative;}
+.dt-grp>.dt-node::before,.dt-grp>.dt-band>.dt-node::before{content:"";position:absolute;
+  left:-12px;top:50%;width:12px;border-top:1.5px solid #b9c4d8;}
+.dt-node{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:7px 9px 8px;}
+.dt-node.root{border:1.5px solid #c3ccdd;padding:11px 12px 12px;}
+.dt-node.soft{background:#f4f6fa;}
+.dt-node.na{opacity:.55;}
+.dt-lb{font-size:12px;font-weight:600;color:#14203a;}
+.dt-lb .u{font-weight:400;font-size:10px;color:#8b97ad;margin-left:3px;}
+.dt-v{font-size:15px;font-weight:700;margin-top:2px;letter-spacing:-.01em;}
+.dt-node.root .dt-v{font-size:21px;}
+.dt-v.p{color:#1f5fbf;} .dt-v.n{color:#c0392b;} .dt-v.x{color:#9aa7bd;font-size:11px;font-weight:400;}
+.dt-bar{position:relative;height:6px;margin-top:5px;background:#eef1f7;border-radius:2px;overflow:hidden;}
+.dt-bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#c3ccdd;}
+.dt-bar i{position:absolute;top:0;bottom:0;border-radius:2px;}
+.dt-bar i.p{left:50%;background:#1f5fbf;} .dt-bar i.n{right:50%;background:#c0392b;}
+.dt-lev{border-left:2px solid #1f5fbf;background:#fff;border-radius:0 5px 5px 0;padding:6px 10px;}
+.dt-lev b{font-size:11.5px;color:#14203a;} .dt-lev p{margin:1px 0 0;font-size:11px;color:#4b5872;line-height:1.45;}
+.dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
+.dt-chc{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:8px 10px;}
+.dt-chc.lead{border:1.5px solid #c0392b;}
+.dt-chn{display:flex;justify-content:space-between;align-items:baseline;}
+.dt-chn b{font-size:12px;} .dt-chn span{font-size:10px;color:#9aa7bd;}
+.dt-chr{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;}
+.dt-chr em{font-style:normal;color:#8b97ad;}
 </style>
 """
 
@@ -2104,6 +2141,172 @@ if not df[df.perspective == "product"].empty:
                 # ★ 표도 인사이트와 같은 기준주(_sel6)여야 한다. sel(진행중 1~2일치)을 쓰면
                 #   전년 동주 7일과 비교돼 표만 딴 숫자가 나오고, 위 회색 인사이트와 어긋난다.
                 st.markdown(product_table_one(_sel6, _ye), unsafe_allow_html=True)
+
+# ---- 🧭 성과 동인 트리 ----
+# 좌(결과지표)→우(동인) 로직 트리. 부모 옆에 자식 묶음을 세로선으로 걸어 '오른쪽이 왼쪽을
+# 만든다'를 수식기호 없이 보이게 하고, 부호막대 길이로 상쇄 관계가 눈에 들어오게 한다.
+GRADE_ASOF = datetime.date(2026, 8, 31)   # 회원등급별 월간 집계(순결제) 기준일
+GRADE_FREQ_YOY = -0.054                   # 인당 주문건수 전년비(2026-08)
+GRADE_UNIT_YOY = 0.092                    # 주문단가(건당) 전년비(2026-08)
+TREE_MET = {"sales": SALES, "cust": "일평균고객수", "aov": "일평균객단가",
+            "dau": "DAU", "cr": "CR", "members": "유효회원수", "visit": "유입율"}
+TREE_SCALE = 26.0                         # 막대 반폭(±%p)
+
+
+def _prev_same_date(d):
+    try:
+        return datetime.date(PREV, d.month, d.day)
+    except ValueError:                     # 2/29 → 2/28
+        return datetime.date(PREV, d.month, d.day - 1)
+
+
+def tree_values(mode, wk):
+    """mode=month|week|day → (값 dict, 기준 라벨, 비교 라벨, 채널 리스트|None).
+    구매빈도·주문단가는 등급별 월간 집계(별도 소스)라 월별에만 채운다."""
+    out = {}
+    if mode == "week":
+        for k, met in TREE_MET.items():
+            out[k] = yoy(V("week", "overall", met, "TOTAL", "", CUR, wk),
+                         V("week", "overall", met, "TOTAL", "", PREV, wk))
+        out["freq"] = out["unit"] = None
+        tot = V("week", "overall", SALES, "TOTAL", "", CUR, wk)
+        ch = []
+        for _, c in CH_ROWS[1:]:
+            s26 = V("week", "overall", SALES, c, "", CUR, wk)
+            if s26 is None:
+                continue
+            ch.append(dict(name=c, share=(s26 / tot if tot else None),
+                           dau=yoy(V("week", "overall", "DAU", c, "", CUR, wk),
+                                   V("week", "overall", "DAU", c, "", PREV, wk)),
+                           cr=yoy(V("week", "overall", "CR", c, "", CUR, wk),
+                                  V("week", "overall", "CR", c, "", PREV, wk)),
+                           sales=yoy(s26, V("week", "overall", SALES, c, "", PREV, wk))))
+        # 하락 진원지 = 규모(비중) 가중 감소액이 가장 큰 채널
+        cand = [c for c in ch if c["sales"] is not None and c["share"]]
+        lead = min(cand, key=lambda c: c["sales"] * c["share"]) if cand else None
+        for c in ch:
+            c["lead"] = (c is lead)
+        return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", ch
+    if mode == "day":
+        hi = last_daily_date()
+        lo = hi - datetime.timedelta(days=6)
+        plo, phi = _prev_same_date(lo), _prev_same_date(hi)
+        for k, met in TREE_MET.items():
+            out[k] = yoy(range_metric(met, CUR, lo, hi), range_metric(met, PREV, plo, phi))
+        out["freq"] = out["unit"] = None
+        return out, f"{lo.month}/{lo.day}~{hi.month}/{hi.day} (7일)", "전년 같은 날짜 대비", None
+    ld = last_daily_date()
+    mo = (ld.month if (ld and ld.day >= calendar.monthrange(ld.year, ld.month)[1])
+          else max((ld.month - 1) if ld else 1, 1))
+    for k, met in TREE_MET.items():
+        out[k] = yoy(month_value(met, CUR, mo, None), month_value(met, PREV, mo, None))
+    fresh = bool(ld) and abs((ld - GRADE_ASOF).days) <= 45
+    out["freq"] = GRADE_FREQ_YOY if fresh else None
+    out["unit"] = GRADE_UNIT_YOY if fresh else None
+    return out, f"{CUR}년 {mo}월 마감", "전년 동월 대비", None
+
+
+def _dt_node(label, unit, v, cls=""):
+    u = f'<span class="u">{unit}</span>' if unit else ""
+    if v is None:
+        return (f'<div class="dt-node na {cls}"><div class="dt-lb">{label}{u}</div>'
+                f'<div class="dt-v x">월별만 제공</div></div>')
+    sign = "n" if v < 0 else "p"
+    txt = f"△{abs(v)*100:.1f}%" if v < 0 else f"{v*100:.1f}%"
+    w = min(abs(v) * 100 / TREE_SCALE * 50, 50)
+    return (f'<div class="dt-node {cls}"><div class="dt-lb">{label}{u}</div>'
+            f'<div class="dt-v {sign}">{txt}</div>'
+            f'<div class="dt-bar"><i class="{sign}" style="width:{w:.1f}%"></i></div></div>')
+
+
+LEVERS = [("리텐션 발송", "LMS·앱푸시 재방문 유도 — 유입율에 직접 작용"),
+          ("온사이트 사전 알림", "라이브 D-3 알림 신청 → 당일 전환 확보"),
+          ("지원금·쿠폰 사용 유도", "보유·미사용 고객 리마인드 — 전환 즉효 레버"),
+          ("타겟 큐레이션", "구매 이력 기반 브랜드 소구 — 구매빈도 회복")]
+
+
+def driver_tree_html(v):
+    n = _dt_node
+    lev = "".join(f'<div class="dt-lev"><b>{t}</b><p>{d}</p></div>' for t, d in LEVERS)
+    return (
+        '<div class="dt-wrap"><div class="dt-rail">'
+        '<span>LEVEL-I</span><span>LEVEL-II</span><span>LEVEL-III</span>'
+        '<span>LEVEL-IV</span><span>LEVEL-V · 실행 레버</span></div><div class="dt">'
+        f'<div class="dt-col">{n("거래액", "", v["sales"], "root")}</div>'
+        '<div class="dt-col"><div class="dt-grp">'
+        f'<div class="dt-band">{n("구매고객", "", v["cust"])}</div>'
+        f'<div class="dt-band">{n("객단가", "", v["aov"])}</div></div></div>'
+        '<div class="dt-col">'
+        f'<div class="dt-band"><div class="dt-grp">{n("방문", "DAU", v["dau"])}{n("전환", "CR", v["cr"])}</div></div>'
+        f'<div class="dt-band"><div class="dt-grp">{n("구매빈도", "인당 주문", v["freq"], "soft")}'
+        f'{n("주문단가", "건당", v["unit"], "soft")}</div></div></div>'
+        '<div class="dt-col">'
+        f'<div class="dt-band"><div class="dt-grp">{n("유효회원수", "", v["members"])}'
+        f'{n("유입율", "", v["visit"])}</div></div><div class="dt-band"></div></div>'
+        f'<div class="dt-col">{lev}</div></div></div>')
+
+
+def driver_channels_html(ch):
+    if not ch:
+        return ('<div style="font-size:12px;color:#8b97ad">채널 분해는 주차별 데이터에만 있습니다 '
+                '— 위에서 <b>주차별</b>로 전환해 확인하세요.</div>')
+    cards = []
+    for c in ch:
+        rows = ""
+        for lb, key in (("방문 DAU", "dau"), ("전환 CR", "cr"), ("거래액", "sales")):
+            x = c[key]
+            if x is None:
+                rows += f'<div class="dt-chr"><em>{lb}</em><b style="color:#9aa7bd">—</b></div>'
+            else:
+                col = "#c0392b" if x < 0 else "#1f5fbf"
+                t = f"△{abs(x)*100:.1f}%" if x < 0 else f"{x*100:.1f}%"
+                rows += f'<div class="dt-chr"><em>{lb}</em><b style="color:{col};font-weight:600">{t}</b></div>'
+        sh = f'비중 {c["share"]*100:.0f}%' if c["share"] is not None else ""
+        cards.append(f'<div class="dt-chc{" lead" if c["lead"] else ""}">'
+                     f'<div class="dt-chn"><b>{c["name"]}</b><span>{sh}</span></div>{rows}</div>')
+    return '<div class="dt-ch">' + "".join(cards) + '</div>'
+
+
+def insight_tree(v, ch):
+    b = []
+    if v.get("cust") is not None and v.get("dau") is not None and v.get("cr") is not None:
+        both = v["dau"] < 0 and v["cr"] < 0
+        b.append(f'구매고객 <b>{_pct(v["cust"])}</b> — 방문 {_pct(v["dau"])} · 전환 {_pct(v["cr"])}'
+                 + ("가 <b>동시에</b> 하락" if both else ""))
+    if v.get("members") is not None and v.get("visit") is not None:
+        b.append(f'회원 기반은 {_pct(v["members"])}로 유지되고 빠지는 건 <b>방문율({_pct(v["visit"])})</b> '
+                 '— 회원 이탈이 아니라 방문 문제')
+    if v.get("aov") is not None and v.get("sales") is not None and v["aov"] > 0:
+        b.append(f'객단가 {_pct(v["aov"])}가 고객 감소를 상쇄해 거래액 <b>{_pct(v["sales"])}</b> '
+                 '— 쿠션이 얇아지면 곧바로 역전')
+    if ch:
+        lead = next((c for c in ch if c.get("lead")), None)
+        best = max([c for c in ch if c["dau"] is not None], key=lambda c: c["dau"], default=None)
+        if lead:
+            b.append(f'<span class="imp">→ 하락 진원지는 <b>{lead["name"]}</b>'
+                     f'(비중 {lead["share"]*100:.0f}%, 방문 {_pct(lead["dau"])}·전환 {_pct(lead["cr"])})'
+                     + (f', <b>{best["name"]}</b>({_pct(best["dau"])})는 방어 중' if best and best is not lead else "")
+                     + '</span>')
+    return b
+
+
+st.header("🧭 성과 동인 트리", anchor="s_tree")
+_tmode = st.radio("기간", ["월별", "주차별", "일자별"], horizontal=True,
+                  label_visibility="collapsed", key="dt_mode")
+try:
+    _tv, _tlabel, _tcmp, _tch = tree_values(
+        {"월별": "month", "주차별": "week", "일자별": "day"}[_tmode], snap_wk)
+    render_insight(insight_tree(_tv, _tch))
+    st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
+               "선으로 이어진 오른쪽 지표들이 왼쪽 지표를 만듭니다")
+    st.markdown(driver_tree_html(_tv), unsafe_allow_html=True)
+    st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해</div>",
+                unsafe_allow_html=True)
+    st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
+    st.caption("구매빈도·주문단가는 회원등급별 월간 집계(순결제) 기준이라 월별에만 표시됩니다. "
+               "대시보드의 '객단가'는 1인당이 아니라 구매일당 금액입니다.")
+except Exception as _e:  # noqa — 트리 실패가 아래 섹션까지 막지 않도록
+    st.warning(f"성과 동인 트리를 그리지 못했습니다: {_e}")
 
 # ---- 종합 방향성 (BCG 스타일: 헤드라인 + 진단/실행/임팩트) ----
 st.header("✅ 종합 방향성 및 전망", anchor="s6")
