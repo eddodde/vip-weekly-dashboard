@@ -779,8 +779,11 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-yo{display:inline-block;margin-top:2px;font-size:11.5px;font-weight:600;
   font-variant-numeric:tabular-nums;}
 .dt-yo.p{color:#1f5fbf;} .dt-yo.n{color:#c0392b;} .dt-yo.x{color:#9aa7bd;font-weight:400;}
-/* 실행 레버 — 지표 노드와 폭·바탕을 달리해 한눈에 구분되게 */
-.dt-lev{width:200px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
+/* 실행 레버 — LEVEL-V 열에 모으고, 겨냥 지표는 그룹 헤더로 밝힌다 */
+.dt-levs{display:flex;flex-direction:column;gap:11px;margin-left:12px;}
+.dt-levgrp{display:flex;flex-direction:column;gap:4px;}
+.dt-tgt{font-size:10px;font-weight:700;color:#1f5fbf;letter-spacing:.02em;}
+.dt-lev{width:210px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
   border-radius:0 5px 5px 0;padding:6px 10px;}
 .dt-lev b{font-size:11.5px;color:#14203a;display:block;}
 .dt-lev p{margin:1px 0 0;font-size:10.5px;color:#4b5872;line-height:1.4;}
@@ -2249,25 +2252,25 @@ def _dt_node(key, label, sub, pair, cls=""):
             f'<div class="dt-v">{val}</div>{yo}</div>')
 
 
-# 실행 레버는 겨냥하는 지표 아래에 붙인다(오른쪽에 몰아두면 무엇을 개선하려는지 안 보임).
-LEVERS = {
-    "visit": [("리텐션 발송", "LMS·앱푸시로 재방문 유도"),
-              ("미방문 타겟 발송", "이탈 직전 구간 우선 접촉")],
-    "cr": [("온사이트 사전 알림", "라이브 D-3 알림 신청"),
-           ("지원금·쿠폰 사용 유도", "보유·미사용 고객 리마인드")],
-    "aov": [("타겟 큐레이션", "구매 이력 기반 브랜드 소구"),
-            ("시크릿 혜택·기획전", "고관여 고객 단독 제안")],
-}
+# 실행 레버는 LEVEL-V 열에 모은다(레일이 그 열을 선언하고 있으므로 열을 지킨다).
+# 대신 겨냥 지표를 그룹 헤더로 달아 무엇을 개선하려는 레버인지 드러낸다.
+# 순서는 트리에서 대상 지표가 위→아래로 나오는 순서와 맞춘다.
+LEVERS = [
+    ("유입율", [("리텐션 발송", "LMS·앱푸시로 재방문 유도"),
+                ("미방문 타겟 발송", "이탈 직전 구간 우선 접촉")]),
+    ("전환 CR", [("온사이트 사전 알림", "라이브 D-3 알림 신청"),
+                 ("지원금·쿠폰 사용 유도", "보유·미사용 고객 리마인드")]),
+    ("객단가", [("타겟 큐레이션", "구매 이력 기반 브랜드 소구"),
+                ("시크릿 혜택·기획전", "고관여 고객 단독 제안")]),
+]
 
 
-def _dt_levers(key):
-    """해당 지표에 걸린 실행 레버를 자식 행으로."""
-    items = LEVERS.get(key)
-    if not items:
-        return ""
-    rows = "".join(f'<div class="dt-row"><div class="dt-lev"><b>{t}</b><p>{d}</p></div></div>'
-                   for t, d in items)
-    return f'<div class="dt-kids">{rows}</div>'
+def _dt_levers():
+    grps = []
+    for target, items in LEVERS:
+        cards = "".join(f'<div class="dt-lev"><b>{t}</b><p>{d}</p></div>' for t, d in items)
+        grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>{cards}</div>')
+    return f'<div class="dt-levs">{"".join(grps)}</div>'
 
 
 def driver_tree_html(v):
@@ -2288,12 +2291,14 @@ def driver_tree_html(v):
         + n("dau", "방문", "DAU", v["dau"])
         + '<div class="dt-kids">'
         + f'<div class="dt-row">{n("members", "유효회원수", "", v["members"])}</div>'
-        + f'<div class="dt-row">{n("visit", "유입율", "", v["visit"])}{L("visit")}</div>'
+        + f'<div class="dt-row">{n("visit", "유입율", "", v["visit"])}</div>'
         + '</div></div>'
-        + f'<div class="dt-row">{n("cr", "전환", "CR", v["cr"])}{L("cr")}</div>'
+        + f'<div class="dt-row">{n("cr", "전환", "CR", v["cr"])}</div>'
         + '</div></div>'
-        + f'<div class="dt-row">{n("aov", "객단가", "", v["aov"])}{L("aov")}</div>'
-        + '</div></div></div>')
+        + f'<div class="dt-row">{n("aov", "객단가", "", v["aov"])}</div>'
+        + '</div>'
+        + L()                       # LEVEL-V 열: 트리 전체 높이의 가운데에 선다
+        + '</div></div>')
 
 
 def driver_channels_html(ch):
@@ -2372,8 +2377,7 @@ try:
     render_insight(insight_tree(_tv, _tch))
     st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
                "우측 지표가 좌측 지표를 구성합니다. "
-               f"전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락 지표는 빨간 테두리, "
-               "파란 카드는 해당 지표를 겨냥한 실행 레버입니다")
+               f"전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락 지표는 빨간 테두리로 표시")
     st.markdown(driver_tree_html(_tv), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
