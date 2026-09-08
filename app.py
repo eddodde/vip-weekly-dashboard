@@ -749,6 +749,9 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 /* 중첩 구조 — 부모(.dt-row의 첫 노드)가 자식 묶음(.dt-kids) 높이에 맞춰
    자동으로 세로 가운데 정렬된다. 라벨 없이 위치만으로 상하관계가 읽힌다. */
 .dt-wrap{overflow-x:auto;padding-bottom:2px;}
+.dt-rail{display:flex;gap:24px;margin:2px 0 6px;}   /* 노드 간격 = row gap 12 + kids padding 12 */
+.dt-rail span{width:165px;flex:none;font-size:10px;letter-spacing:.12em;color:#9aa7bd;font-weight:600;}
+.dt-rail span:last-child{width:auto;}
 .dt-row{display:flex;align-items:center;gap:12px;}
 .dt-kids{display:flex;flex-direction:column;gap:8px;position:relative;padding-left:12px;}
 .dt-kids>.dt-row{position:relative;}
@@ -2272,7 +2275,10 @@ def driver_tree_html(v):
     # 부모 노드 + 그 자식 묶음을 한 .dt-row 안에 넣어 재귀적으로 중첩한다.
     # align-items:center 덕에 부모가 자식 묶음 전체 높이의 가운데에 놓인다.
     return (
-        '<div class="dt-wrap"><div class="dt-row">'
+        '<div class="dt-wrap"><div class="dt-rail">'
+        '<span>LEVEL-I</span><span>LEVEL-II</span><span>LEVEL-III</span>'
+        '<span>LEVEL-IV</span><span>LEVEL-V · 실행 레버</span></div>'
+        '<div class="dt-row">'
         + n("sales", "거래액", "일평균", v["sales"], "root")
         + '<div class="dt-kids">'
         + '<div class="dt-row">'
