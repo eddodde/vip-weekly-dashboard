@@ -2204,18 +2204,19 @@ def tree_values(mode, wk):
                            cr=yoy(V("week", "overall", "CR", c, "", CUR, wk),
                                   V("week", "overall", "CR", c, "", PREV, wk)),
                            sales=yoy(s26, V("week", "overall", SALES, c, "", PREV, wk))))
-        # 노출 순서 = '개선했을 때 전체에 먹히는 크기'. 현재 증감이 아니라 개선 여지로 잡는다.
-        #   레버 크기 = 비중 × 전환 회복 여지(전년 대비 CR 갭)
-        # 현재 기여도로 줄 세우면 비중 1%짜리가 상위로 올라와 개선 대상처럼 읽히고,
-        # 거래액이 플러스여도 전환이 빠진 큰 채널(광고 등)의 회복 여지를 놓친다.
-        def _lever(c):
-            if not c["share"] or c["cr"] is None:
-                return 0.0
-            return c["share"] * max(0.0, -c["cr"])
+        # 노출 순서 = 전년 대비 거래액 갭(원). '개선하면 얼마를 되찾는가'에 직접 답하는 값이라
+        # 임의 가중치가 없고 회의에서 그대로 인용할 수 있다.
+        #   · 비중 x CR갭 같은 합성 지표는 단위가 없어 크기를 설명할 수 없고,
+        #     거래액이 이미 전년을 크게 넘긴 채널(광고 등)까지 개선 대상으로 끌어올린다.
+        #   · 갭 > 0 = 전년 미달(개선 대상), 갭 < 0 = 전년 초과(선전)
         for c in ch:
-            c["lever"] = _lever(c)
-        ch.sort(key=lambda c: c["lever"], reverse=True)
-        lead = ch[0] if ch and ch[0]["lever"] > 0 else None
+            s26 = V("week", "overall", SALES, c["name"], "", CUR, wk)
+            s25 = V("week", "overall", SALES, c["name"], "", PREV, wk)
+            c["gap"] = (s25 - s26) if (s25 is not None and s26 is not None) else None
+        short = sorted([c for c in ch if (c["gap"] or 0) > 0], key=lambda c: -c["gap"])
+        over = sorted([c for c in ch if (c["gap"] or 0) <= 0], key=lambda c: (c["gap"] or 0))
+        ch = short + over
+        lead = short[0] if short else None
         for c in ch:
             c["lead"] = (c is lead)
         return out, f"{CUR}년 {week_pretty(wk)}", "전년 동주 대비", ch
@@ -2381,6 +2382,12 @@ def driver_channels_html(ch):
                 col = "#c0392b" if x < 0 else "#1f5fbf"
                 t = f"△{abs(x)*100:.1f}%" if x < 0 else f"{x*100:.1f}%"
                 rows += f'<div class="dt-chr"><em>{lb}</em><b style="color:{col};font-weight:600">{t}</b></div>'
+        # 전년 대비 갭(원) — 우선순위의 근거이자 '되찾을 금액'이므로 카드에 직접 노출
+        g = c.get("gap")
+        if g is not None:
+            gtxt = (f'<span style="color:#c0392b;font-weight:600">△{g:,.0f}원</span>'
+                    if g > 0 else f'<span style="color:#1f5fbf;font-weight:600">+{-g:,.0f}원</span>')
+            rows += f'<div class="dt-chr"><em>전년 갭</em><b>{gtxt}</b></div>'
         sh = f'비중 {c["share"]*100:.0f}%' if c["share"] is not None else ""
         tag = '<span class="dt-tag">개선 필요</span>' if c["lead"] else ""
         # 비중이 작은 채널은 증감률이 커도 전체 영향이 미미해 과대해석을 부른다 → 흐리게
@@ -2412,10 +2419,12 @@ def insight_tree(v, ch, focus=()):
                  '— 객단가 쿠션 축소 시 역신장 전환 가능')
     if ch:
         lead = next((c for c in ch if c.get("lead")), None)
-        if lead:
-            b.append(f'<span class="imp">→ 개선 레버가 가장 큰 채널은 <b>{lead["name"]}</b>'
-                     f'(비중 {lead["share"]*100:.0f}%, 전환 {_pct(lead["cr"])})</span>'
-                     ' <span style="color:#93a0b3">— 비중이 커 전환 회복 시 전체 영향이 가장 큼</span>')
+        if lead and lead.get("gap"):
+            n_short = len([c for c in ch if (c.get("gap") or 0) > 0])
+            tail = f", 나머지 {len(ch) - n_short}개 채널은 전년 초과" if n_short < len(ch) else ""
+            b.append(f'<span class="imp">→ 전년에 미달하는 채널은 <b>{lead["name"]}</b>'
+                     f'(일평균 {lead["gap"]:,.0f}원 부족, 전환 {_pct(lead["cr"])})</span>'
+                     f'<span style="color:#93a0b3">{tail}</span>')
     return b
 
 
@@ -2454,7 +2463,7 @@ try:
     st.markdown(driver_tree_html(_tv, _focus), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
-                "개선 레버 큰 순 (비중 × 전환 회복 여지) · 비중 5% 미만은 흐리게 표시"
+                "전년 대비 거래액 갭 순 · 갭이 있는 채널이 개선 대상, 이후는 초과 기여 순"
                 "</span></div>", unsafe_allow_html=True)
     st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
     st.caption("전 지표 동일 소스(주간 업로드 시드 · 일평균 · 총결제) 기준입니다. "
