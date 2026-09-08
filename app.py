@@ -778,6 +778,10 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-chc.lead{border:1.5px solid #c0392b;}
 .dt-chn{display:flex;justify-content:space-between;align-items:baseline;}
 .dt-chn b{font-size:12px;} .dt-chn span{font-size:10px;color:#9aa7bd;}
+/* .dt-chn span 보다 구체적이어야 회색·10px 규칙에 먹히지 않는다 */
+.dt-chn .dt-tag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:3px;
+  background:#fbeae8;color:#c0392b;font-size:9.5px;font-weight:700;letter-spacing:.02em;
+  vertical-align:1px;}
 .dt-chr{display:flex;justify-content:space-between;font-size:11px;margin-top:3px;}
 .dt-chr em{font-style:normal;color:#8b97ad;}
 </style>
@@ -2182,8 +2186,9 @@ def tree_values(mode, wk):
                            cr=yoy(V("week", "overall", "CR", c, "", CUR, wk),
                                   V("week", "overall", "CR", c, "", PREV, wk)),
                            sales=yoy(s26, V("week", "overall", SALES, c, "", PREV, wk))))
-        # 하락 진원지 = 규모(비중) 가중 감소액이 가장 큰 채널
-        cand = [c for c in ch if c["sales"] is not None and c["share"]]
+        # 개선 필요 = 규모(비중) 가중 감소가 가장 큰 채널. 전 채널이 플러스면 아무것도 표시하지 않는다
+        # (전년비 %만 보면 규모 작은 채널이 과대평가되므로 비중을 곱해 실질 기여로 판정).
+        cand = [c for c in ch if c["sales"] is not None and c["share"] and c["sales"] < 0]
         lead = min(cand, key=lambda c: c["sales"] * c["share"]) if cand else None
         for c in ch:
             c["lead"] = (c is lead)
@@ -2263,8 +2268,9 @@ def driver_channels_html(ch):
                 t = f"△{abs(x)*100:.1f}%" if x < 0 else f"{x*100:.1f}%"
                 rows += f'<div class="dt-chr"><em>{lb}</em><b style="color:{col};font-weight:600">{t}</b></div>'
         sh = f'비중 {c["share"]*100:.0f}%' if c["share"] is not None else ""
+        tag = '<span class="dt-tag">개선 필요</span>' if c["lead"] else ""
         cards.append(f'<div class="dt-chc{" lead" if c["lead"] else ""}">'
-                     f'<div class="dt-chn"><b>{c["name"]}</b><span>{sh}</span></div>{rows}</div>')
+                     f'<div class="dt-chn"><b>{c["name"]}{tag}</b><span>{sh}</span></div>{rows}</div>')
     return '<div class="dt-ch">' + "".join(cards) + '</div>'
 
 
@@ -2284,7 +2290,7 @@ def insight_tree(v, ch):
         lead = next((c for c in ch if c.get("lead")), None)
         best = max([c for c in ch if c["dau"] is not None], key=lambda c: c["dau"], default=None)
         if lead:
-            b.append(f'<span class="imp">→ 하락 진원지는 <b>{lead["name"]}</b>'
+            b.append(f'<span class="imp">→ 개선 우선순위는 <b>{lead["name"]}</b>'
                      f'(비중 {lead["share"]*100:.0f}%, 방문 {_pct(lead["dau"])}·전환 {_pct(lead["cr"])})'
                      + (f', <b>{best["name"]}</b>({_pct(best["dau"])})는 방어 중' if best and best is not lead else "")
                      + '</span>')
