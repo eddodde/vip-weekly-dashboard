@@ -783,10 +783,12 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-levs{display:flex;flex-direction:column;gap:11px;margin-left:12px;}
 .dt-levgrp{display:flex;flex-direction:column;gap:4px;}
 .dt-tgt{font-size:10px;font-weight:700;color:#1f5fbf;letter-spacing:.02em;}
-.dt-lev{width:210px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
-  border-radius:0 5px 5px 0;padding:6px 10px;}
-.dt-lev b{font-size:11.5px;color:#14203a;display:block;}
-.dt-lev p{margin:1px 0 0;font-size:10.5px;color:#4b5872;line-height:1.4;}
+.dt-lev{width:245px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
+  border-radius:0 5px 5px 0;padding:6px 10px 7px;}
+.dt-lev b{font-size:11.5px;color:#14203a;display:block;margin-bottom:2px;}
+.dt-lev p{margin:1px 0 0;font-size:10.5px;color:#4b5872;line-height:1.4;
+  display:flex;gap:6px;}
+.dt-lev p em{font-style:normal;color:#93a0b3;font-weight:600;flex:none;width:22px;}
 .dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
 .dt-chc{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:8px 10px;}
 .dt-chc.lead{border:1.5px solid #c0392b;}
@@ -2253,22 +2255,50 @@ def _dt_node(key, label, sub, pair, cls=""):
 
 
 # 실행 레버는 LEVEL-V 열에 모은다(레일이 그 열을 선언하고 있으므로 열을 지킨다).
-# 대신 겨냥 지표를 그룹 헤더로 달아 무엇을 개선하려는 레버인지 드러낸다.
-# 순서는 트리에서 대상 지표가 위→아래로 나오는 순서와 맞춘다.
+# 겨냥 지표는 그룹 헤더로 밝히고, 순서는 트리에서 대상 지표가 위→아래로 나오는 순서와 맞춘다.
+# ★ 수록 기준: 대상(추출조건)·소재·채널/측정이 모두 채워져 바로 실행 가능한 건만 올린다.
+#   온사이트 배너·알림은 타 부서 진행 건이라 제외(발송·쿠폰 발행은 자체 실행 가능).
 LEVERS = [
-    ("유입율", [("리텐션 발송", "LMS·앱푸시로 재방문 유도"),
-                ("미방문 타겟 발송", "이탈 직전 구간 우선 접촉")]),
-    ("전환 CR", [("온사이트 사전 알림", "라이브 D-3 알림 신청"),
-                 ("지원금·쿠폰 사용 유도", "보유·미사용 고객 리마인드")]),
-    ("객단가", [("타겟 큐레이션", "구매 이력 기반 브랜드 소구"),
-                ("시크릿 혜택·기획전", "고관여 고객 단독 제안")]),
+    ("유입율", [
+        ("슈즈 이탈 코호트 윈백",
+         "25년 슈즈 10만원대 구매 · 26년 미구매",
+         "우포스·킨·리복 동일 가격대 대체 소구",
+         "LMS · 홀드아웃 5%"),
+        ("미방문 재방문 유도",
+         "최근 30일 미방문 VIP",
+         "진행 중 전관행사 · 신규 입점 브랜드",
+         "앱푸시+LMS · 홀드아웃 5%"),
+    ]),
+    ("전환 CR", [
+        ("지원금 미사용 리마인드",
+         "쇼핑지원금 보유 · 미사용",
+         "20만원 이상 구매 시 사용 가능 안내",
+         "LMS · 사용률 측정"),
+        ("조회·미구매 리타겟",
+         "최근 7일 상품 조회 · 미구매",
+         "조회 브랜드 한정 쿠폰 직접 발행",
+         "앱푸시 · 쿠폰 사용률"),
+    ]),
+    ("객단가", [
+        ("구매 임계 상향 유도",
+         "지원금 사용조건(20만원) 직전 구간",
+         "추가 구매 시 지원금 사용 가능 안내",
+         "LMS · 객단가 대비"),
+        ("상위등급 시크릿 제안",
+         "Gold 이상 · 고단가 브랜드 구매 이력",
+         "단독 혜택 쿠폰 직접 발행",
+         "LMS · 등급 내 객단가"),
+    ]),
 ]
 
 
 def _dt_levers():
     grps = []
     for target, items in LEVERS:
-        cards = "".join(f'<div class="dt-lev"><b>{t}</b><p>{d}</p></div>' for t, d in items)
+        cards = "".join(
+            f'<div class="dt-lev"><b>{t}</b>'
+            f'<p><em>대상</em>{who}</p><p><em>소재</em>{what}</p><p><em>실행</em>{how}</p></div>'
+            for t, who, what, how in items)
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>{cards}</div>')
     return f'<div class="dt-levs">{"".join(grps)}</div>'
 
