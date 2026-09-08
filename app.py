@@ -348,8 +348,9 @@ st.sidebar.markdown(
     "- [5) 행사별](#s_ev)\n"
     "- [6) 상품별](#s5)\n\n"
     "**진단·액션**\n"
-    "- [🧭 성과 동인 트리](#s_tree)\n"
-    "- [✅ 종합 방향성 및 전망](#s6)"
+    "- [✅ 종합 방향성 및 전망](#s6)\n\n"
+    "**성과 동인**\n"
+    "- [🧭 성과 동인 트리](#s_tree)"
 )
 st.sidebar.markdown("---")
 
@@ -2290,24 +2291,6 @@ def insight_tree(v, ch):
     return b
 
 
-st.header("🧭 성과 동인 트리", anchor="s_tree")
-_tmode = st.radio("기간", ["월별", "주차별", "일자별"], horizontal=True,
-                  label_visibility="collapsed", key="dt_mode")
-try:
-    _tv, _tlabel, _tcmp, _tch = tree_values(
-        {"월별": "month", "주차별": "week", "일자별": "day"}[_tmode], snap_wk)
-    render_insight(insight_tree(_tv, _tch))
-    st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
-               "선으로 이어진 오른쪽 지표들이 왼쪽 지표를 만듭니다")
-    st.markdown(driver_tree_html(_tv), unsafe_allow_html=True)
-    st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해</div>",
-                unsafe_allow_html=True)
-    st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
-    st.caption("구매빈도·주문단가는 회원등급별 월간 집계(순결제) 기준이라 월별에만 표시됩니다. "
-               "대시보드의 '객단가'는 1인당이 아니라 구매일당 금액입니다.")
-except Exception as _e:  # noqa — 트리 실패가 아래 섹션까지 막지 않도록
-    st.warning(f"성과 동인 트리를 그리지 못했습니다: {_e}")
-
 # ---- 종합 방향성 (BCG 스타일: 헤드라인 + 진단/실행/임팩트) ----
 st.header("✅ 종합 방향성 및 전망", anchor="s6")
 head_b, diag_b, now_b, nxt_b = final_direction(wk_all_closed, cur_mo, cutoff)
@@ -2323,6 +2306,26 @@ with st.expander("ℹ️ 표 읽는 법 / 데이터"):
         "- ⚠️ 원본에 **2025년 9월말~10월** 손상 구간(유효회원수·DAU·거래액 ~2배)이 있어 자동 제외 → 해당 구간·전년비 '—'(2026은 정상).\n"
         "- 목표 대비 달성율(2-1)·행사별(2-6)은 원본 6종에 데이터가 없어 제외(목표 파일 주시면 추가).",
         unsafe_allow_html=True)
+
+# ---- 🧭 성과 동인 트리 (최하단 · 별도 카테고리) ----
+st.markdown("---")
+st.header("🧭 성과 동인 트리", anchor="s_tree")
+_tmode = st.radio("기간", ["월별", "주차별", "일자별"], horizontal=True,
+                  label_visibility="collapsed", key="dt_mode")
+try:
+    _tv, _tlabel, _tcmp, _tch = tree_values(
+        {"월별": "month", "주차별": "week", "일자별": "day"}[_tmode], snap_wk)
+    render_insight(insight_tree(_tv, _tch))
+    st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
+               "선으로 이어진 오른쪽 지표들이 왼쪽 지표를 만듭니다")
+    st.markdown(driver_tree_html(_tv), unsafe_allow_html=True)
+    st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해</div>",
+                unsafe_allow_html=True)
+    st.markdown(driver_channels_html(_tch), unsafe_allow_html=True)
+    st.caption("구매빈도·주문단가는 회원등급별 월간 집계(순결제) 기준이라 월별에만 표시됩니다. "
+               "대시보드의 '객단가'는 1인당이 아니라 구매일당 금액입니다.")
+except Exception as _e:  # noqa — 트리 실패가 아래 코멘트 영역까지 막지 않도록
+    st.warning(f"성과 동인 트리를 그리지 못했습니다: {_e}")
 
 # ---- ✍️ 액션 방향 / 코멘트 (직접 작성) ----
 COMMENT_FILE = "data/comment.md"
