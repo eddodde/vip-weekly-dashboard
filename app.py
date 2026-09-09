@@ -908,8 +908,10 @@ def _td(css, inner, cur, style=""):
     return f'<td class="{css}{" curcol" if cur else ""}"{stattr}>{inner}</td>'
 
 
-def perf_table(grain, cur_periods, prev_periods, pretty, bold_period=None):
-    """월별/주차별 실적표: rows=지표, blocks=[2026 | 전년비 | 2025]. 전년비는 cur_periods 기준."""
+def perf_table(grain, cur_periods, prev_periods, pretty, bold_period=None, wtd_period=None):
+    """월별/주차별 실적표: rows=지표, blocks=[2026 | 전년비 | 2025]. 전년비는 cur_periods 기준.
+    wtd_period(진행 중인 주)의 전년비만 '일마감'(week_wtd)으로 계산한다 — 주마감으로 두면
+    올해 2일치가 전년 7일 전체와 대면해, 같은 화면의 성과 동인 트리와 값이 어긋난다."""
     b2026, byoy, b2025 = [], [], []
     for p in cur_periods:
         cur = (p == bold_period)
@@ -917,14 +919,25 @@ def perf_table(grain, cur_periods, prev_periods, pretty, bold_period=None):
                                   for _, met in PERF_ROWS]))
     for p in cur_periods:
         cur = (p == bold_period)
+        # 진행주는 양년을 같은 경과일까지 자른 일마감 컬럼이 있으면 그걸로 비교
+        g = grain
+        if (p == wtd_period and grain == "week"
+                and V("week_wtd", "overall", SALES, "TOTAL", "", CUR, p) is not None
+                and V("week_wtd", "overall", SALES, "TOTAL", "", PREV, p) is not None):
+            g = "week_wtd"
         cells = []
         for _, met in PERF_ROWS:
-            txt, sty = yoy_disp(yoy(V(grain, "overall", met, "TOTAL", "", CUR, p),
-                                    V(grain, "overall", met, "TOTAL", "", PREV, p)))
+            txt, sty = yoy_disp(yoy(V(g, "overall", met, "TOTAL", "", CUR, p),
+                                    V(g, "overall", met, "TOTAL", "", PREV, p)))
             cells.append(_td("grpyoy", txt, cur, sty))
         byoy.append((pretty(p), cells))
     for p in prev_periods:
-        b2025.append((pretty(p), [_td("grp2025", fmt(met, V(grain, "overall", met, "TOTAL", "", PREV, p)), False)
+        # 전년 열도 진행주는 일마감으로 — 전년비와 기준이 달라지면 표 안에서 나눗셈이 안 맞는다
+        g = grain
+        if (p == wtd_period and grain == "week"
+                and V("week_wtd", "overall", SALES, "TOTAL", "", PREV, p) is not None):
+            g = "week_wtd"
+        b2025.append((pretty(p), [_td("grp2025", fmt(met, V(g, "overall", met, "TOTAL", "", PREV, p)), False)
                                   for _, met in PERF_ROWS]))
     blocks = [(f"{CUR}년", "grp2026", b2026), ("전년비", "grpyoy", byoy), (f"{PREV}년", "grp2025", b2025)]
     return render_block_table([r for r, _ in PERF_ROWS], blocks,
@@ -1905,10 +1918,15 @@ def partial_line(kind="perf"):
        경과 3일 미만이면 전년 동주 전체와의 비교가 무의미해 수치 대신 안내만 표기."""
     if not wk_partial or not latest_wk:
         return None
+    # 진행주는 표·트리와 같은 '일마감'(양년 같은 경과일)으로 본다. 화면마다 기준이 다르면
+    # 같은 지표가 서로 다른 전년비로 보인다(예: DAU △4.4% vs △5.1%).
+    _g = ("week_wtd" if V("week_wtd", "overall", SALES, "TOTAL", "", PREV, latest_wk) is not None
+          else "week")
+    _basis = "전년 동주 같은 경과일" if _g == "week_wtd" else "전년 동주 전체"
     if wk_elapsed and wk_elapsed < WK_MIN_DAYS:   # 하루~이틀치는 비교 자체를 노출하지 않음
         return ('<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
                 'font-weight:600;margin-right:6px">진행중</span>'
-                f'<b>{wk_label(latest_wk)}</b>는 {wk_elapsed}일치라 전년 동주(7일) 대비 수치가 왜곡됩니다 — '
+                f'<b>{wk_label(latest_wk)}</b>는 {wk_elapsed}일치라 하루 편차가 크게 반영됩니다 — '
                 f'<b>위 인사이트는 마감 기준({week_pretty(snap_wk)})</b>이며, '
                 '진행중 주는 3일 이상 누적 후 표기합니다')
     rows = ([("거래액", SALES), ("DAU", "DAU"), ("CR", "CR"), ("객단가", "일평균객단가")] if kind == "perf"
@@ -1916,11 +1934,11 @@ def partial_line(kind="perf"):
     parts = []
     for nm, key in rows:
         if kind == "perf":
-            r = yoy(V("week", "overall", key, "TOTAL", "", CUR, latest_wk),
-                    V("week", "overall", key, "TOTAL", "", PREV, latest_wk))
+            r = yoy(V(_g, "overall", key, "TOTAL", "", CUR, latest_wk),
+                    V(_g, "overall", key, "TOTAL", "", PREV, latest_wk))
         else:
-            r = yoy(V("week", "overall", SALES, key, "", CUR, latest_wk),
-                    V("week", "overall", SALES, key, "", PREV, latest_wk))
+            r = yoy(V(_g, "overall", SALES, key, "", CUR, latest_wk),
+                    V(_g, "overall", SALES, key, "", PREV, latest_wk))
         if r is not None:
             parts.append(f"{nm} {_pct(r)}")
     if not parts:
@@ -1928,7 +1946,7 @@ def partial_line(kind="perf"):
     return ('<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
             'font-weight:600;margin-right:6px">진행중</span>'
             f'<b>{wk_label(latest_wk)}</b>({wk_elapsed}일치) ' + " · ".join(parts)
-            + ' <span style="color:#93a0b3">— 부분 집계(전년 동주 전체 대비)라 참고용</span>')
+            + f' <span style="color:#93a0b3">— {_basis} 대비</span>')
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
@@ -2102,7 +2120,8 @@ st.header("3) 주차별", anchor="s3")
 _b3 = insight_perf("week", snap_wk, f"최신 완료주({week_pretty(snap_wk)})")
 _p3 = partial_line("perf")
 render_insight(_b3 + [_p3] if _p3 else _b3)
-st.markdown(perf_table("week", wk_periods, wk_periods, wk_label, bold_period=latest_wk), unsafe_allow_html=True)
+st.markdown(perf_table("week", wk_periods, wk_periods, wk_label, bold_period=latest_wk,
+                       wtd_period=(latest_wk if wk_partial else None)), unsafe_allow_html=True)
 
 # ---- 4) 주차별·채널별 ----
 st.header("4) 주차별·채널별", anchor="s4")
