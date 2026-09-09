@@ -2340,11 +2340,23 @@ LEVERS = [
 FOCUS_MAX = 2      # 주간 회의에서 한 번에 끌고 갈 수 있는 개선 대상 수
 
 
+# 레버가 걸린 지표와, 그 레버로 고쳐지는 상위 지표를 함께 본다.
+# 방문(DAU) = 유효회원수 × 유입율인데 회원수는 구조 요인이라 실질 레버는 유입율에만 있다.
+# 이걸 반영하지 않으면 방문이 임계를 넘어 빨간 테두리가 붙는데도(예: 방문 △5.1%,
+# 유입율 △4.2%) 대응 레버가 하나도 안 뜨는, 문제만 짚고 답이 없는 화면이 된다.
+LEVER_TRIGGER = {"visit": ("visit", "dau"), "cr": ("cr",), "aov": ("aov",)}
+
+
 def focus_keys(v):
     """이번 기간에 가장 시급한 실행 대상 지표(최대 FOCUS_MAX개).
     매주 6개 레버를 다 가져가면 실행이 흩어지므로, 레버가 걸린 지표(유입율·전환·객단가)
     중 하락폭 큰 순으로 임계(TREE_ALERT) 초과 건만 고른다. 전부 양호하면 최저 1개만."""
-    cand = [(k, v[k][1]) for k, _, _ in LEVERS if v.get(k) and v[k][1] is not None]
+    cand = []
+    for k, _, _ in LEVERS:
+        ys = [v[t][1] for t in LEVER_TRIGGER.get(k, (k,))
+              if v.get(t) and v[t][1] is not None]
+        if ys:
+            cand.append((k, min(ys)))     # 겨냥 지표·상위 지표 중 더 나쁜 쪽으로 판정
     if not cand:
         return []
     cand.sort(key=lambda x: x[1])
@@ -2433,7 +2445,17 @@ def insight_tree(v, ch, focus=()):
     b = []
     if focus:
         nm = {"visit": "유입율", "cr": "전환 CR", "aov": "객단가"}
-        picked = " · ".join(f'<b>{nm[k]}({_pct(y(k))})</b>' for k in focus if k in nm)
+        tn = {"dau": "방문", "visit": "유입율", "cr": "전환", "aov": "객단가"}
+        parts = []
+        for k in focus:
+            if k not in nm:
+                continue
+            ys = [(t, y(t)) for t in LEVER_TRIGGER.get(k, (k,)) if y(t) is not None]
+            t, val = min(ys, key=lambda x: x[1]) if ys else (k, None)
+            # 상위 지표 때문에 걸린 경우(예: 유입율은 임계 미달이나 방문이 초과) 그 근거를 밝힌다
+            why = "" if t == k else f' <span style="color:#93a0b3">← {tn.get(t, t)} {_pct(val)}</span>'
+            parts.append(f'<b>{nm[k]}({_pct(y(k))})</b>{why}')
+        picked = " · ".join(parts)
         b.append(f'<span class="imp">금주 개선 대상: {picked}</span> '
                  '<span style="color:#93a0b3">— 하락폭 기준 상위 항목으로 좁혀 레버를 제시합니다</span>')
     if y("cust") is not None and y("dau") is not None and y("cr") is not None:
