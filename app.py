@@ -189,14 +189,44 @@ def _corrupt_keys(df):
     return dau_bad, (eff_bad - dau_bad)
 
 
+VISIT_METRIC = "유입율"
+DUP_LO, DUP_HI = 1.8, 2.2          # 이 배율 범위면 '스냅샷 2회 적재'로 보고 복원
+
+
 def _drop_corrupt(df):
+    """전 지표 손상 구간은 폐기. 단 유효회원수만 손상되고 DAU는 정상인 구간
+    (2025 09월 2주차)은 폐기 대신 복원한다 — 원본이 회원 스냅샷을 두 번 적재한
+    것이라 배율이 2배로 일정하고, 유효회원수만 버리면 유입율(=DAU/유효회원수)이
+    분모 배증으로 반토막 난 채 남아 전년비가 +93% 같은 값으로 튄다."""
     ck, eff_only = _corrupt_keys(df)
     if not ck and not eff_only:
         return df, ck
     keys = list(zip(df["grain"], df["year"], df["period"]))
-    keep = [(k not in ck) and not (k in eff_only and m == EFF_METRIC)
-            for k, m in zip(keys, df["metric"])]
-    return df[keep].copy(), ck
+    df = df[[k not in ck for k in keys]].copy()
+    if not eff_only:
+        return df, ck
+    med = (df[(df.perspective == "overall") & (df.metric == EFF_METRIC) & (df.seg1 == "TOTAL")]
+           .groupby(["grain", "year"])["value"].median())
+    k2 = list(zip(df["grain"], df["year"], df["period"]))
+    fixable, dropkeys = set(), set()
+    for g, y, p in eff_only:
+        m = med.get((g, y))
+        row = df[(df.grain == g) & (df.year == y) & (df.period == p)
+                 & (df.metric == EFF_METRIC) & (df.seg1 == "TOTAL")]
+        if m and len(row) and DUP_LO <= (row["value"].iloc[0] / m) <= DUP_HI:
+            fixable.add((g, y, p))
+        else:
+            dropkeys.add((g, y, p))
+    if fixable:
+        sel = [k in fixable for k in k2]
+        eff = [s and (mt == EFF_METRIC) for s, mt in zip(sel, df["metric"])]
+        vis = [s and (mt == VISIT_METRIC) for s, mt in zip(sel, df["metric"])]
+        df.loc[eff, "value"] = df.loc[eff, "value"] / 2.0
+        df.loc[vis, "value"] = df.loc[vis, "value"] * 2.0
+    if dropkeys:
+        df = df[[not (k in dropkeys and mt == EFF_METRIC)
+                 for k, mt in zip(k2, df["metric"])]].copy()
+    return df, ck
 
 
 def derive_monthly(df):
