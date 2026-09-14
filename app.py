@@ -841,8 +841,14 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}
 .dt-dchip{display:inline-block;font-size:9px;font-weight:700;color:#4a7052;
   background:#dfeae1;border-radius:3px;padding:1px 5px;margin-bottom:3px;}
-.dt-done b{font-size:11.5px;color:#14203a;display:block;}
-.dt-done p{margin:2px 0 0;font-size:10px;color:#4b5872;line-height:1.45;word-break:keep-all;}
+.dt-done b{font-size:11.5px;color:#14203a;display:block;margin-bottom:3px;}
+.dt-done.ctx{border-left-color:#8b97ad;background:#f5f6f8;}   /* 참고 지표 — 실행분과 구분 */
+.dt-done.ctx .dt-dchip{color:#5c6676;background:#e4e7ec;}
+.dt-dmet{display:flex;justify-content:space-between;gap:8px;font-size:10px;
+  line-height:1.5;color:#8b97ad;word-break:keep-all;}
+.dt-dmet em{font-style:normal;flex:none;}
+.dt-dmet span{text-align:right;color:#4b5872;font-variant-numeric:tabular-nums;}
+.dt-dmet span.hi{font-weight:700;font-size:11px;color:#2f6b45;}
 .dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
 .dt-chc{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:8px 10px;}
 .dt-chc.lead{border:1.5px solid #c0392b;}
@@ -2485,22 +2491,24 @@ LEVERS = [
         #   실제로 EV00(최근 30일 미방문)은 타겟 13,146 → UV 137로 자동화 중 최하위(1.04%).
         # ★ '최근 조회 상품 리마인드 확대'는 09월 2주차에 실행 완료 → DONE으로 내렸다.
         #   이미 가동 중인 실행을 레버로 다시 세우지 않는다는 원칙에 따른 것.
-        ("대량 발송 성과 이상 건 정정", "주간 발송의 17%가 UV 0.5% 미만",
-         _imp("정상 수준 복귀 시 +13,252,619원/주 · DAU +354명/일",
-              "09월 2주차 EV33 쇼핑찬스(9/10, 타겟 48,077 → UV 0.56%)에 정상 구간 "
-              "5.71%·타겟당 308원 적용 · 중복 기록 의심분을 뺀 보수치"), [
-            "09월 2주차 문자 발송 실적 기준 (타겟 1,000명 이상 캠페인 35건)",
-            "UV율 1% 미만 4건의 타겟이 119,562명 — 주간 발송량의 17.1%",
-            "해당 구간 UV 548건(0.46%) · 타겟당 거래액 26원",
-            "정상 구간(31건)은 UV율 5.71% · 타겟당 308원 — 타겟당 거래액 12배 차이",
+        ("대량 발송 성과 이상 건 정정", "주간 발송의 17%가 유입 0.5% 미만",
+         _imp("DAU +354명/일 (+1.96%p) · 거래액 +13,252,619원/주",
+              "09월 2주차 EV33 쇼핑찬스(9/10, 발송 48,077명 → 유입 0.56%)에 정상 구간 "
+              "5.71%·1명당 308원 적용 · 중복 기록 의심분을 뺀 보수치"), [
+            "09월 2주차 문자 발송 실적 기준 (발송 1,000명 이상 캠페인 35건)",
+            "'발송 대비 유입' = 유입 UV ÷ 발송 대상 수",
+            "유입 1% 미만 4건의 발송 대상이 119,562명 — 주간 발송량의 17.1%",
+            "해당 구간 유입 548건(0.46%) · 발송 1명당 거래액 26원",
+            "정상 구간(31건)은 유입 5.71% · 1명당 308원 — 1명당 거래액 12배 차이",
             "9/10 쇼핑찬스 SMS 3건에 집중, 발송 로그·트래킹 점검 후 재발송으로 회수",
-            "전량 정상화 시 UV +6,283 · DAU +898명/일(+4.96%p) — 상한",
+            "전량 정상화 시 유입 +6,283 · DAU +898명/일(+4.96%p) — 상한",
             "※ 동일 UV(267)·거래액이 두 행에 중복 기록돼 있어 집계 오류와 발송 실패가",
             "  갈리지 않는다. 원인 확인이 선행돼야 하며 견인치는 최대 건만으로 산출"]),
         ("자사 여성 기획전 리텐션", "거래액·고객·조회 동반 성장 구간",
-         _imp("발송 1회당 +16,779,228원 · UV +2,135명",
+         _imp("발송 1회당 DAU +305명/일 · 거래액 +16,779,228원",
               "09월 2주차 동일 유형 실측 준거 — 자사 1BPU 상품 LMS"
-              "(스웨이드&퍼, 타겟 25,611 → UV 8.34%)"), [
+              "(스웨이드&퍼, 발송 25,611명 → 유입 8.34% = 2,135명). "
+              "DAU는 1회 발송분을 주간 일평균으로 환산한 값"), [
             "상품관점 e-영업1 여성 기준 (대시보드와 동일 소스)",
             "09월 1주차 거래액 +31.3% · 고객 +20.6% · 상품UV +9.7% · 상품CR +9.9%",
             "8월 4주부터 3주 연속 거래액·고객·조회 동반 플러스",
@@ -2591,31 +2599,62 @@ def focus_keys(v):
 
 # 지난주 실행분. 레버에서는 내리되 결과는 남긴다 — 주간회의에서 '지난주에 무엇을 했고
 # 효과가 있었는가'가 반드시 나오는데, 실행되면 카드가 그냥 사라져 추적이 끊긴다.
-# (key, 제목, 기간, 결과 한 줄, 상세)
+# ★ 지표 순서는 '왜 했는가'를 따른다. 이 레버의 목적 지표는 DAU이므로 DAU를 맨 위에
+#   두고 거래액을 뒤에 놓는다. 거래액이 위에 있으면 매출 시책으로 읽힌다.
+# ★ 'UV율' 같은 내부 약어를 카드에 그대로 쓰지 않는다 — 분모가 무엇인지 보이지 않는다.
+#   '발송 대비 유입'처럼 분모를 문구에 드러낸다.
+# (key, 제목, 기간, [(항목, 값, 강조여부)], 상세)
 DONE = [
-    ("visit", "최근 조회 상품 리마인드 확대", "09월 2주차",
-     "일평균 타겟 2,320 → 5,660명(+144%) · UV율 4.74% → 6.26% · "
-     "가동일당 거래액 886,465 → 2,748,912원(+210%)", [
+    ("visit", "최근 조회 상품 리마인드 확대", "09월 2주차", [
+        ("DAU 기여", "+244명/일 (+1.35%p)", True),
+        ("발송 대비 유입", "4.74% → 6.26%", False),
+        ("일평균 발송 대상", "2,320 → 5,660명 (+144%)", False),
+        ("주간 거래액", "13,744,562원", False)], [
          "8월 18일 산발 가동 → 09월 2주차 9/9~9/13 5일 연속 가동으로 전환",
-         "일평균 UV 110 → 354명 (+222%)",
+         "'발송 대비 유입' = 유입 UV ÷ 발송 대상 수. 100명에게 보내 6.26명이 들어옴",
+         "일평균 유입 110 → 354명 (+222%) — 증분 244명이 DAU 18,105명의 1.35%p",
+         "DAU 역신장 △6.69%(09월 1주) → △4.01%(2주)로 2.68%p 축소,",
+         "  이 중 절반(1.35%p)을 이 건이 설명",
          "주간 거래액 13,744,562원 — 같은 주 자동화 전체(15,522,062원)의 89%",
-         "DAU 역신장 △6.7%(09월 1주) → △4.0%(2주)로 2.68%p 축소",
-         "EV01 일평균 UV 증분 244명 = DAU 1.35%p로 축소분의 약 절반",
          "※ 1.35%p는 UV 1건=DAU 1명 가정의 상한 — 중복 방문 미차감",
          "잔여 여지: 9/7·9/8 미발송 — 7일 가동 시 추가분 있음"]),
 ]
 
+# CRM 문자 전체의 기여 규모. 개별 레버만 보면 '문자가 DAU에 얼마나 작용하는가'라는
+# 질문에 답할 수 없어 상단에 총량을 고정 노출한다.
+# ★ 이 값들은 last-touch 귀속 '총량'이지 순증이 아니다. 순증(문자가 없었으면 발생하지
+#   않았을 분)은 전년 동주 채널 중분류 UV가 있어야 산출된다 — 9월분 미확보.
+SMS_TOTAL = ("visit", "CRM 문자 기여 규모", "09월 2주차 · 발송 141건", [
+    ("유입", "일평균 5,006명 = DAU의 27.7%", True),
+    ("구매고객", "일평균 111명 = 전체의 6.6%", False),
+    ("거래액", "일평균 26,621,617원 = 전체의 5.1%", False)], [
+    "09월 2주차 문자 발송 실적 — 발송 대상 730,063명 / 유입 35,044건 /",
+    "  구매고객 776명 / 거래액 186,351,320원",
+    "※ last-touch 귀속 총량이며 순증이 아니다. 문자가 없었어도 방문했을 분이",
+    "  포함돼 있으므로 '문자가 DAU를 27.7% 만들었다'로 읽으면 안 된다",
+    "※ 순증 산출에는 전년 동주 채널 중분류(LMS·SMS) UV가 필요 — 9월분 미확보.",
+    "  8월 기준으로는 문자 순증분이 DAU 낙폭을 3.28%p 방어한 것으로 산출됨",
+    "※ 유입은 UV(방문 건수)라 동일인 중복이 포함된다 — DAU와 분모가 다름"])
+
+
+def _dt_card(cls, chip, title, mets, tips):
+    tip = "&#10;".join(f"· {x}" for x in tips)
+    rows = "".join(f'<div class="dt-dmet"><em>{a}</em>'
+                   f'<span class="{"hi" if hi else ""}">{b}</span></div>'
+                   for a, b, hi in mets)
+    return (f'<div class="{cls}" title="{tip}"><span class="dt-dchip">{chip}</span>'
+            f'<b>{title}</b>{rows}</div>')
+
 
 def _dt_done(focus):
-    """실행 완료 카드. 레버와 형태를 달리해 '할 것'과 '한 것'이 섞이지 않게 한다."""
+    """실행 완료·기여 규모 카드. 레버와 색을 달리해 '할 것'과 '한 것'이 섞이지 않게 한다."""
     cards = []
-    for key, title, when, result, tips in DONE:
-        if key not in focus:
-            continue
-        tip = "&#10;".join(f"· {x}" for x in tips)
-        cards.append(f'<div class="dt-done" title="{tip}">'
-                     f'<span class="dt-dchip">실행 완료 · {when}</span>'
-                     f'<b>{title}</b><p>{result}</p></div>')
+    k, title, when, mets, tips = SMS_TOTAL
+    if k in focus:
+        cards.append(_dt_card("dt-done ctx", f"참고 · {when}", title, mets, tips))
+    for key, t, when, mets, tips in DONE:
+        if key in focus:
+            cards.append(_dt_card("dt-done", f"실행 완료 · {when}", t, mets, tips))
     return f'<div class="dt-donegrp">{"".join(cards)}</div>' if cards else ""
 
 
