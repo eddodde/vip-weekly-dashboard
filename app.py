@@ -835,6 +835,14 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   font-size:11px;font-weight:700;color:#1f5fbf;line-height:1.35;word-break:keep-all;}
 .dt-imp em{display:block;margin-top:2px;font-style:normal;font-weight:400;
   font-size:9.5px;color:#8b97ad;line-height:1.4;}
+/* 실행 완료 — '할 것'(파랑)과 '한 것'(회녹)을 색과 테두리로 갈라 놓는다 */
+.dt-donegrp{display:flex;flex-direction:column;gap:4px;margin-bottom:4px;}
+.dt-done{width:250px;flex:none;border-left:2px solid #6b8f71;background:#f3f7f3;
+  border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}
+.dt-dchip{display:inline-block;font-size:9px;font-weight:700;color:#4a7052;
+  background:#dfeae1;border-radius:3px;padding:1px 5px;margin-bottom:3px;}
+.dt-done b{font-size:11.5px;color:#14203a;display:block;}
+.dt-done p{margin:2px 0 0;font-size:10px;color:#4b5872;line-height:1.45;word-break:keep-all;}
 .dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
 .dt-chc{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:8px 10px;}
 .dt-chc.lead{border:1.5px solid #c0392b;}
@@ -2475,17 +2483,20 @@ LEVERS = [
         # ★ 미방문 윈백은 여기 넣지 말 것 — DAU = MAU x 인당 방문일수 ÷ 일수라
         #   미방문자를 불러와도 그 달 하루 방문이면 DAU 기여는 1/30에 그친다(MAU 레버).
         #   실제로 EV00(최근 30일 미방문)은 타겟 13,146 → UV 137로 자동화 중 최하위(1.04%).
-        ("최근 조회 상품 리마인드 확대", "이미 오는 고객의 방문 빈도를 올림",
-         _imp("주 7일 가동 시 +10,308,422원/주 · DAU +190명/일",
-              "09월 2주차 EV01 실적(타겟 28,298 → UV 6.26%) 기준 · 현재 4일 가동 → "
-              "추가 21,224명 발송분 · UV 1건=DAU 1명 가정한 상한"), [
-            "8월 자동화 문자 실적 기준",
-            "EV01(최근본 파일럿) 타겟 41,755 → UV 1,981, 전환 4.74%로 자동화 1위",
-            "자동화 거래액 38,371,611원의 42%를 단독 생성",
-            "최근 방문 고객이 대상이라 방문 빈도(=DAU)에 직접 작용",
-            "이미 파일럿 운영 중이므로 모수 확대만으로 착수 가능",
-            "대조군: EV00(30일 미방문) 전환 1.04%로 최하위 — MAU 레버라 DAU 기여 제한적",
-            "※ 견인치는 동일 전환율 유지·중복 노출 감쇠 미반영 가정의 상한값"]),
+        # ★ '최근 조회 상품 리마인드 확대'는 09월 2주차에 실행 완료 → DONE으로 내렸다.
+        #   이미 가동 중인 실행을 레버로 다시 세우지 않는다는 원칙에 따른 것.
+        ("대량 발송 성과 이상 건 정정", "주간 발송의 17%가 UV 0.5% 미만",
+         _imp("정상 수준 복귀 시 +13,252,619원/주 · DAU +354명/일",
+              "09월 2주차 EV33 쇼핑찬스(9/10, 타겟 48,077 → UV 0.56%)에 정상 구간 "
+              "5.71%·타겟당 308원 적용 · 중복 기록 의심분을 뺀 보수치"), [
+            "09월 2주차 문자 발송 실적 기준 (타겟 1,000명 이상 캠페인 35건)",
+            "UV율 1% 미만 4건의 타겟이 119,562명 — 주간 발송량의 17.1%",
+            "해당 구간 UV 548건(0.46%) · 타겟당 거래액 26원",
+            "정상 구간(31건)은 UV율 5.71% · 타겟당 308원 — 타겟당 거래액 12배 차이",
+            "9/10 쇼핑찬스 SMS 3건에 집중, 발송 로그·트래킹 점검 후 재발송으로 회수",
+            "전량 정상화 시 UV +6,283 · DAU +898명/일(+4.96%p) — 상한",
+            "※ 동일 UV(267)·거래액이 두 행에 중복 기록돼 있어 집계 오류와 발송 실패가",
+            "  갈리지 않는다. 원인 확인이 선행돼야 하며 견인치는 최대 건만으로 산출"]),
         ("자사 여성 기획전 리텐션", "거래액·고객·조회 동반 성장 구간",
          _imp("발송 1회당 +16,779,228원 · UV +2,135명",
               "09월 2주차 동일 유형 실측 준거 — 자사 1BPU 상품 LMS"
@@ -2578,6 +2589,36 @@ def focus_keys(v):
     return hit or [cand[0][0]]
 
 
+# 지난주 실행분. 레버에서는 내리되 결과는 남긴다 — 주간회의에서 '지난주에 무엇을 했고
+# 효과가 있었는가'가 반드시 나오는데, 실행되면 카드가 그냥 사라져 추적이 끊긴다.
+# (key, 제목, 기간, 결과 한 줄, 상세)
+DONE = [
+    ("visit", "최근 조회 상품 리마인드 확대", "09월 2주차",
+     "일평균 타겟 2,320 → 5,660명(+144%) · UV율 4.74% → 6.26% · "
+     "가동일당 거래액 886,465 → 2,748,912원(+210%)", [
+         "8월 18일 산발 가동 → 09월 2주차 9/9~9/13 5일 연속 가동으로 전환",
+         "일평균 UV 110 → 354명 (+222%)",
+         "주간 거래액 13,744,562원 — 같은 주 자동화 전체(15,522,062원)의 89%",
+         "DAU 역신장 △6.7%(09월 1주) → △4.0%(2주)로 2.68%p 축소",
+         "EV01 일평균 UV 증분 244명 = DAU 1.35%p로 축소분의 약 절반",
+         "※ 1.35%p는 UV 1건=DAU 1명 가정의 상한 — 중복 방문 미차감",
+         "잔여 여지: 9/7·9/8 미발송 — 7일 가동 시 추가분 있음"]),
+]
+
+
+def _dt_done(focus):
+    """실행 완료 카드. 레버와 형태를 달리해 '할 것'과 '한 것'이 섞이지 않게 한다."""
+    cards = []
+    for key, title, when, result, tips in DONE:
+        if key not in focus:
+            continue
+        tip = "&#10;".join(f"· {x}" for x in tips)
+        cards.append(f'<div class="dt-done" title="{tip}">'
+                     f'<span class="dt-dchip">실행 완료 · {when}</span>'
+                     f'<b>{title}</b><p>{result}</p></div>')
+    return f'<div class="dt-donegrp">{"".join(cards)}</div>' if cards else ""
+
+
 def _dt_levers(focus, v):
     """근거는 title 속성에 넣되 &#10;(개행)으로 불릿을 나눈다 — 한 줄로 이어붙이면
     툴팁이 화면 폭만큼 늘어져 읽을 수 없고 옆 카드까지 덮는다.
@@ -2594,7 +2635,7 @@ def _dt_levers(focus, v):
             cards.append(f'<div class="dt-lev" title="{tip}"><b>{t}</b><p>{d}</p>{box}</div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>'
                     + "".join(cards) + '</div>')
-    return f'<div class="dt-levs">{"".join(grps)}</div>'
+    return f'<div class="dt-levs">{_dt_done(focus)}{"".join(grps)}</div>'
 
 
 def driver_tree_html(v, focus):
