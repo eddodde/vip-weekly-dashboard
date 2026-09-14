@@ -823,8 +823,10 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   font-variant-numeric:tabular-nums;}
 .dt-yo.p{color:#1f5fbf;} .dt-yo.n{color:#c0392b;} .dt-yo.x{color:#9aa7bd;font-weight:400;}
 /* 실행 레버 — LEVEL-V 열에 모으고, 겨냥 지표는 그룹 헤더로 밝힌다 */
+/* LEVEL-V는 2열. 세로로만 쌓으면 트리 본체보다 두 배 길어져 한 화면에 안 들어온다. */
 .dt-levs{display:flex;flex-direction:column;gap:11px;margin-left:12px;}
 .dt-levgrp{display:flex;flex-direction:column;gap:4px;}
+.dt-levrow{display:flex;flex-direction:row;gap:8px;align-items:stretch;}
 .dt-tgt{font-size:10px;font-weight:700;color:#1f5fbf;letter-spacing:.02em;}
 .dt-lev{width:250px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
   border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}
@@ -837,13 +839,15 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   font-size:9.5px;color:#8b97ad;line-height:1.4;}
 /* 실행 완료 — '할 것'(파랑)과 '한 것'(회녹)을 색과 테두리로 갈라 놓는다 */
 .dt-donegrp{display:flex;flex-direction:column;gap:4px;margin-bottom:4px;}
-.dt-done{width:250px;flex:none;border-left:2px solid #6b8f71;background:#f3f7f3;
-  border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}
+.dt-done{width:508px;flex:none;border-left:2px solid #6b8f71;background:#f3f7f3;
+  border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}   /* 레버 2장 폭 */
+/* minmax(0,1fr)이라야 긴 값이 한쪽 열을 밀어내지 않고 두 열이 같은 폭을 유지한다 */
+.dt-dmets{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;}
 .dt-dchip{display:inline-block;font-size:9px;font-weight:700;color:#4a7052;
   background:#dfeae1;border-radius:3px;padding:1px 5px;margin-bottom:3px;}
 .dt-done b{font-size:11.5px;color:#14203a;display:block;margin-bottom:3px;}
 /* 한 카드 안의 단락 구분 — 상자를 나누지 않고 세로 길이를 줄인다 */
-.dt-dsub{margin:6px 0 3px;padding-top:5px;border-top:1px dashed #c5d3c7;
+.dt-dsub{grid-column:1 / -1;margin:6px 0 3px;padding-top:5px;border-top:1px dashed #c5d3c7;
   font-size:9.5px;font-weight:700;color:#4a7052;letter-spacing:-.01em;word-break:keep-all;}
 .dt-dmet{display:flex;justify-content:space-between;gap:8px;font-size:10px;
   line-height:1.5;color:#8b97ad;word-break:keep-all;}
@@ -2661,7 +2665,7 @@ def _dt_card(cls, chip, title, mets, tips):
             rows += (f'<div class="dt-dmet"><em>{a}</em>'
                      f'<span class="{"hi" if hi else ""}">{b}</span></div>')
     return (f'<div class="{cls}" title="{tip}"><span class="dt-dchip">{chip}</span>'
-            f'<b>{title}</b>{rows}</div>')
+            f'<b>{title}</b><div class="dt-dmets">{rows}</div></div>')
 
 
 def _dt_done(focus):
@@ -2688,7 +2692,7 @@ def _dt_levers(focus, v):
             box = (f'<div class="dt-imp">{got[0]}<em>{got[1]}</em></div>') if got else ""
             cards.append(f'<div class="dt-lev" title="{tip}"><b>{t}</b><p>{d}</p>{box}</div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>'
-                    + "".join(cards) + '</div>')
+                    f'<div class="dt-levrow">{"".join(cards)}</div></div>')
     return f'<div class="dt-levs">{_dt_done(focus)}{"".join(grps)}</div>'
 
 
