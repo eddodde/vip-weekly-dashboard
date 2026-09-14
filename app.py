@@ -2248,8 +2248,12 @@ def _ln1(y):
     return float(np.log(1.0 + y)) if (y is not None and y > -1) else None
 
 
+TREE_LABEL = {"sales": "거래액", "cust": "구매고객", "aov": "객단가", "dau": "방문",
+              "cr": "전환", "members": "유효회원수", "visit": "유입율"}
+
+
 def alert_path(v):
-    """빨간 테두리를 붙일 지표 → 상위 하락 기여율(직접 걸린 지표는 None).
+    """빨간 테두리를 붙일 지표 → (기여율, 부모 지표키). 직접 걸린 지표는 None.
     ★ 임계(TREE_ALERT)만으로 칠하면 원인 경로가 끊긴다. 실제 사례: 구매고객 △6.2%는
       빨강인데 그 구성요인인 방문 △4.0%·전환 △2.3%은 둘 다 임계 미만이라 흰색으로
       남아, '문제는 구매고객'이라고만 하고 왜 그런지로 내려갈 수 없는 화면이 됐다.
@@ -2273,7 +2277,7 @@ def alert_path(v):
             if cl is None or cl >= 0:
                 continue
             if cl / pl >= DRIVER_SHARE:
-                out.setdefault(c, cl / pl)
+                out.setdefault(c, (cl / pl, p))
                 stack.append(c)
     return out
 
@@ -2403,8 +2407,12 @@ def _dt_node(key, label, sub, pair, cls="", al=None):
         yo = f'<span class="dt-yo {sign}">{txt}</span>'
     al = al or {}
     warn = " warn" if key in al else ""
-    why = (f'<span class="dt-why">상위 하락의 {al[key]*100:.0f}% 설명</span>'
-           if al.get(key) else "")
+    # 부모 지표명을 그대로 적는다 — '상위'라고만 쓰면 어느 지표를 가리키는지 읽는 쪽이 추론해야 한다
+    why = ""
+    if al.get(key):
+        share, parent = al[key]
+        why = (f'<span class="dt-why">{TREE_LABEL.get(parent, parent)} 하락 기여 '
+               f'{share*100:.0f}%</span>')
     return (f'<div class="dt-node {cls}{warn}"><div class="dt-lb">{label}{u}</div>'
             f'<div class="dt-v">{val}</div>{yo}{why}</div>')
 
@@ -2667,7 +2675,7 @@ try:
     st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
                "우측 지표가 좌측 지표를 구성합니다. "
                f"빨간 테두리는 하락 경로 — 전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락한 지표와, "
-               f"그 하락을 {DRIVER_SHARE*100:.0f}% 이상 설명하는 하위 동인을 말단까지 잇습니다. "
+               f"그 하락의 {DRIVER_SHARE*100:.0f}% 이상을 만든 하위 동인을 말단까지 잇습니다. "
                "실행 레버는 경로 말단의 개선 대상으로 좁혀 표시")
     st.markdown(driver_tree_html(_tv, _focus), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
