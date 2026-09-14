@@ -826,10 +826,15 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-levs{display:flex;flex-direction:column;gap:11px;margin-left:12px;}
 .dt-levgrp{display:flex;flex-direction:column;gap:4px;}
 .dt-tgt{font-size:10px;font-weight:700;color:#1f5fbf;letter-spacing:.02em;}
-.dt-lev{width:200px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
-  border-radius:0 5px 5px 0;padding:6px 10px;cursor:default;}
+.dt-lev{width:250px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
+  border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}
 .dt-lev b{font-size:11.5px;color:#14203a;display:block;}
 .dt-lev p{margin:1px 0 0;font-size:10.5px;color:#4b5872;line-height:1.4;}
+/* 예상 견인 — 금액을 굵게, 산출 근거를 그 아래 작게. 근거 없는 금액은 회의에서 깨진다. */
+.dt-imp{margin-top:5px;padding-top:4px;border-top:1px dashed #c3d4ea;
+  font-size:11px;font-weight:700;color:#1f5fbf;line-height:1.35;word-break:keep-all;}
+.dt-imp em{display:block;margin-top:2px;font-style:normal;font-weight:400;
+  font-size:9.5px;color:#8b97ad;line-height:1.4;}
 .dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
 .dt-chc{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:8px 10px;}
 .dt-chc.lead{border:1.5px solid #c0392b;}
@@ -2424,6 +2429,41 @@ def _dt_node(key, label, sub, pair, cls="", al=None):
 # 임원 보고이므로 카드에는 '왜 이 액션인가'(데이터 근거)를 한 줄로 싣는다.
 # 대상·소재·채널 같은 실무 상세는 화면에서 뺐고, 근거의 상세 수치만 title(마우스 오버)에 둔다.
 # 근거 수치는 8월 마감 분석 기준의 정적 문구이므로 기간을 바꿔도 함께 변하지 않는다.
+#
+# ── 예상 견인(imp) ───────────────────────────────────────────────────────────
+# 카드마다 '이걸 하면 얼마가 붙는가'를 한 줄로 싣는다. 근거 없는 목표치를 적으면
+# 회의에서 바로 깨지므로, 세 가지 성격을 구분해 각각 다른 방식으로 산출한다.
+#   ① 예상 견인 — 같은 주 실제 발송 실적의 전환율을 확대 모수에 그대로 적용
+#   ② 갭 규모   — 해당 지표를 전년 수준으로 되돌렸을 때의 주간 거래액(v에서 즉석 계산)
+#   ③ 민감도    — 지표 1% 개선 시 주간 거래액(v에서 즉석 계산)
+# ★ ①은 시드에 없는 문자 발송 실적에서 나오므로 상수다. 기간을 바꿔도 따라 변하지
+#   않으니 근거 줄에 산출 기준 주차를 반드시 박아 둔다. ②③은 기간을 따라 움직인다.
+def _imp(headline, basis):
+    return lambda v: (headline, basis)
+
+
+def _imp_cr_gap(v):
+    """전환 CR을 전년 수준으로 되돌렸을 때 회복되는 주간 거래액."""
+    cr, dau, aov = v.get("cr"), v.get("dau"), v.get("aov")
+    if not (cr and dau and aov) or None in (cr[0], cr[1], dau[0], aov[0]) or cr[1] <= -1:
+        return None
+    prev = cr[0] / (1 + cr[1])
+    if prev <= cr[0]:
+        return None
+    return (f"전년 CR 회복 시 주간 +{(prev - cr[0]) * dau[0] * aov[0] * 7:,.0f}원",
+            f"CR {cr[0]*100:.2f}% → 전년 {prev*100:.2f}% · "
+            f"구매고객 +{(prev - cr[0]) * dau[0]:,.0f}명/일")
+
+
+def _imp_aov_1pct(v):
+    """객단가 1% 상승분의 주간 거래액 — 목표치가 아니라 민감도로 제시한다."""
+    s = v.get("sales")
+    if not s or s[0] is None:
+        return None
+    return (f"객단가 +1% 시 주간 +{s[0] * 0.01 * 7:,.0f}원",
+            f"주간 거래액 {s[0] * 7:,.0f}원 기준 민감도")
+
+
 LEVERS = [
     ("visit", "유입율", [
         # ★ 근거를 브랜드 파일(전사·총결제·브랜드 단위 중복집계)에 걸지 말 것 —
@@ -2435,14 +2475,21 @@ LEVERS = [
         # ★ 미방문 윈백은 여기 넣지 말 것 — DAU = MAU x 인당 방문일수 ÷ 일수라
         #   미방문자를 불러와도 그 달 하루 방문이면 DAU 기여는 1/30에 그친다(MAU 레버).
         #   실제로 EV00(최근 30일 미방문)은 타겟 13,146 → UV 137로 자동화 중 최하위(1.04%).
-        ("최근 조회 상품 리마인드 확대", "이미 오는 고객의 방문 빈도를 올림", [
+        ("최근 조회 상품 리마인드 확대", "이미 오는 고객의 방문 빈도를 올림",
+         _imp("주 7일 가동 시 +10,308,422원/주 · DAU +190명/일",
+              "09월 2주차 EV01 실적(타겟 28,298 → UV 6.26%) 기준 · 현재 4일 가동 → "
+              "추가 21,224명 발송분 · UV 1건=DAU 1명 가정한 상한"), [
             "8월 자동화 문자 실적 기준",
             "EV01(최근본 파일럿) 타겟 41,755 → UV 1,981, 전환 4.74%로 자동화 1위",
             "자동화 거래액 38,371,611원의 42%를 단독 생성",
             "최근 방문 고객이 대상이라 방문 빈도(=DAU)에 직접 작용",
             "이미 파일럿 운영 중이므로 모수 확대만으로 착수 가능",
-            "대조군: EV00(30일 미방문) 전환 1.04%로 최하위 — MAU 레버라 DAU 기여 제한적"]),
-        ("자사 여성 기획전 리텐션", "거래액·고객·조회 동반 성장 구간", [
+            "대조군: EV00(30일 미방문) 전환 1.04%로 최하위 — MAU 레버라 DAU 기여 제한적",
+            "※ 견인치는 동일 전환율 유지·중복 노출 감쇠 미반영 가정의 상한값"]),
+        ("자사 여성 기획전 리텐션", "거래액·고객·조회 동반 성장 구간",
+         _imp("발송 1회당 +16,779,228원 · UV +2,135명",
+              "09월 2주차 동일 유형 실측 준거 — 자사 1BPU 상품 LMS"
+              "(스웨이드&퍼, 타겟 25,611 → UV 8.34%)"), [
             "상품관점 e-영업1 여성 기준 (대시보드와 동일 소스)",
             "09월 1주차 거래액 +31.3% · 고객 +20.6% · 상품UV +9.7% · 상품CR +9.9%",
             "8월 4주부터 3주 연속 거래액·고객·조회 동반 플러스",
@@ -2456,17 +2503,23 @@ LEVERS = [
     # ★ 이미 상시 가동 중인 실행은 레버로 세우지 말 것 — 혜택 미사용은 주 1회 앱푸시,
     #   조회·미구매는 자동화 문자로 운영 중이다. 미가동 채널로의 확장, 또는 대상 재정의로 쓴다.
     ("cr", "전환 CR", [
-        ("혜택 미사용 온사이트 팝업", "발송은 가동 중 — 미사용 채널로 확장", [
+        ("혜택 미사용 온사이트 팝업", "발송은 가동 중 — 미사용 채널로 확장", _imp_cr_gap, [
             "혜택 미사용 리마인드는 주 1회 앱푸시로 이미 운영 중",
             "방문 시점 노출(온사이트)은 아직 미가동 채널",
             "진행주 방문 △5.1% 대비 전환 △7.7%로 전환 하락폭이 더 큼",
             "이미 들어온 고객을 대상으로 하므로 유입 확보 없이 즉시 작동",
             "※ 온사이트 노출은 타 부서 진행 건 — 협의 선행 필요"]),
-        ("광고 유입 미구매 리타겟", "유입만 늘고 전환은 빠지는 채널", [
-            "09월 1주차 광고 방문 +19.0% / 전환 △13.7%",
-            "진행주(일마감) 광고 방문 +20.7% / 전환 △8.2%",
-            "거래액 비중 29~30%로 직접 다음 규모",
-            "유입이 늘었는데 전환만 빠지는 유일한 채널 — 손실이 가장 큰 구간",
+        # ★ 이 자리에 있던 '광고 유입 미구매 리타겟'은 내렸다 — 근거였던 광고 전환 하락이
+        #   09월 2주차 마감 기준 +2.4%로 해소됐다(진행주 일마감으로는 △8.2%였음).
+        #   채널 표에 +2.4%가 그대로 보이므로 그 레버를 두면 화면과 충돌한다.
+        ("직접 유입 미구매 리타겟", "방문·전환이 함께 빠지는 최대 채널",
+         _imp("직접 CR 전년 회복 시 주간 +165,145,519원",
+              "09월 2주차 직접 CR 8.50% → 전년 9.18% · 구매고객 +75명/일 · "
+              "광고 초과분 22,392,370원이 전사 갭을 가리고 있음"), [
+            "09월 2주차 마감 직접 방문 △7.4% · 전환 △7.3% — 두 축이 함께 빠지는 유일한 대형 채널",
+            "DAU 11,198명으로 전체의 62%, 거래액 251,135,343원으로 최대 규모",
+            "직접 CR 갭(75명/일)이 전사 갭(40명/일)보다 큼 — 광고가 전년 초과분으로 메워 가려짐",
+            "직접 태깅 기존 고객의 76.2%는 다른 접점 이력 보유 — 자연유입이 아니라 접촉 가능 모수",
             "조회·미구매 자동화 문자는 운영 중이므로 대상을 채널 기준으로 재정의"]),
     ]),
     ("aov", "객단가", [
@@ -2476,16 +2529,21 @@ LEVERS = [
         # ★ 근거를 '구매고객 감소'에 걸지 말 것 — 그 지표는 기준에 따라 방향이 뒤집힌다
         #   (대시보드 일평균·총결제 △12.0% vs 월간 순고객·순결제 +1.3%). 회의 자료와 충돌한다.
         #   두 기준 모두 같은 방향인 '객단가 상승'과 혜택 사용조건 구조만 근거로 쓴다.
-        ("구매 임계 상향 유도", "객단가가 실제로 움직이는 축", [
+        ("구매 임계 상향 유도", "객단가가 실제로 움직이는 축", _imp_aov_1pct, [
             "객단가는 어느 기준으로 보아도 상승 (주문단가 +9.2%)",
             "혜택 사용 조건이 20만원 → 직전 구간에 추가 구매 유인이 구조적으로 존재",
             "이미 구매 중인 고객이 대상이라 이탈 회복과 무관하게 즉시 작동",
             "혜택 발행이 자체 실행 가능해 착수 리드타임이 짧음"]),
-        ("상위등급 시크릿 제안", "등급 내 객단가 실질 상승 구간", [
+        ("상위등급 시크릿 제안", "등급 내 객단가 실질 상승 구간",
+         _imp("발송 1회당 +6,794,036원 · 구매고객 +30명",
+              "09월 2주차 시크릿EGM 실측(2BPU, 타겟 20,687 → UV 7.49%) · "
+              "해당 건 객단가는 226,468원으로 전체 평균 미달 — 거래액 기여로 읽을 것"), [
             "시점별 등급 기준 인당구매액",
             "Gold +9.4% · Silver +9.6% · Platinum +12.7%",
             "등급 구성효과 △53%를 뚫고 오른 실질 상승",
-            "추가 제안 여지가 남아 있는 구간"]),
+            "추가 제안 여지가 남아 있는 구간",
+            "※ 09월 2주차 시크릿 발송 3건의 객단가는 116,522~226,468원으로 모두 전체 평균",
+            "  (312,839원) 미달 — '객단가를 올린다'가 아니라 '거래액을 더한다'로 쓸 것"]),
     ]),
 ]
 
@@ -2520,17 +2578,20 @@ def focus_keys(v):
     return hit or [cand[0][0]]
 
 
-def _dt_levers(focus):
+def _dt_levers(focus, v):
     """근거는 title 속성에 넣되 &#10;(개행)으로 불릿을 나눈다 — 한 줄로 이어붙이면
-    툴팁이 화면 폭만큼 늘어져 읽을 수 없고 옆 카드까지 덮는다."""
+    툴팁이 화면 폭만큼 늘어져 읽을 수 없고 옆 카드까지 덮는다.
+    imp(예상 견인)는 카드 하단에 금액 + 산출 근거 두 줄로 싣는다."""
     grps = []
     for key, target, items in LEVERS:
         if key not in focus:
             continue
         cards = []
-        for t, d, tips in items:
+        for t, d, imp, tips in items:
             tip = "&#10;".join(f"· {x}" for x in tips)
-            cards.append(f'<div class="dt-lev" title="{tip}"><b>{t}</b><p>{d}</p></div>')
+            got = imp(v) if imp else None
+            box = (f'<div class="dt-imp">{got[0]}<em>{got[1]}</em></div>') if got else ""
+            cards.append(f'<div class="dt-lev" title="{tip}"><b>{t}</b><p>{d}</p>{box}</div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>'
                     + "".join(cards) + '</div>')
     return f'<div class="dt-levs">{"".join(grps)}</div>'
@@ -2539,7 +2600,7 @@ def _dt_levers(focus):
 def driver_tree_html(v, focus):
     _al = alert_path(v)
     n = lambda k, lb, sb, pr, cls="": _dt_node(k, lb, sb, pr, cls, _al)   # noqa: E731
-    L = lambda: _dt_levers(focus)                                          # noqa: E731
+    L = lambda: _dt_levers(focus, v)                                       # noqa: E731
     # 부모 노드 + 그 자식 묶음을 한 .dt-row 안에 넣어 재귀적으로 중첩한다.
     # align-items:center 덕에 부모가 자식 묶음 전체 높이의 가운데에 놓인다.
     return (
