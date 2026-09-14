@@ -2273,6 +2273,21 @@ def _tree_channels(wk, g="week"):
     return ch
 
 
+def _wtd_cut(wk, lo):
+    """week_wtd('일마감') 스냅샷이 며칠치까지 잘려 있는지 일자별로 역산한다.
+    ★ 주별 export와 일자별 export는 갱신 시점이 다르다. 주별 파일이 금요일에 굳어 있고
+      일자별만 일요일까지 들어오면, 같은 '09월 2주차'가 5일치(일마감)와 7일치(주마감)
+      두 값을 갖게 된다 → 라벨만 믿지 말고 경과일수를 맞춰 본 뒤 쓴다."""
+    snap = V("week_wtd", "overall", "DAU", "TOTAL", "", CUR, wk)
+    if snap is None or lo is None:
+        return None
+    for k in range(1, 8):
+        v = range_metric("DAU", CUR, lo, lo + datetime.timedelta(days=k - 1))
+        if v and abs(v - snap) <= max(1.0, snap * 0.001):
+            return k
+    return None
+
+
 def tree_values(mode, wk):
     """mode=wtd|week|month → (값 dict {key:(올해 실측, 전년비)}, 기준 라벨, 비교 라벨,
     채널 리스트|None, 채널 기준 주석|None). 모든 값은 주간 업로드 시드에서만 나온다."""
@@ -2288,24 +2303,39 @@ def tree_values(mode, wk):
         days = (hi - lo).days + 1
         cw = week_label_of(hi)
         lbl = f"{week_pretty(cw)} 진행중 ({lo.month}/{lo.day}~{hi.month}/{hi.day}, {days}일)"
+        # 집계일까지 7일이 다 찼으면 그 주는 이미 끝난 주다 → '직전 마감주'와 같은 구간이므로
+        # 같은 주마감 값을 쓴다. (일마감 스냅샷을 그대로 두면 한 주가 두 값으로 보인다.)
+        if days >= 7 and V("week", "overall", SALES, "TOTAL", "", CUR, cw) is not None:
+            for k, met in TREE_MET.items():
+                c = V("week", "overall", met, "TOTAL", "", CUR, cw)
+                out[k] = (c, yoy(c, V("week", "overall", met, "TOTAL", "", PREV, cw)))
+            return (out, f"{week_pretty(cw)} 마감 ({lo.month}/{lo.day}~{hi.month}/{hi.day}, "
+                    "7일 · 집계일까지 주가 완결되어 직전 마감주와 동일)",
+                    "전년 동주 대비", _tree_channels(cw), None)
         # ★ BI 주별 export의 '일마감' 컬럼(grain=week_wtd)은 양년을 같은 경과일까지 잘라 주므로
         #   진행주 비교의 정답이다. 채널까지 같은 기준으로 들어 있다.
         #   (주마감으로 비교하면 올해 2일치가 전년 7일 전체와 대면해 전년비가 크게 왜곡된다.)
+        #   단 스냅샷 경과일수가 집계일과 어긋나면(주별 파일이 더 옛날) 일자별로 직접 센다.
         if (V("week_wtd", "overall", SALES, "TOTAL", "", CUR, cw) is not None
-                and V("week_wtd", "overall", SALES, "TOTAL", "", PREV, cw) is not None):
+                and V("week_wtd", "overall", SALES, "TOTAL", "", PREV, cw) is not None
+                and (_wtd_cut(cw, lo) or days) == days):
             for k, met in TREE_MET.items():
                 c = V("week_wtd", "overall", met, "TOTAL", "", CUR, cw)
                 out[k] = (c, yoy(c, V("week_wtd", "overall", met, "TOTAL", "", PREV, cw)))
             return (out, lbl, "전년 동주 같은 경과일 대비",
                     _tree_channels(cw, "week_wtd"), None)
-        # 폴백: 일마감 컬럼이 없는 구버전 export → 일자별에서 −364일로 직접 정렬(채널은 불가)
+        # 폴백: 일마감 컬럼이 없거나 절단일이 어긋난 export → 일자별에서 −364일로 직접 정렬
+        _cut = _wtd_cut(cw, lo)
         plo = hi - datetime.timedelta(days=364 + hi.weekday())
         phi = hi - datetime.timedelta(days=364)
         for k, met in TREE_MET.items():
             c = range_metric(met, CUR, lo, hi)
             out[k] = (c, yoy(c, range_metric(met, PREV, plo, phi)))
-        return (out, lbl, "전년 동요일 대비", None,
+        note = (f"주별 파일의 일마감이 {_cut}일치라 집계일({days}일치)과 어긋납니다 — "
+                "일자별 기준으로 계산했으며 채널 비교는 주별 파일 갱신 후 표시"
+                if _cut and _cut != days else
                 "일마감 컬럼이 없는 export라 채널 비교 불가 — 최신 주별 파일 반영 시 표시")
+        return out, lbl, "전년 동요일 대비", None, note
     ld = last_daily_date()
     mo = (ld.month if (ld and ld.day >= calendar.monthrange(ld.year, ld.month)[1])
           else max((ld.month - 1) if ld else 1, 1))
