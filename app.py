@@ -845,6 +845,15 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-dchip{display:inline-block;font-size:9px;font-weight:700;color:#4a7052;
   background:#dfeae1;border-radius:3px;padding:1px 5px;margin-bottom:3px;}
 .dt-done b{font-size:11.5px;color:#14203a;display:block;margin-bottom:3px;}
+/* LEVEL-V 머리말 — 지난주 결과에서 금주 목표까지 한 문단으로 잇는다 */
+.dt-sum{width:508px;flex:none;background:#eef3fa;border:1px solid #d3e0f0;border-radius:6px;
+  padding:8px 11px 9px;margin-bottom:9px;}
+.dt-sr{display:flex;gap:8px;font-size:10.5px;line-height:1.5;color:#4b5872;
+  word-break:keep-all;margin-top:2px;}
+.dt-sr:first-child{margin-top:0;}
+.dt-sr em{flex:none;width:30px;font-style:normal;font-weight:700;color:#8b97ad;}
+.dt-sr b{color:#14203a;font-variant-numeric:tabular-nums;}
+.dt-sr:last-child b{color:#1f5fbf;}
 /* 한 카드 안의 단락 구분 — 상자를 나누지 않고 세로 길이를 줄인다 */
 .dt-dmet{display:flex;justify-content:space-between;gap:8px;font-size:10px;
   line-height:1.5;color:#8b97ad;word-break:keep-all;}
@@ -2701,6 +2710,22 @@ STATUS = [
 #   구조적으로 올리지 않아 레버와 나란히 놓이면 우선순위를 흐린다. 장애는 운영 채널로.
 
 
+# LEVEL-V 머리말. 트리 본체보다 이 열이 짧아 위가 비는데, 그 자리에 '지난주에 얼마
+# 줄었고 무엇이 기여했으며 금주에 얼마를 줄이겠다'를 한 문단으로 세운다.
+# ★ 금주 목표는 전년 기저 반등(+1.68%)을 반영한 값이다. 이걸 빼고 말하면 다음 주에
+#   숫자가 어긋난다 — 2주차 실적을 그대로 유지해도 전년비는 △4.01%가 아니라 △5.60%다.
+SUMMARY = (
+    '<div class="dt-sum">'
+    '<div class="dt-sr"><em>지난주</em><span>역신장 <b>△6.69% → △4.01%</b>, '
+    '<b>2.69%p</b> 축소 — 이 중 <b>0.91%p(34%)</b>가 최근 조회 상품 리마인드 확대분</span></div>'
+    '<div class="dt-sr"><em>금주</em><span>전년 기저가 <b>+1.68%</b> 반등해 같은 실적이면 '
+    '<b>△5.60%</b>로 되밀린다</span></div>'
+    '<div class="dt-sr"><em>목표</em><span>라이브 모수 3만명 확대(+1.49%p)와 '
+    '닥스 여성·뷰티 발송 1회(+1.59%p)로 <b>3.09%p</b> 축소, '
+    '<b>△2.51%</b> 마감</span></div>'
+    '</div>')
+
+
 def _dt_card(cls, chip, title, mets, tips):
     """항목명이 빈 문자열이면 앞 행의 보조 설명으로 붙인다 — 값이 길어 한 행에
     안 들어가는 지표를 두 줄로 나누되 항목명을 반복하지 않는다."""
@@ -2718,7 +2743,8 @@ def _dt_done(focus):
              for key, title, when, cls, mets, tips in STATUS if key in focus]
     if not cards:
         return ""
-    return (f'<div class="dt-donegrp"><div class="dt-levrow">{"".join(cards)}</div></div>')
+    return (SUMMARY
+            + f'<div class="dt-donegrp"><div class="dt-levrow">{"".join(cards)}</div></div>')
 
 
 def _dt_levers(focus, v):
