@@ -839,21 +839,21 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   font-size:9.5px;color:#8b97ad;line-height:1.4;}
 /* 실행 완료 — '할 것'(파랑)과 '한 것'(회녹)을 색과 테두리로 갈라 놓는다 */
 .dt-donegrp{display:flex;flex-direction:column;gap:4px;margin-bottom:4px;}
-.dt-done{width:508px;flex:none;border-left:2px solid #6b8f71;background:#f3f7f3;
-  border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}   /* 레버 2장 폭 */
-/* minmax(0,1fr)이라야 긴 값이 한쪽 열을 밀어내지 않고 두 열이 같은 폭을 유지한다 */
-.dt-dmets{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 18px;}
+.dt-done{width:250px;flex:none;border-left:2px solid #6b8f71;background:#f3f7f3;
+  border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}
+.dt-done.ctx{border-left-color:#8b97ad;background:#f5f6f8;}   /* 현황 — 실행분과 구분 */
+.dt-done.ctx .dt-dchip{color:#5c6676;background:#e4e7ec;}
+.dt-done.ctx .dt-dmet span.hi{color:#3d4d63;}
 .dt-dchip{display:inline-block;font-size:9px;font-weight:700;color:#4a7052;
   background:#dfeae1;border-radius:3px;padding:1px 5px;margin-bottom:3px;}
 .dt-done b{font-size:11.5px;color:#14203a;display:block;margin-bottom:3px;}
 /* 한 카드 안의 단락 구분 — 상자를 나누지 않고 세로 길이를 줄인다 */
-.dt-dsub{grid-column:1 / -1;margin:6px 0 3px;padding-top:5px;border-top:1px dashed #c5d3c7;
-  font-size:9.5px;font-weight:700;color:#4a7052;letter-spacing:-.01em;word-break:keep-all;}
 .dt-dmet{display:flex;justify-content:space-between;gap:8px;font-size:10px;
   line-height:1.5;color:#8b97ad;word-break:keep-all;}
 .dt-dmet em{font-style:normal;flex:none;}
 .dt-dmet span{text-align:right;color:#4b5872;font-variant-numeric:tabular-nums;}
 .dt-dmet span.hi{font-weight:700;font-size:11px;color:#2f6b45;}
+.dt-dmet.cont{margin-top:-2px;}   /* 앞 행의 보조 설명 — 항목명 없이 값만 이어 붙인다 */
 .dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
 .dt-chc{background:#fff;border:1px solid #e2e7f0;border-radius:6px;padding:8px 10px;}
 .dt-chc.lead{border:1.5px solid #c0392b;}
@@ -2620,32 +2620,34 @@ def focus_keys(v):
 #   전년비는 그대로다(17,980 × 0.9788 = 17,598 → △6.69%로 1주차와 동일). 갭은 오직
 #   '양년 주차 증감률의 차이'로만 움직인다. 한때 '기저 효과 2.02%p'로 적었으나 그것은
 #   전년에만 주차 패턴을 인정하고 올해는 평탄(0%)하다고 둔 비대칭 가정이었다.
-# ★ 개선폭(위)과 실행 결과(아래)를 한 카드에 직렬로 담는다. 박스를 나누면 칩·테두리·
-#   여백만큼 세로가 늘어나는데, 둘 다 '지난주 현황'이라 단락 구분이면 충분하다.
-# (항목, 값, 강조) — 항목이 None이면 구분선 + 소제목
-STATUS = ("visit", "지난주 현황", "09월 2주차 vs 1주차", [
-    ("역신장 축소", "2.69%p — △6.69% → △4.01%", True),
-    ("계절 기대 대비", "+507명/일 (기대 17,598명)", False),
-    ("주차 증감", "올해 +0.70% / 전년 △2.12%", False),
-    (None, "실행 완료 · 최근 조회 상품 리마인드 확대", None),
-    ("역신장 축소 기여", "+0.91%p — 2.69%p의 34%", True),
-    ("발송 대비 유입", "3.82% → 6.26%", False),
-    ("주간 거래액", "6,094,890 → 13,744,562원", False)], [
-    "── 개선폭 ──",
-    "전년은 행사 주 다음에 △2.12% 빠졌는데 올해는 +0.70% 올랐다",
-    "같은 패턴이면 17,598명 → 전년비 △6.69%로 1주차와 동일했을 것",
-    "축소분 2.69%p는 기저가 아니라 주차 증감이 전년을 앞선 결과",
-    "보수적 하한 — 08월 4주차 대비 2주 누적 2025 +8.00% vs 2026 +8.81% (격차 0.81%p)",
-    "09월 3주차 전년 기저는 +1.68% 반등 — 같은 실적이면 역신장폭은 다시 벌어진다",
-    "── 최근 조회 리마인드 ──",
-    "09월 1주차 대비 발송 대상 14,895 → 28,298명, 유입 569 → 1,771건(일 81 → 253명)",
-    "'발송 대비 유입' = 유입 UV ÷ 발송 대상 수. 100명에게 보내 6.26명이 들어옴",
-    "증분 172명은 계절 기대 대비 초과분 507명의 34% (= 0.91%p / 2.69%p)",
-    "전년에 없던 신규 파일럿이라 증분 전량을 전년 대비 순증으로 본다",
-    "거래액 13,744,562원 — 같은 주 자동화 전체(15,522,062원)의 89%",
-    "유입은 UV(방문 건수)라 동일인 중복 포함 — DAU와 분모가 다른 상한값",
-    "문자 전체는 발송 대상 17.5% 축소에도 유입 2.9%만 감소(4.08% → 4.80%)",
-    "잔여 여지: 9/7·9/8 미발송 — 7일 가동 시 추가분 있음"])
+# ★ 개선폭(현황)과 실행 결과는 성격이 달라 카드를 나누되, 레버와 같이 가로로 나란히
+#   둔다. 세로로 쌓으면 LEVEL-V만 길어지고 오른쪽 여백이 빈다.
+STATUS = [
+    ("visit", "지난주 현황", "09월 2주차 vs 1주차", "ctx", [
+        ("역신장 축소", "2.69%p", True),
+        ("", "△6.69% → △4.01%", False),
+        ("계절 기대 대비", "+507명/일", False),
+        ("주차 증감", "올해 +0.70% / 전년 △2.12%", False)], [
+        "전년은 행사 주 다음에 △2.12% 빠졌는데 올해는 +0.70% 올랐다",
+        "같은 패턴이면 17,598명 → 전년비 △6.69%로 1주차와 동일했을 것",
+        "축소분 2.69%p는 기저가 아니라 주차 증감이 전년을 앞선 결과",
+        "계절 기대치 17,598명 대비 실제 18,105명 — 초과 507명/일이 축소분의 실체",
+        "보수적 하한 — 08월 4주차 대비 2주 누적 2025 +8.00% vs 2026 +8.81% (격차 0.81%p)",
+        "문자 전체는 발송 대상 17.5% 축소에도 유입 2.9%만 감소(4.08% → 4.80%)",
+        "09월 3주차 전년 기저는 +1.68% 반등 — 같은 실적이면 역신장폭은 다시 벌어진다"]),
+    ("visit", "최근 조회 상품 리마인드 확대", "실행 완료 · 09월 2주차", "", [
+        ("역신장 축소 기여", "+0.91%p", True),
+        ("", "축소분 2.69%p의 34%", False),
+        ("발송 대비 유입", "3.82% → 6.26%", False),
+        ("주간 거래액", "6,094,890 → 13,744,562원", False)], [
+        "09월 1주차 대비 발송 대상 14,895 → 28,298명, 유입 569 → 1,771건(일 81 → 253명)",
+        "'발송 대비 유입' = 유입 UV ÷ 발송 대상 수. 100명에게 보내 6.26명이 들어옴",
+        "증분 172명은 계절 기대 대비 초과분 507명의 34% (= 0.91%p / 2.69%p)",
+        "전년에 없던 신규 파일럿이라 증분 전량을 전년 대비 순증으로 본다",
+        "거래액 13,744,562원 — 같은 주 자동화 전체(15,522,062원)의 89%",
+        "유입은 UV(방문 건수)라 동일인 중복 포함 — DAU와 분모가 다른 상한값",
+        "잔여 여지: 9/7·9/8 미발송 — 7일 가동 시 추가분 있음"]),
+]
 
 
 # ★ 장애·데이터 오류(예: 9/10 쇼핑찬스 발송 실패)는 여기 두지 않는다. 이 영역은
@@ -2654,27 +2656,23 @@ STATUS = ("visit", "지난주 현황", "09월 2주차 vs 1주차", [
 
 
 def _dt_card(cls, chip, title, mets, tips):
-    """mets의 항목명이 None이면 구분선 + 소제목으로 그린다 — 카드를 쪼개지 않고
-    한 상자 안에서 단락을 나눠 세로 길이를 줄인다."""
+    """항목명이 빈 문자열이면 앞 행의 보조 설명으로 붙인다 — 값이 길어 한 행에
+    안 들어가는 지표를 두 줄로 나누되 항목명을 반복하지 않는다."""
     tip = "&#10;".join(f"· {x}" for x in tips)
-    rows = ""
-    for a, b, hi in mets:
-        if a is None:
-            rows += f'<div class="dt-dsub">{b}</div>'
-        else:
-            rows += (f'<div class="dt-dmet"><em>{a}</em>'
-                     f'<span class="{"hi" if hi else ""}">{b}</span></div>')
+    rows = "".join(f'<div class="dt-dmet{"" if a else " cont"}"><em>{a}</em>'
+                   f'<span class="{"hi" if hi else ""}">{b}</span></div>'
+                   for a, b, hi in mets)
     return (f'<div class="{cls}" title="{tip}"><span class="dt-dchip">{chip}</span>'
             f'<b>{title}</b><div class="dt-dmets">{rows}</div></div>')
 
 
 def _dt_done(focus):
-    """LEVEL-V 상단 현황. 레버와 색을 달리해 '한 것'과 '할 것'이 섞이지 않게 한다."""
-    k, title, when, mets, tips = STATUS
-    if k not in focus:
+    """LEVEL-V 상단 현황·실행 결과. 레버와 같은 행 구조로 가로로 나란히 둔다."""
+    cards = [_dt_card(f"dt-done {cls}".strip(), when, title, mets, tips)
+             for key, title, when, cls, mets, tips in STATUS if key in focus]
+    if not cards:
         return ""
-    return ('<div class="dt-donegrp">'
-            + _dt_card("dt-done", when, title, mets, tips) + '</div>')
+    return (f'<div class="dt-donegrp"><div class="dt-levrow">{"".join(cards)}</div></div>')
 
 
 def _dt_levers(focus, v):
