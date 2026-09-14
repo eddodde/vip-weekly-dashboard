@@ -853,7 +853,8 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-sr:first-child{margin-top:0;}
 .dt-sr em{flex:none;width:30px;font-style:normal;font-weight:700;color:#8b97ad;}
 .dt-sr b{color:#14203a;font-variant-numeric:tabular-nums;}
-.dt-sr:last-child b{color:#1f5fbf;}
+.dt-sr:nth-last-child(2) b{color:#1f5fbf;}   /* 목표 줄 */
+.dt-snote{font-size:9.5px;color:#8b97ad;line-height:1.45;}
 /* 한 카드 안의 단락 구분 — 상자를 나누지 않고 세로 길이를 줄인다 */
 .dt-dmet{display:flex;justify-content:space-between;gap:8px;font-size:10px;
   line-height:1.5;color:#8b97ad;word-break:keep-all;}
@@ -2714,15 +2715,21 @@ STATUS = [
 # 줄었고 무엇이 기여했으며 금주에 얼마를 줄이겠다'를 한 문단으로 세운다.
 # ★ 금주 목표는 전년 기저 반등(+1.68%)을 반영한 값이다. 이걸 빼고 말하면 다음 주에
 #   숫자가 어긋난다 — 2주차 실적을 그대로 유지해도 전년비는 △4.01%가 아니라 △5.60%다.
+# ★ 목표는 보수로 잡는다. 견인치 산출에 카드의 최고 실측(라이브 6.69%·기획전 8.34%)이
+#   아니라 주간 평균(4.80%)과 정상 구간 평균(5.71%)을 쓴다. 모수를 넓히면 관여도가
+#   낮은 층이 섞여 유입률이 떨어지는데, 도전치로 걸어 두면 다음 주에 미달로 남는다.
 SUMMARY = (
     '<div class="dt-sum">'
     '<div class="dt-sr"><em>지난주</em><span>역신장 <b>△6.69% → △4.01%</b>, '
     '<b>2.69%p</b> 축소 — 이 중 <b>0.91%p(34%)</b>가 최근 조회 상품 리마인드 확대분</span></div>'
     '<div class="dt-sr"><em>금주</em><span>전년 기저가 <b>+1.68%</b> 반등해 같은 실적이면 '
-    '<b>△5.60%</b>로 되밀린다</span></div>'
-    '<div class="dt-sr"><em>목표</em><span>라이브 모수 3만명 확대(+1.49%p)와 '
-    '닥스 여성·뷰티 발송 1회(+1.59%p)로 <b>3.09%p</b> 축소, '
-    '<b>△2.51%</b> 마감</span></div>'
+    '<b>△5.60%</b>로 되밀린다. 지난주 수준 회복에만 <b>+304명/일</b>이 필요</span></div>'
+    '<div class="dt-sr"><em>목표</em><span>라이브 모수 2만명 확대(+0.72%p)와 '
+    '닥스 여성·뷰티 발송 1회(+1.09%p)로 <b>1.80%p</b> 축소, '
+    '<b>△3.79%</b> 마감 — 지난주 대비 0.22%p 개선</span></div>'
+    '<div class="dt-sr"><em></em><span class="dt-snote">보수 산출 — 유입률을 카드 실측'
+    '(6.69%·8.34%)이 아닌 주간 평균 4.80%·정상 구간 평균 5.71%로 적용. '
+    '실측대로 나오면 △2.5%까지 열림</span></div>'
     '</div>')
 
 
