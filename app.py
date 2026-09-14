@@ -812,6 +812,7 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-node.root{border:1.5px solid #8fa3c4;}
 /* .root 뒤에 와야 루트가 경고일 때도 빨간 테두리가 이긴다 */
 .dt-node.warn{border:1.5px solid #c0392b;}
+.dt-why{display:block;margin-top:2px;font-size:10px;font-weight:600;color:#c0392b;letter-spacing:-.01em;}
 .dt-node.na{opacity:.55;}
 .dt-lb{font-size:12px;font-weight:600;color:#14203a;}
 .dt-lb .u{font-weight:400;font-size:10px;color:#8b97ad;margin-left:3px;}
@@ -2236,6 +2237,45 @@ TREE_UNIT = {"sales": "백만", "cust": "명", "dau": "명", "members": "명",
 # 경고 테두리 임계. 전 지표가 소폭 마이너스인 주가 많아 '음수 전부'로 잡으면
 # 대부분의 노드가 칠해져 신호가 죽는다 → 유의미한 하락폭만 표시한다.
 TREE_ALERT = -0.05
+# 곱셈 항등식상의 부모 → 자식. 거래액 = 구매고객 × 객단가, 구매고객 = 방문 × 전환,
+# 방문 = 유효회원수 × 유입율.
+TREE_CHILD = {"sales": ("cust", "aov"), "cust": ("dau", "cr"), "dau": ("members", "visit")}
+DRIVER_SHARE = 0.50   # 상위 하락의 이만큼 이상을 설명하면 '주 동인'으로 보고 경로를 잇는다
+
+
+def _ln1(y):
+    """증감률 → 로그 증감. 곱셈 구조라 로그로 바꿔야 자식들의 기여가 더해져 부모가 된다."""
+    return float(np.log(1.0 + y)) if (y is not None and y > -1) else None
+
+
+def alert_path(v):
+    """빨간 테두리를 붙일 지표 → 상위 하락 기여율(직접 걸린 지표는 None).
+    ★ 임계(TREE_ALERT)만으로 칠하면 원인 경로가 끊긴다. 실제 사례: 구매고객 △6.2%는
+      빨강인데 그 구성요인인 방문 △4.0%·전환 △2.3%은 둘 다 임계 미만이라 흰색으로
+      남아, '문제는 구매고객'이라고만 하고 왜 그런지로 내려갈 수 없는 화면이 됐다.
+      → 임계를 넘은 지표에서 출발해, 그 하락의 절반 이상을 설명하는 자식을 따라
+      레버가 걸린 말단까지 경로를 잇는다(방문 63.8% → 유입율 77.2%)."""
+    def yv(k):
+        p = v.get(k)
+        return p[1] if (p and p[1] is not None) else None
+    out = {k: None for k in v if (yv(k) is not None and yv(k) <= TREE_ALERT)}
+    stack, seen = list(out), set()
+    while stack:
+        p = stack.pop()
+        if p in seen or p not in TREE_CHILD:
+            continue
+        seen.add(p)
+        pl = _ln1(yv(p))
+        if pl is None or pl >= 0:      # 부모가 신장이면 '하락 경로'가 성립하지 않는다
+            continue
+        for c in TREE_CHILD[p]:
+            cl = _ln1(yv(c))
+            if cl is None or cl >= 0:
+                continue
+            if cl / pl >= DRIVER_SHARE:
+                out.setdefault(c, cl / pl)
+                stack.append(c)
+    return out
 
 
 def _tree_channels(wk, g="week"):
@@ -2345,8 +2385,10 @@ def tree_values(mode, wk):
     return out, f"{CUR}년 {mo}월 마감", "전년 동월 대비", None, None
 
 
-def _dt_node(key, label, sub, pair, cls=""):
-    """pair=(올해 실측, 전년비). 표들과 같은 '값 | 전년비' 형식으로 노출한다."""
+def _dt_node(key, label, sub, pair, cls="", al=None):
+    """pair=(올해 실측, 전년비). 표들과 같은 '값 | 전년비' 형식으로 노출한다.
+    al=alert_path() 결과. 경로로 걸린 지표는 상위 하락을 몇 % 설명하는지 함께 적어
+    '자기 하락폭은 임계 미만인데 왜 빨갛나'가 화면에서 바로 풀리게 한다."""
     u = f'<span class="u">{sub}</span>' if sub else ""
     cur, v = pair if pair else (None, None)
     if cur is None:
@@ -2354,14 +2396,17 @@ def _dt_node(key, label, sub, pair, cls=""):
                 f'<div class="dt-v x">—</div></div>')
     val = fmt(TREE_MET[key], cur) + TREE_UNIT.get(key, "")
     if v is None:
-        yo, warn = '<span class="dt-yo x">전년비 —</span>', ""
+        yo = '<span class="dt-yo x">전년비 —</span>'
     else:
         sign = "n" if v < 0 else "p"
         txt = f"△{abs(v)*100:.1f}%" if v < 0 else f"{v*100:.1f}%"
         yo = f'<span class="dt-yo {sign}">{txt}</span>'
-        warn = " warn" if v <= TREE_ALERT else ""
+    al = al or {}
+    warn = " warn" if key in al else ""
+    why = (f'<span class="dt-why">상위 하락의 {al[key]*100:.0f}% 설명</span>'
+           if al.get(key) else "")
     return (f'<div class="dt-node {cls}{warn}"><div class="dt-lb">{label}{u}</div>'
-            f'<div class="dt-v">{val}</div>{yo}</div>')
+            f'<div class="dt-v">{val}</div>{yo}{why}</div>')
 
 
 # 실행 레버는 LEVEL-V 열에 모은다(레일이 그 열을 선언하고 있으므로 열을 지킨다).
@@ -2450,17 +2495,20 @@ LEVER_TRIGGER = {"visit": ("visit", "dau"), "cr": ("cr",), "aov": ("aov",)}
 def focus_keys(v):
     """이번 기간에 가장 시급한 실행 대상 지표(최대 FOCUS_MAX개).
     매주 6개 레버를 다 가져가면 실행이 흩어지므로, 레버가 걸린 지표(유입율·전환·객단가)
-    중 하락폭 큰 순으로 임계(TREE_ALERT) 초과 건만 고른다. 전부 양호하면 최저 1개만."""
+    중 하락폭 큰 순으로 임계(TREE_ALERT) 초과 건만 고른다. 전부 양호하면 최저 1개만.
+    임계 초과가 없어도 빨간 경로(alert_path)에 올라 있으면 대상으로 본다 — 테두리는
+    쳐졌는데 레버가 안 뜨는 어긋남을 막는다."""
+    path = alert_path(v)
     cand = []
     for k, _, _ in LEVERS:
         ys = [v[t][1] for t in LEVER_TRIGGER.get(k, (k,))
               if v.get(t) and v[t][1] is not None]
         if ys:
-            cand.append((k, min(ys)))     # 겨냥 지표·상위 지표 중 더 나쁜 쪽으로 판정
+            cand.append((k, min(ys), any(t in path for t in LEVER_TRIGGER.get(k, (k,)))))
     if not cand:
         return []
     cand.sort(key=lambda x: x[1])
-    hit = [k for k, y in cand if y <= TREE_ALERT][:FOCUS_MAX]
+    hit = [k for k, y, onpath in cand if (y <= TREE_ALERT or onpath)][:FOCUS_MAX]
     return hit or [cand[0][0]]
 
 
@@ -2481,7 +2529,9 @@ def _dt_levers(focus):
 
 
 def driver_tree_html(v, focus):
-    n, L = _dt_node, (lambda: _dt_levers(focus))
+    _al = alert_path(v)
+    n = lambda k, lb, sb, pr, cls="": _dt_node(k, lb, sb, pr, cls, _al)   # noqa: E731
+    L = lambda: _dt_levers(focus)                                          # noqa: E731
     # 부모 노드 + 그 자식 묶음을 한 .dt-row 안에 넣어 재귀적으로 중첩한다.
     # align-items:center 덕에 부모가 자식 묶음 전체 높이의 가운데에 놓인다.
     return (
@@ -2557,11 +2607,18 @@ def insight_tree(v, ch, focus=()):
             parts.append(f'<b>{nm[k]}({_pct(y(k))})</b>{why}')
         picked = " · ".join(parts)
         b.append(f'<span class="imp">금주 개선 대상: {picked}</span> '
-                 '<span style="color:#93a0b3">— 하락폭 기준 상위 항목으로 좁혀 레버를 제시합니다</span>')
+                 '<span style="color:#93a0b3">— 하락 기여가 큰 경로의 말단으로 좁혀 레버를 제시합니다</span>')
     if y("cust") is not None and y("dau") is not None and y("cr") is not None:
         both = y("dau") < 0 and y("cr") < 0
+        # 둘 다 하락했을 때 '어느 쪽이 더 끌어내렸나'가 실행 우선순위를 가른다 → 기여율을 붙인다
+        sh = ""
+        if both:
+            pl, a, c = _ln1(y("cust")), _ln1(y("dau")), _ln1(y("cr"))
+            if pl and pl < 0 and a is not None and c is not None:
+                sh = (f' <span style="color:#93a0b3">(하락 기여 방문 {a/pl*100:.0f}% · '
+                      f'전환 {c/pl*100:.0f}%)</span>')
         b.append(f'구매고객 <b>{_pct(y("cust"))}</b> — 방문 {_pct(y("dau"))} · 전환 {_pct(y("cr"))}'
-                 + ("가 <b>동시에</b> 하락" if both else ""))
+                 + ("가 <b>동시에</b> 하락" if both else "") + sh)
     if y("members") is not None and y("visit") is not None:
         b.append(f'유효회원수는 {_pct(y("members"))}로 유지, 감소 요인은 <b>방문율({_pct(y("visit"))})</b> '
                  '— 회원 이탈이 아닌 방문율 저하')
@@ -2609,8 +2666,9 @@ try:
     render_insight(insight_tree(_tv, _tch, _focus))
     st.caption(f"기준 **{_tlabel}** · {_tcmp} · 모수 VIP·총결제·일평균 — "
                "우측 지표가 좌측 지표를 구성합니다. "
-               f"전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락 지표는 빨간 테두리, "
-               "실행 레버는 금주 개선 대상으로 좁혀 표시")
+               f"빨간 테두리는 하락 경로 — 전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락한 지표와, "
+               f"그 하락을 {DRIVER_SHARE*100:.0f}% 이상 설명하는 하위 동인을 말단까지 잇습니다. "
+               "실행 레버는 경로 말단의 개선 대상으로 좁혀 표시")
     st.markdown(driver_tree_html(_tv, _focus), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
