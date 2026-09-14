@@ -847,14 +847,14 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-done b{font-size:11.5px;color:#14203a;display:block;margin-bottom:3px;}
 /* LEVEL-V 머리말 — 지난주 결과에서 금주 목표까지 한 문단으로 잇는다 */
 .dt-sum{width:508px;flex:none;background:#eef3fa;border:1px solid #d3e0f0;border-radius:6px;
-  padding:8px 11px 9px;margin-bottom:9px;}
-.dt-sr{display:flex;gap:8px;font-size:10.5px;line-height:1.5;color:#4b5872;
-  word-break:keep-all;margin-top:2px;}
+  padding:9px 12px 10px;margin-bottom:9px;cursor:default;}
+.dt-sr{display:flex;align-items:baseline;gap:10px;margin-top:4px;word-break:keep-all;}
 .dt-sr:first-child{margin-top:0;}
-.dt-sr em{flex:none;width:30px;font-style:normal;font-weight:700;color:#8b97ad;}
-.dt-sr b{color:#14203a;font-variant-numeric:tabular-nums;}
-.dt-sr:first-child b{color:#1f5fbf;}   /* 목표 줄 — 두괄식으로 맨 위 */
-.dt-snote{font-size:9.5px;color:#8b97ad;line-height:1.45;}
+.dt-sr em{flex:none;width:36px;font-style:normal;font-size:10px;font-weight:700;color:#8b97ad;}
+.dt-sr b{flex:none;width:58px;font-size:14px;font-weight:700;color:#14203a;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+.dt-sr span{font-size:10.5px;color:#4b5872;line-height:1.4;}
+.dt-sr:first-child b{color:#1f5fbf;font-size:16px;}   /* 목표 — 두괄식으로 맨 위 */
 /* 한 카드 안의 단락 구분 — 상자를 나누지 않고 세로 길이를 줄인다 */
 .dt-dmet{display:flex;justify-content:space-between;gap:8px;font-size:10px;
   line-height:1.5;color:#8b97ad;word-break:keep-all;}
@@ -2721,19 +2721,22 @@ STATUS = [
 #   레버는 기존 물량의 '재배분'이지 위에 더해지는 값이 아니다. 순증으로 잡았더니
 #   전주비 +1.9%가 필요했는데, 행사 없는 주의 관측 범위는 △4.01%~+0.88%뿐이다
 #   (+8.06%는 엘페스타가 걸린 09월 1주차). 재배분 기준으로 다시 산출했다.
+# ★ 세 줄. 라벨 / 숫자 / 한 구절만 둔다. 산출 근거는 카드 툴팁에 있으므로
+#   여기서 되풀이하지 않는다 — 문장을 길게 쓰면 정작 숫자가 안 읽힌다.
 SUMMARY = (
-    '<div class="dt-sum">'
-    '<div class="dt-sr"><em>목표</em><span>금주 역신장 <b>△4.7%</b> 방어 — '
-    '저관여 라이브 물량을 고관여로 재배분해 <b>+175명/일(0.91%p)</b></span></div>'
-    '<div class="dt-sr"><em>지난주</em><span>역신장 <b>△6.69% → △4.01%</b>, '
-    '<b>2.69%p</b> 축소 — 이 중 <b>0.91%p(34%)</b>가 최근 조회 상품 리마인드 확대분</span></div>'
-    '<div class="dt-sr"><em>금주</em><span>전년 기저가 <b>+1.68%</b> 반등해 실적을 유지해도 '
-    '<b>△5.60%</b>로 후퇴. 지난주 수준(△4.01%) 회복에만 <b>+304명/일</b>이 필요</span></div>'
-    '<div class="dt-sr"><em></em><span class="dt-snote">재배분 산출 — 지난주 저관여 '
-    '라이브 2건(66,421명, 유입 2.95%) 물량을 고관여로 옮기고 주간 평균 4.80% 적용. '
-    '전주비 +0.97%로 행사 없는 주의 관측 상단(08월 3주 +0.88%) 수준. '
-    '발송 여력이 있어 기획전을 추가로 태우면 △3.8%까지 열리나, 그 경우 전주비 +1.9%가 '
-    '필요해 목표로 걸지 않음</span></div>'
+    '<div class="dt-sum" title="'
+    '· 목표 산출: 지난주 저관여 라이브 2건(순금 2.36%·페어라이어 3.59%, 66,421명)&#10;'
+    '  물량을 고관여로 옮기고 주간 평균 유입률 4.80% 적용&#10;'
+    '  → 유입 +1,228건/주 = DAU +175명/일 = 0.91%p&#10;'
+    '· 전주비 +0.97% — 행사 없는 주의 관측 상단(08월 3주 +0.88%) 수준&#10;'
+    '· 순증이 아니라 재배분이다. 지난주 DAU에는 이미 라이브 7건과 캠페인&#10;'
+    '  전량(발송 730,063명)이 들어 있고 금주에도 비슷한 양이 나간다&#10;'
+    '· 기획전을 추가로 태우면 △3.8%까지 열리나 전주비 +1.9%가 필요하다.&#10;'
+    '  그 폭은 행사 주(09월 1주 +8.06%)에만 관측돼 목표로 걸지 않았다&#10;'
+    '· 지난주 수준(△4.01%) 회복에는 +304명/일이 필요하다">'
+    '<div class="dt-sr"><em>목표</em><b>△4.7%</b><span>라이브 저관여→고관여 재배분 +0.91%p</span></div>'
+    '<div class="dt-sr"><em>무대응</em><b>△5.60%</b><span>전년 기저 +1.68% 반등</span></div>'
+    '<div class="dt-sr"><em>지난주</em><b>△4.01%</b><span>2.69%p 축소 · 리마인드 0.91%p</span></div>'
     '</div>')
 
 
