@@ -832,11 +832,9 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}
 .dt-lev b{font-size:11.5px;color:#14203a;display:block;}
 .dt-lev p{margin:1px 0 0;font-size:10.5px;color:#4b5872;line-height:1.4;}
-/* 예상 견인 — 금액을 굵게, 산출 근거를 그 아래 작게. 근거 없는 금액은 회의에서 깨진다. */
-.dt-imp{margin-top:5px;padding-top:4px;border-top:1px dashed #c3d4ea;
-  font-size:11px;font-weight:700;color:#1f5fbf;line-height:1.35;word-break:keep-all;}
-.dt-imp em{display:block;margin-top:2px;font-style:normal;font-weight:400;
-  font-size:9.5px;color:#8b97ad;line-height:1.4;}
+/* 예상 견인 — 현황 카드와 같은 (항목 → 값) 행으로 싣는다. 줄글이면 눈이 안 걸린다. */
+.dt-imp{margin-top:5px;padding-top:4px;border-top:1px dashed #c3d4ea;}
+.dt-lev .dt-dmet span.hi{color:#1f5fbf;}   /* 레버는 파랑 — 실행 완료(초록)와 구분 */
 /* 실행 완료 — '할 것'(파랑)과 '한 것'(회녹)을 색과 테두리로 갈라 놓는다 */
 .dt-donegrp{display:flex;flex-direction:column;gap:4px;margin-bottom:4px;}
 .dt-done{width:250px;flex:none;border-left:2px solid #6b8f71;background:#f3f7f3;
@@ -2457,8 +2455,10 @@ def _dt_node(key, label, sub, pair, cls="", al=None):
 #   ③ 민감도    — 지표 1% 개선 시 주간 거래액(v에서 즉석 계산)
 # ★ ①은 시드에 없는 문자 발송 실적에서 나오므로 상수다. 기간을 바꿔도 따라 변하지
 #   않으니 근거 줄에 산출 기준 주차를 반드시 박아 둔다. ②③은 기간을 따라 움직인다.
-def _imp(headline, basis):
-    return lambda v: (headline, basis)
+def _imp(*mets):
+    """정적 견인치. (항목, 값, 강조) 행들 — 지난주 현황 카드와 같은 형식으로 싣는다.
+    항목이 빈 문자열이면 앞 행의 보조 설명으로 붙는다."""
+    return lambda v: list(mets)
 
 
 def _imp_cr_gap(v):
@@ -2469,9 +2469,9 @@ def _imp_cr_gap(v):
     prev = cr[0] / (1 + cr[1])
     if prev <= cr[0]:
         return None
-    return (f"전년 CR 회복 시 주간 +{(prev - cr[0]) * dau[0] * aov[0] * 7:,.0f}원",
-            f"CR {cr[0]*100:.2f}% → 전년 {prev*100:.2f}% · "
-            f"구매고객 +{(prev - cr[0]) * dau[0]:,.0f}명/일")
+    return [("전년 CR 회복 시", f"주간 +{(prev - cr[0]) * dau[0] * aov[0] * 7:,.0f}원", True),
+            ("구매고객", f"+{(prev - cr[0]) * dau[0]:,.0f}명/일", False),
+            ("", f"CR {cr[0]*100:.2f}% → 전년 {prev*100:.2f}%", False)]
 
 
 def _imp_aov_1pct(v):
@@ -2479,8 +2479,8 @@ def _imp_aov_1pct(v):
     s = v.get("sales")
     if not s or s[0] is None:
         return None
-    return (f"객단가 +1% 시 주간 +{s[0] * 0.01 * 7:,.0f}원",
-            f"주간 거래액 {s[0] * 7:,.0f}원 기준 민감도")
+    return [("객단가 +1% 시", f"주간 +{s[0] * 0.01 * 7:,.0f}원", True),
+            ("", f"주간 거래액 {s[0] * 7:,.0f}원 기준 민감도", False)]
 
 
 LEVERS = [
@@ -2511,9 +2511,11 @@ LEVERS = [
         #   상관이 r=-0.770이고, 올해 일별 DAU는 변동계수 1.4%로 거의 평탄하다.
         #   요일별 방문 규모 차이는 원래 있는 것이라 평탄화는 근거가 되지 않는다.
         ("고관여 브랜드 라이브 모수 확대", "브랜드별 유입률이 5배까지 벌어짐",
-         _imp("모수 1만명 추가당 역신장 축소 0.51%p · DAU +96명/일 · 거래액 +2,753,790원",
-              "지난주 ACC 라이브 2건(헤지스 6.90%·아떼 6.52%, 가중평균 6.69%·"
-              "1명당 275원) 실측 적용 · %p는 전년 09월 2주차 DAU 18,861명 기준"), [
+         _imp(("역신장 축소", "0.51%p", True),
+              ("DAU", "+96명/일", False),
+              ("거래액", "+2,753,790원", False),
+              ("", "모수 1만명 추가 기준", False),
+              ("준거", "ACC 라이브 유입 6.69%", False)), [
             "── 금주 라이브 편성 판정 (브랜드 거래액, 09월 2주차) ──",
             "  9/20 일 닥스ACC        75,796,045원  +89.3%  ← 1순위",
             "  9/14 월 아떼ACC        37,033,890원  +40.0%  ← 2순위",
@@ -2543,10 +2545,11 @@ LEVERS = [
             "  준거로 쓰지 않았다. 금주 편성에 여성 단독 건은 없음",
             "※ 저관여 2건 물량(66,421명)을 그대로 돌리면 1.88%p — 상한"]),
         ("자사 여성 기획전 리텐션", "거래액·고객·조회 동반 성장 구간",
-         _imp("역신장 축소 1.62%p · DAU +305명/일 · 거래액 +16,779,228원",
-              "09월 2주차 동일 유형 실측 준거 — 자사 1BPU 상품 LMS"
-              "(스웨이드&퍼, 발송 25,611명 → 유입 8.34% = 2,135명). "
-              "1회 발송분을 주간 일평균으로 환산 · %p는 전년 18,861명 기준"), [
+         _imp(("역신장 축소", "1.62%p", True),
+              ("DAU", "+305명/일", False),
+              ("거래액", "+16,779,228원", False),
+              ("", "발송 1회 기준", False),
+              ("준거", "1BPU 상품 LMS 유입 8.34%", False)), [
             "상품관점 e-영업1 여성 기준 (대시보드와 동일 소스)",
             "09월 1주차 거래액 +31.3% · 고객 +20.6% · 상품UV +9.7% · 상품CR +9.9%",
             "8월 4주부터 3주 연속 거래액·고객·조회 동반 플러스",
@@ -2574,9 +2577,10 @@ LEVERS = [
         #   09월 2주차 마감 기준 +2.4%로 해소됐다(진행주 일마감으로는 △8.2%였음).
         #   채널 표에 +2.4%가 그대로 보이므로 그 레버를 두면 화면과 충돌한다.
         ("직접 유입 미구매 리타겟", "방문·전환이 함께 빠지는 최대 채널",
-         _imp("직접 CR 전년 회복 시 주간 +165,145,519원",
-              "09월 2주차 직접 CR 8.50% → 전년 9.18% · 구매고객 +75명/일 · "
-              "광고 초과분 22,392,370원이 전사 갭을 가리고 있음"), [
+         _imp(("전년 CR 회복 시", "주간 +165,145,519원", True),
+              ("구매고객", "+75명/일", False),
+              ("", "직접 CR 8.50% → 전년 9.18%", False),
+              ("", "광고 초과분 22,392,370원이 전사 갭을 가림", False)), [
             "09월 2주차 마감 직접 방문 △7.4% · 전환 △7.3% — 두 축이 함께 빠지는 유일한 대형 채널",
             "DAU 11,198명으로 전체의 62%, 거래액 251,135,343원으로 최대 규모",
             "직접 CR 갭(75명/일)이 전사 갭(40명/일)보다 큼 — 광고가 전년 초과분으로 메워 가려짐",
@@ -2596,9 +2600,10 @@ LEVERS = [
             "이미 구매 중인 고객이 대상이라 이탈 회복과 무관하게 즉시 작동",
             "혜택 발행이 자체 실행 가능해 착수 리드타임이 짧음"]),
         ("상위등급 시크릿 제안", "등급 내 객단가 실질 상승 구간",
-         _imp("발송 1회당 +6,794,036원 · 구매고객 +30명",
-              "09월 2주차 시크릿EGM 실측(2BPU, 타겟 20,687 → UV 7.49%) · "
-              "해당 건 객단가는 226,468원으로 전체 평균 미달 — 거래액 기여로 읽을 것"), [
+         _imp(("거래액", "발송 1회당 +6,794,036원", True),
+              ("구매고객", "+30명", False),
+              ("", "시크릿EGM 발송 20,687명 유입 7.49%", False),
+              ("", "해당 건 객단가 226,468원 — 전체 평균 미달", False)), [
             "시점별 등급 기준 인당구매액",
             "Gold +9.4% · Silver +9.6% · Platinum +12.7%",
             "등급 구성효과 △53%를 뚫고 오른 실질 상승",
@@ -2720,7 +2725,10 @@ def _dt_levers(focus, v):
         for t, d, imp, tips in items:
             tip = "&#10;".join(f"· {x}" for x in tips)
             got = imp(v) if imp else None
-            box = (f'<div class="dt-imp">{got[0]}<em>{got[1]}</em></div>') if got else ""
+            rows = "".join(f'<div class="dt-dmet{"" if a else " cont"}"><em>{a}</em>'
+                           f'<span class="{"hi" if hi else ""}">{b}</span></div>'
+                           for a, b, hi in got) if got else ""
+            box = f'<div class="dt-imp">{rows}</div>' if rows else ""
             cards.append(f'<div class="dt-lev" title="{tip}"><b>{t}</b><p>{d}</p>{box}</div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>'
                     f'<div class="dt-levrow">{"".join(cards)}</div></div>')
