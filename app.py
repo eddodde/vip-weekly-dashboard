@@ -2269,6 +2269,9 @@ TREE_UNIT = {"sales": "백만", "cust": "명", "dau": "명", "members": "명",
 # 경고 테두리 임계. 전 지표가 소폭 마이너스인 주가 많아 '음수 전부'로 잡으면
 # 대부분의 노드가 칠해져 신호가 죽는다 → 유의미한 하락폭만 표시한다.
 TREE_ALERT = -0.05
+# 채널 비중 하한. 이 미만은 증감률이 커도 전체 영향이 미미하고, 급변이 실적이 아니라
+# 태깅 변경인 경우가 많아 '개선 필요'로 세우지 않는다.
+MINOR_SHARE = 0.05
 # 곱셈 항등식상의 부모 → 자식. 거래액 = 구매고객 × 객단가, 구매고객 = 방문 × 전환,
 # 방문 = 유효회원수 × 유입율.
 TREE_CHILD = {"sales": ("cust", "aov"), "cust": ("dau", "cr"), "dau": ("members", "visit")}
@@ -2337,12 +2340,19 @@ def _tree_channels(wk, g="week"):
                               V(g, "overall", "CR", c, "", PREV, wk)),
                        sales=yoy(s26, s25),
                        gap=((s25 - s26) if s25 is not None else None)))
+    # ★ 비중이 MINOR_SHARE 미만인 채널은 개선 대상에서 뺀다. 갭만으로 줄 세우면
+    #   비중 1%짜리가 최우선으로 올라오는데, ① 그 크기는 실행으로 되찾을 수 있는
+    #   규모가 아니고 ② 소형 채널의 급변은 실적이 아니라 태깅·계정 변경인 경우가
+    #   많다(기타제휴·기타가 전년비 300~6,100%로 튄 전례). 뒤에 참고로만 남긴다.
     # ① 전년 미달 채널을 갭 큰 순으로 앞에 두고, ② 나머지는 규모(비중) 순으로 잇는다.
     # 갭만으로 줄 세우면 비중 절반짜리 채널이 전년과 비슷하다는 이유로 맨 뒤로 밀려,
     # '거래액의 절반이 정체 중'이라는 사실이 화면에서 사라진다.
-    short = sorted([c for c in ch if (c["gap"] or 0) > 0], key=lambda c: -c["gap"])
-    over = sorted([c for c in ch if (c["gap"] or 0) <= 0], key=lambda c: -(c["share"] or 0))
-    ch = short + over
+    big = [c for c in ch if (c["share"] or 0) >= MINOR_SHARE]
+    small = sorted([c for c in ch if (c["share"] or 0) < MINOR_SHARE],
+                   key=lambda c: -(c["share"] or 0))
+    short = sorted([c for c in big if (c["gap"] or 0) > 0], key=lambda c: -c["gap"])
+    over = sorted([c for c in big if (c["gap"] or 0) <= 0], key=lambda c: -(c["share"] or 0))
+    ch = short + over + small
     lead = short[0] if short else None
     for c in ch:
         c["lead"] = (c is lead)
@@ -2837,7 +2847,7 @@ def driver_channels_html(ch):
         sh = f'비중 {c["share"]*100:.0f}%' if c["share"] is not None else ""
         tag = '<span class="dt-tag">개선 필요</span>' if c["lead"] else ""
         # 비중이 작은 채널은 증감률이 커도 전체 영향이 미미해 과대해석을 부른다 → 흐리게
-        minor = " minor" if (c["share"] is not None and c["share"] < 0.05) else ""
+        minor = " minor" if (c["share"] is not None and c["share"] < MINOR_SHARE) else ""
         cards.append(f'<div class="dt-chc{" lead" if c["lead"] else ""}{minor}">'
                      f'<div class="dt-chn"><b>{c["name"]}{tag}</b><span>{sh}</span></div>{rows}</div>')
     return '<div class="dt-ch">' + "".join(cards) + '</div>'
