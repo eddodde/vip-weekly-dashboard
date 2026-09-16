@@ -849,12 +849,18 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-sum{width:508px;flex:none;background:#eef3fa;border:1px solid #d3e0f0;border-radius:6px;
   padding:9px 12px 10px;margin-bottom:9px;cursor:default;}
 .dt-sr{display:flex;align-items:baseline;gap:10px;margin-top:4px;word-break:keep-all;}
-.dt-sr:first-child{margin-top:0;}
+.dt-sr:nth-child(2){margin-top:0;}   /* 첫 지표 행 — 앞에 .dt-sbase가 있다 */
 .dt-sr em{flex:none;width:36px;font-style:normal;font-size:10px;font-weight:700;color:#8b97ad;}
 .dt-sr b{flex:none;width:58px;font-size:14px;font-weight:700;color:#14203a;
   font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
 .dt-sr span{font-size:10.5px;color:#4b5872;line-height:1.4;}
-.dt-sr:first-child b{color:#1f5fbf;font-size:16px;}   /* 목표 — 두괄식으로 맨 위 */
+.dt-sr:nth-child(2) b{color:#1f5fbf;font-size:16px;}   /* 목표 — 두괄식으로 맨 위 */
+.dt-sbase{font-size:9px;font-weight:700;color:#8b97ad;letter-spacing:.04em;margin-bottom:5px;}
+/* 기간을 진행주 밖으로 돌렸을 때만 뜨는 고정 안내 */
+.dt-fix{width:508px;flex:none;background:#fdf6e8;border:1px solid #ecdcb8;border-radius:6px;
+  padding:6px 10px;margin-bottom:8px;font-size:10px;color:#7a6534;line-height:1.45;
+  word-break:keep-all;}
+.dt-fix b{color:#5c4d27;}
 /* 한 카드 안의 단락 구분 — 상자를 나누지 않고 세로 길이를 줄인다 */
 .dt-dmet{display:flex;justify-content:space-between;gap:8px;font-size:10px;
   line-height:1.5;color:#8b97ad;word-break:keep-all;}
@@ -2744,6 +2750,7 @@ SUMMARY = (
     '· 기획전을 추가로 태우면 △3.8%까지 열리나 전주비 +1.9%가 필요하다.&#10;'
     '  그 폭은 행사 주(09월 1주 +8.06%)에만 관측돼 목표로 걸지 않았다&#10;'
     '· 지난주 수준(△4.01%) 회복에는 +304명/일이 필요하다">'
+    '<div class="dt-sbase">금주 09월 3주차 기준</div>'
     '<div class="dt-sr"><em>목표</em><b>△4.7%</b><span>라이브 저관여→고관여 재배분 +0.91%p</span></div>'
     '<div class="dt-sr"><em>무대응</em><b>△5.60%</b><span>전년 기저 +1.68% 반등</span></div>'
     '<div class="dt-sr"><em>지난주</em><b>△4.01%</b><span>2.69%p 축소 · 리마인드 0.91%p</span></div>'
@@ -2761,17 +2768,25 @@ def _dt_card(cls, chip, title, mets, tips):
             f'<b>{title}</b><div class="dt-dmets">{rows}</div></div>')
 
 
-def _dt_done(focus):
+# ★ LEVEL-V(요약·현황·레버)는 기간 선택을 따르지 않는다. 문자 발송 실적·브랜드 거래액·
+#   라이브 편성처럼 시드에 없는 외부 자료로 짠 금주 보고 맥락이라 8월이나 지난주로
+#   되돌려 만들 수가 없다. 그렇다고 말없이 두면 기간을 바꾼 사람이 같은 기준으로 읽는다
+#   → 진행주가 아닐 때 고정이라는 사실을 띠로 밝힌다.
+FIXED_NOTE = ('<div class="dt-fix">아래 요약·현황·레버는 <b>금주 보고 기준으로 고정</b>입니다 '
+              '— 기간 선택은 좌측 트리에만 적용됩니다</div>')
+
+
+def _dt_done(focus, mode="wtd"):
     """LEVEL-V 상단 현황·실행 결과. 레버와 같은 행 구조로 가로로 나란히 둔다."""
     cards = [_dt_card(f"dt-done {cls}".strip(), when, title, mets, tips)
              for key, title, when, cls, mets, tips in STATUS if key in focus]
     if not cards:
         return ""
-    return (SUMMARY
+    return ((FIXED_NOTE if mode != "wtd" else "") + SUMMARY
             + f'<div class="dt-donegrp"><div class="dt-levrow">{"".join(cards)}</div></div>')
 
 
-def _dt_levers(focus, v):
+def _dt_levers(focus, v, mode="wtd"):
     """근거는 title 속성에 넣되 &#10;(개행)으로 불릿을 나눈다 — 한 줄로 이어붙이면
     툴팁이 화면 폭만큼 늘어져 읽을 수 없고 옆 카드까지 덮는다.
     imp(예상 견인)는 카드 하단에 금액 + 산출 근거 두 줄로 싣는다."""
@@ -2790,13 +2805,13 @@ def _dt_levers(focus, v):
             cards.append(f'<div class="dt-lev" title="{tip}"><b>{t}</b><p>{d}</p>{box}</div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>'
                     f'<div class="dt-levrow">{"".join(cards)}</div></div>')
-    return f'<div class="dt-levs">{_dt_done(focus)}{"".join(grps)}</div>'
+    return f'<div class="dt-levs">{_dt_done(focus, mode)}{"".join(grps)}</div>'
 
 
-def driver_tree_html(v, focus):
+def driver_tree_html(v, focus, mode="wtd"):
     _al = alert_path(v)
     n = lambda k, lb, sb, pr, cls="": _dt_node(k, lb, sb, pr, cls, _al)   # noqa: E731
-    L = lambda: _dt_levers(focus, v)                                       # noqa: E731
+    L = lambda: _dt_levers(focus, v, mode)                                 # noqa: E731
     # 부모 노드 + 그 자식 묶음을 한 .dt-row 안에 넣어 재귀적으로 중첩한다.
     # align-items:center 덕에 부모가 자식 묶음 전체 높이의 가운데에 놓인다.
     return (
@@ -2934,7 +2949,7 @@ try:
                f"빨간 테두리는 하락 경로 — 전년비 △{abs(TREE_ALERT)*100:.0f}% 이상 하락한 지표와, "
                f"그 하락의 {DRIVER_SHARE*100:.0f}% 이상을 만든 하위 동인을 말단까지 잇습니다. "
                "실행 레버는 경로 말단의 개선 대상으로 좁혀 표시")
-    st.markdown(driver_tree_html(_tv, _focus), unsafe_allow_html=True)
+    st.markdown(driver_tree_html(_tv, _focus, _TMODES[_tmode]), unsafe_allow_html=True)
     st.markdown("<div style='font-size:13px;font-weight:600;margin:14px 0 2px'>유입 채널 분해"
                 "<span style='font-weight:400;font-size:11px;color:#8b97ad;margin-left:8px'>"
                 "전년 미달 채널 우선(갭 큰 순) · 이후 규모 순"
