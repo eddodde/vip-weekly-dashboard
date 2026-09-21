@@ -191,6 +191,12 @@ def _corrupt_keys(df):
 
 VISIT_METRIC = "유입율"
 DUP_LO, DUP_HI = 1.8, 2.2          # 이 배율 범위면 '스냅샷 2회 적재'로 보고 복원
+# 손상 구간 처리. False면 폐기하지 않고 원본 그대로 노출한다(사용자 지시).
+# ★ 노출로 두면 전년비가 사실과 다르게 나온다 — 2025-09-23~10-30은 유효회원수가 정확히
+#   2.00배, DAU 2.06배, 거래액 1.71배로 지표마다 배수가 달라 보정도 불가능하다.
+#   그래서 값은 살리되 어느 구간이 그런지 화면에 반드시 띄운다(CORRUPT_KEYS).
+DROP_CORRUPT = False
+CORRUPT_KEYS = set()
 
 
 def _drop_corrupt(df):
@@ -201,8 +207,11 @@ def _drop_corrupt(df):
     ck, eff_only = _corrupt_keys(df)
     if not ck and not eff_only:
         return df, ck
-    keys = list(zip(df["grain"], df["year"], df["period"]))
-    df = df[[k not in ck for k in keys]].copy()
+    if DROP_CORRUPT:
+        keys = list(zip(df["grain"], df["year"], df["period"]))
+        df = df[[k not in ck for k in keys]].copy()
+    else:
+        df = df.copy()      # 값은 그대로 두고 어느 구간인지만 넘긴다
     if not eff_only:
         return df, ck
     med = (df[(df.perspective == "overall") & (df.metric == EFF_METRIC) & (df.seg1 == "TOTAL")]
@@ -266,7 +275,9 @@ def finalize(df):
     ov = df["perspective"] == "overall"
     df.loc[ov & (df["seg1"] == ""), "seg1"] = "TOTAL"
     df = df.drop_duplicates(DEDUP_KEY, keep="last").reset_index(drop=True)
-    df, _ = _drop_corrupt(df)
+    df, _ck = _drop_corrupt(df)
+    CORRUPT_KEYS.clear()
+    CORRUPT_KEYS.update(_ck)
     dm = derive_monthly(df)
     if dm is not None and not dm.empty:
         df = df[~((df.grain == "month") & (df.perspective == "overall"))]
@@ -1426,7 +1437,7 @@ def forecast_month(mo, cutoff):
     """당월 예상 마감. 잔여일은 '전년 동요일(−364)' 실적으로 채우고(반복 행사·주말 자동 반영),
     올해 MTD 수준(전년 동기比)만큼 스케일. → 행사 일자가 1~2일 달라도 요일 기준으로 정렬됨.
 
-    ★ 전년 손상 폐기일(2025-09말·10월 등 _drop_corrupt 구간)은 dv()가 None이라 합계에서 빠지는데
+    ★ (DROP_CORRUPT=True일 때) 전년 손상 폐기일은 dv()가 None이라 합계에서 빠지는데
       분모는 월 전체(dim)라, 보정 없이 두면 결손일수만큼 예상치가 통째로 과소평가된다
       (2026-09 기준 8일 결손 → 일평균 26% 과소). → 결손일을 '보유일 평균'으로 채워 합계를 만들고,
       결손률이 MAX_GAP_RATIO를 넘으면 추정을 포기한다(unavailable)."""
@@ -1989,6 +2000,26 @@ def partial_line(kind="perf"):
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
+
+# ★ 손상 구간을 폐기하지 않고 노출하는 설정(DROP_CORRUPT=False)이므로, 어느 구간이
+#   그런지 반드시 띄운다. 값이 화면에 있는 이상 누군가는 그대로 인용한다.
+if CORRUPT_KEYS and not DROP_CORRUPT:
+    _cm = sorted({(y, p) for g, y, p in CORRUPT_KEYS if g == "month"},
+                 key=lambda t: (t[0], int(str(t[1]).replace("월", "") or 0)))
+    _cw = sorted({(y, p) for g, y, p in CORRUPT_KEYS if g == "week"})
+    _parts = []
+    if _cm:
+        _parts.append("월별 " + ", ".join(f"{y}년 {p}" for y, p in _cm))
+    if _cw:
+        _parts.append(f"주차별 {len(_cw)}건({_cw[0][0]}년 {_cw[0][1]}~{_cw[-1][1]})")
+    st.warning(
+        "⚠️ **원본 그대로 표시 중** — 아래 구간은 BI 적재 오류로 값이 부풀려져 있습니다. "
+        "전년비를 실적으로 읽지 마십시오.\n\n"
+        + ("　· " + "\n　· ".join(_parts) + "\n\n" if _parts else "")
+        + "2025-09-23~10-30(33일) 구간에서 유효회원수가 정확히 2.00배, DAU 2.06배, "
+          "거래액 1.71배로 지표마다 배수가 달라 자동 보정이 불가능합니다. "
+          "해당 기간 BI 재적재 후 정상화됩니다."
+    )
 
 # 사이드바 최상단 스냅샷(예약 슬롯 채우기) — 최신주 전년비 KPI
 if latest_wk:
