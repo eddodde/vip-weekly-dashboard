@@ -205,6 +205,7 @@ DROP_CORRUPT = False
 REPAIR_CORRUPT = True
 REPAIR_METRICS_HALVE = ("DAU", "유효회원수")   # ÷2
 REPAIR_METRICS_DOUBLE = ("CR",)                # ×2 (DAU 반감 상쇄)
+_REPAIR_STATS = {"keys": 0, "rows": 0}          # 디버그: 실제 보정된 키·행 수
 REPAIR_NOTE = ("⚠️ 전년 2025-09-23~10-30 구간은 BI 적재 오류(회원수 2배)로 "
                "DAU·CR·회원수를 ÷2 보정 표시 중입니다 · 거래액·객단가는 원본(추석·핏플랍 "
                "기저 혼재) · BI 재적재 후 정상화")
@@ -225,12 +226,17 @@ def _drop_corrupt(df):
         df = df.copy()      # 값은 그대로 두고 어느 구간인지만 넘긴다
     # ── 보정 모드: DAU·유효회원수 ÷2, CR ×2 (손상 전 지표 폐기 구간 ck 대상, 전 perspective)
     if REPAIR_CORRUPT and not DROP_CORRUPT and ck:
-        kk = list(zip(df["grain"], df["year"], df["period"]))
-        in_ck = [k in ck for k in kk]
-        halve = [c and (m in REPAIR_METRICS_HALVE) for c, m in zip(in_ck, df["metric"])]
-        dbl = [c and (m in REPAIR_METRICS_DOUBLE) for c, m in zip(in_ck, df["metric"])]
+        # 문자열 합성키로 매칭 — numpy 스칼라 타입 불일치로 set 멤버십이 빗나가는 것 방지
+        ckset = {f"{g}|{y}|{p}" for g, y, p in ck}
+        key = (df["grain"].astype(str) + "|" + df["year"].astype(str)
+               + "|" + df["period"].astype(str))
+        in_ck = key.isin(ckset)
+        halve = in_ck & df["metric"].isin(REPAIR_METRICS_HALVE)
+        dbl = in_ck & df["metric"].isin(REPAIR_METRICS_DOUBLE)
         df.loc[halve, "value"] = df.loc[halve, "value"] / 2.0
         df.loc[dbl, "value"] = df.loc[dbl, "value"] * 2.0
+        _REPAIR_STATS["keys"] = len(ck)
+        _REPAIR_STATS["rows"] = int(halve.sum() + dbl.sum())
     if not eff_only:
         return df, ck
     med = (df[(df.perspective == "overall") & (df.metric == EFF_METRIC) & (df.seg1 == "TOTAL")]
@@ -286,6 +292,9 @@ def finalize(df):
         return df
     df = df.copy()
     df["year"] = df["year"].astype(int)
+    # ★ value를 반드시 수치형으로. CSV 재저장(따옴표)·업로드 혼합 시 object로 읽히면
+    #   손상 감지(_corrupt_keys)의 '> median×1.5' 비교가 깨져 보정이 작동하지 않는다.
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
     # period_sort 타입 통일(str, 고정폭 8자리라 사전순=시간순).
     # CSV 시드는 int로 읽히고 업로드 파서는 str을 만들어, 병합 시 혼합되면 sort_values가 TypeError.
     df["period_sort"] = df["period_sort"].astype(str)
@@ -2018,7 +2027,7 @@ st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
 if REPAIR_CORRUPT and not DROP_CORRUPT:
-    st.info(REPAIR_NOTE)
+    st.info(REPAIR_NOTE + f"  (보정 적용: {_REPAIR_STATS['keys']}개 구간 · {_REPAIR_STATS['rows']}행)")
 
 # 사이드바 최상단 스냅샷(예약 슬롯 채우기) — 최신주 전년비 KPI
 if latest_wk:
