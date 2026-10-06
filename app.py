@@ -191,11 +191,23 @@ def _corrupt_keys(df):
 
 VISIT_METRIC = "유입율"
 DUP_LO, DUP_HI = 1.8, 2.2          # 이 배율 범위면 '스냅샷 2회 적재'로 보고 복원
-# 손상 구간 처리. False면 폐기하지 않고 원본 그대로 노출한다(사용자 지시, 경고 배너 없음).
-# ★ 2025-09-23~10-30(33일)은 BI 적재 오류로 유효회원수 정확히 2.00배·DAU 2.06배·
-#   거래액 1.71배가 들어와 있다. 지표마다 배수가 달라 보정 불가 — 이 구간의 전년비는
-#   실적이 아니다. BI 재적재 후 True로 돌릴 필요 없이 값이 정상화된다.
+# 손상 구간 처리.
+#   DROP_CORRUPT=True  → 손상 구간 폐기(비교불가/빈칸)
+#   REPAIR_CORRUPT=True → 손상 구간 중 '회원·방문 머릿수'(DAU·유효회원수)만 ÷2 보정,
+#                         CR은 ×2(= 고객수/DAU, 분모 반감 되돌림). 거래액·고객수·유입율·
+#                         객단가는 원본 유지. 화면에 보정 사실을 캡션으로 노출(REPAIR_NOTE).
+#   둘 다 False → 원본 그대로.
+# ★ 근거: 2025-09-23~10-30 유효회원수가 정확히 2.0002배(회원 스냅샷 2회 적재), DAU도
+#   동반 2배(유입율 보존). UV 소스 교차검증 OK(복원 DAU ~20k < 실제 UV 27k). 단 거래액은
+#   배수가 불규칙(1.6~1.7배)하고 추석·핏플랍 실제분이 섞여 있어 손대지 않는다.
+#   ※ 임시 조치. BI 마트 재적재되면 손상이 사라져 보정 로직이 자동으로 작동하지 않는다.
 DROP_CORRUPT = False
+REPAIR_CORRUPT = True
+REPAIR_METRICS_HALVE = ("DAU", "유효회원수")   # ÷2
+REPAIR_METRICS_DOUBLE = ("CR",)                # ×2 (DAU 반감 상쇄)
+REPAIR_NOTE = ("⚠️ 전년 2025-09-23~10-30 구간은 BI 적재 오류(회원수 2배)로 "
+               "DAU·CR·회원수를 ÷2 보정 표시 중입니다 · 거래액·객단가는 원본(추석·핏플랍 "
+               "기저 혼재) · BI 재적재 후 정상화")
 
 
 def _drop_corrupt(df):
@@ -211,6 +223,14 @@ def _drop_corrupt(df):
         df = df[[k not in ck for k in keys]].copy()
     else:
         df = df.copy()      # 값은 그대로 두고 어느 구간인지만 넘긴다
+    # ── 보정 모드: DAU·유효회원수 ÷2, CR ×2 (손상 전 지표 폐기 구간 ck 대상, 전 perspective)
+    if REPAIR_CORRUPT and not DROP_CORRUPT and ck:
+        kk = list(zip(df["grain"], df["year"], df["period"]))
+        in_ck = [k in ck for k in kk]
+        halve = [c and (m in REPAIR_METRICS_HALVE) for c, m in zip(in_ck, df["metric"])]
+        dbl = [c and (m in REPAIR_METRICS_DOUBLE) for c, m in zip(in_ck, df["metric"])]
+        df.loc[halve, "value"] = df.loc[halve, "value"] / 2.0
+        df.loc[dbl, "value"] = df.loc[dbl, "value"] * 2.0
     if not eff_only:
         return df, ck
     med = (df[(df.perspective == "overall") & (df.metric == EFF_METRIC) & (df.seg1 == "TOTAL")]
@@ -1997,6 +2017,8 @@ def partial_line(kind="perf"):
 st.title(f"■ {week_pretty(latest_wk) if latest_wk else ''} {wk_status} CRM_VIP 실적")
 st.caption(f"기준연도 {CUR} · 전년 {PREV}  |  주간회의 Summary 시트 2.실적 양식 · 자동 집계 "
            f"· **모든 실적은 일평균 기준**(거래액=일평균거래액, 단위 백만원)")
+if REPAIR_CORRUPT and not DROP_CORRUPT:
+    st.info(REPAIR_NOTE)
 
 # 사이드바 최상단 스냅샷(예약 슬롯 채우기) — 최신주 전년비 KPI
 if latest_wk:
