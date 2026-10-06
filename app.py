@@ -347,8 +347,14 @@ def parse_uploads(files):
     return finalize(pd.concat(frames, ignore_index=True))
 
 
+# ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
+#   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
+#   이 버전을 올리면 캐시가 무효화된다.
+SEED_CACHE_VER = "2026-10-06-repair3"
+
+
 @st.cache_data(show_spinner=False)
-def load_seed():
+def load_seed(ver=SEED_CACHE_VER):   # ver는 해시돼야 캐시가 무효화됨(언더스코어 금지)
     try:
         return finalize(pd.read_csv(SEED_CSV, encoding="utf-8-sig"))
     except Exception:
@@ -408,8 +414,12 @@ def month_pretty(lbl):
 
 
 # ----------------------------------------------------------------------------- data load
-if "df" not in st.session_state:
+# ★ 보정 버전이 바뀌면 세션에 남은 옛 df(업로드분 포함)를 버리고 새 시드로 다시 로드한다.
+#   재배포가 세션을 안 비우는 경우에도 보정이 확실히 적용되게. 시드가 이미 최신(10/5)이라
+#   업로드분 소실은 문제 없음.
+if "df" not in st.session_state or st.session_state.get("_seed_ver") != SEED_CACHE_VER:
     st.session_state.df = load_seed()
+    st.session_state._seed_ver = SEED_CACHE_VER
 
 st.sidebar.title("📊 VIP 주간 실적")
 st.sidebar.caption("주간회의 'Summary' 시트 2.실적 양식")
