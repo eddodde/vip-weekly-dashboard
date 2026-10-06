@@ -350,7 +350,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-10-06-repair4"
+SEED_CACHE_VER = "2026-10-06-repair5"
 
 
 @st.cache_data(show_spinner=False)
@@ -2742,23 +2742,47 @@ def focus_keys(v):
 #   전년에만 주차 패턴을 인정하고 올해는 평탄(0%)하다고 둔 비대칭 가정이었다.
 # ★ 개선폭(현황)과 실행 결과는 성격이 달라 카드를 나누되, 레버와 같이 가로로 나란히
 #   둔다. 세로로 쌓으면 LEVEL-V만 길어지고 오른쪽 여백이 빈다.
+# ★ '지난주 현황' 카드는 시드에서 자동 산출한다(②번 자동화). 직전 마감 2주의 DAU
+#   전년비를 뽑아 역신장 축소를 '전년 흐름 대비 초과'로 분해한다. 데이터 갱신 시 자동 반영.
+#   ※ '실행 완료(리마인드)' 카드와 레버 견인치는 문자 발송 실적(외부)이라 아직 수동(③).
+def _status_card():
+    cl = wk_all_closed
+    if not cl or len(cl) < 2:
+        return None
+    cw, pw = cl[-1], cl[-2]                       # 금주(직전 마감주), 전주
+    def _d(y, wk):
+        return V("week", "overall", "DAU", "TOTAL", "", y, wk)
+    cc, cp, pc, pp = _d(CUR, cw), _d(PREV, cw), _d(CUR, pw), _d(PREV, pw)
+    if None in (cc, cp, pc, pp) or 0 in (cp, pp, pc):
+        return None
+    yw, yp = cc / cp - 1, pc / pp - 1             # 금주·전주 전년비
+    cut = yw - yp                                 # 역신장 축소(양수=개선)
+    wc, wp = cc / pc - 1, cp / pp - 1             # 올해·전년 주차 증감
+    expect = pc * (cp / pp)                       # 전년 흐름 적용 시 기대 DAU
+    excess = cc - expect
+    def p2(r):
+        return f"{'△' if r < 0 else ''}{abs(r) * 100:.2f}%"
+    def s2(r):
+        return f"{'+' if r >= 0 else '△'}{abs(r) * 100:.2f}%"
+    mets = [
+        ("역신장 축소" if cut >= 0 else "역신장 확대", f"{abs(cut) * 100:.2f}%p", True),
+        ("", f"{p2(yp)} → {p2(yw)}", False),
+        ("주차 증감", f"올해 {s2(wc)} / 전년 {s2(wp)}", False),
+        ("전년 흐름 적용 시", f"{expect:,.0f}명", False),
+        ("", f"실제 {cc:,.0f}명 — 초과 {excess:+,.0f}명/일", False),
+    ]
+    tips = [
+        f"직전 마감 2주({week_pretty(pw)}→{week_pretty(cw)}) DAU 전년비를 시드에서 자동 산출",
+        "'전년 흐름 적용 시' = 전년의 전주→금주 증감률을 올해 전주 DAU에 적용한 값.",
+        "  우리가 전년만큼만 했을 때 나왔을 DAU → 그 경우 전년비는 전주와 같다",
+        f"실제는 {cc:,.0f}명으로 {excess:+,.0f}명/일, 이 초과분이 역신장 축소의 실체",
+        "축소분은 전년 기저 변동이 아니라 양년 주차 증감률의 차이로만 움직인다",
+        "※ 데이터 갱신 시 자동 반영. '실행 완료·레버'는 문자 실적(외부)이라 수동 갱신",
+    ]
+    return ("visit", "지난주 현황", f"{week_pretty(cw)} vs {week_pretty(pw)}", "ctx", mets, tips)
+
+
 STATUS = [
-    ("visit", "지난주 현황", "09월 2주차 vs 1주차", "ctx", [
-        ("역신장 축소", "2.69%p", True),
-        ("", "△6.69% → △4.01%", False),
-        ("주차 증감", "올해 +0.70% / 전년 △2.12%", False),
-        ("전년 흐름 적용 시", "17,598명", False),
-        ("", "실제 18,105명 — 초과 +507명/일", False)], [
-        "'전년 흐름 적용 시' = 전년의 1주 → 2주 증감률(△2.12%)을 올해 1주차",
-        "  17,980명에 그대로 적용한 값. 우리가 전년만큼만 했을 때 나왔을 DAU다",
-        "  그 경우 전년비는 △6.69%로 1주차와 같아 역신장폭이 줄지 않는다",
-        "실제는 18,105명으로 507명/일 많았고, 이 초과분이 축소분 2.69%p의 실체",
-        "전년은 행사 주(1주) 다음에 빠지는데 올해는 그 패턴을 거슬러 올랐다",
-        "축소분은 전년 기저가 낮아져서가 아니다 — 올해도 같은 비율로 내려갔다면",
-        "  전년비는 그대로다. 갭은 양년 증감률의 차이로만 움직인다",
-        "보수적 하한 — 08월 4주차 대비 2주 누적 2025 +8.00% vs 2026 +8.81% (격차 0.81%p)",
-        "문자 전체는 발송 대상 17.5% 축소에도 유입 2.9%만 감소(4.08% → 4.80%)",
-        "09월 3주차 전년 기저는 +1.68% 반등 — 같은 실적이면 역신장폭은 다시 벌어진다"]),
     ("visit", "최근 조회 상품 리마인드 확대", "실행 완료 · 09월 2주차", "", [
         ("역신장 축소", "0.91%p", True),
         ("", "전체 2.69%p의 34%", False),
@@ -2791,22 +2815,41 @@ STATUS = [
 #   (+8.06%는 엘페스타가 걸린 09월 1주차). 재배분 기준으로 다시 산출했다.
 # ★ 세 줄. 라벨 / 숫자 / 한 구절만 둔다. 산출 근거는 카드 툴팁에 있으므로
 #   여기서 되풀이하지 않는다 — 문장을 길게 쓰면 정작 숫자가 안 읽힌다.
-SUMMARY = (
-    '<div class="dt-sum" title="'
-    '· 목표 산출: 지난주 저관여 라이브 2건(순금 2.36%·페어라이어 3.59%, 66,421명)&#10;'
-    '  물량을 고관여로 옮기고 주간 평균 유입률 4.80% 적용&#10;'
-    '  → 유입 +1,228건/주 = DAU +175명/일 = 0.91%p&#10;'
-    '· 전주비 +0.97% — 행사 없는 주의 관측 상단(08월 3주 +0.88%) 수준&#10;'
-    '· 순증이 아니라 재배분이다. 지난주 DAU에는 이미 라이브 7건과 캠페인&#10;'
-    '  전량(발송 730,063명)이 들어 있고 금주에도 비슷한 양이 나간다&#10;'
-    '· 기획전을 추가로 태우면 △3.8%까지 열리나 전주비 +1.9%가 필요하다.&#10;'
-    '  그 폭은 행사 주(09월 1주 +8.06%)에만 관측돼 목표로 걸지 않았다&#10;'
-    '· 지난주 수준(△4.01%) 회복에는 +304명/일이 필요하다">'
-    '<div class="dt-sbase">금주 09월 3주차 기준</div>'
-    '<div class="dt-sr"><em>목표</em><b>△4.7%</b><span>라이브 저관여→고관여 재배분 +0.91%p</span></div>'
-    '<div class="dt-sr"><em>무대응</em><b>△5.60%</b><span>전년 기저 +1.68% 반등</span></div>'
-    '<div class="dt-sr"><em>지난주</em><b>△4.01%</b><span>2.69%p 축소 · 리마인드 0.91%p</span></div>'
-    '</div>')
+def _summary_block():
+    """LEVEL-V 머리말. 시드에서 자동 산출(②번).
+    · 지난주: 직전 마감주 DAU 전년비 + 역신장 축소폭
+    · 유지 시(무대응): 진행주에 지난주 실적 유지 시 전년비(전년 기저 반등 반영)
+    목표(레버 적용 후 수치)는 외부 데이터가 필요해(③) 여기 자동으론 안 올린다."""
+    cl = wk_all_closed
+    if not cl or len(cl) < 2:
+        return ""
+    cw, pw = cl[-1], cl[-2]
+    nw = latest_wk if (wk_partial and latest_wk and latest_wk != cw) else None
+    def _d(y, wk):
+        return V("week", "overall", "DAU", "TOTAL", "", y, wk)
+    cc, cp, pc, pp = _d(CUR, cw), _d(PREV, cw), _d(CUR, pw), _d(PREV, pw)
+    if None in (cc, cp, pc, pp) or 0 in (cp, pp):
+        return ""
+    yw, yp = cc / cp - 1, pc / pp - 1
+    cut = yw - yp
+    def p2(r):
+        return f"{'△' if r < 0 else ''}{abs(r) * 100:.2f}%"
+    rows = []
+    pn = _d(PREV, nw) if nw else None
+    if pn and pn != 0:
+        hold = cc / pn - 1                      # 지난주 실적(cc) 유지 시 진행주 전년비
+        reb = pn / cp - 1                        # 전년 기저 반등(진행주 전년/지난주 전년)
+        rows.append(f'<div class="dt-sr"><em>유지 시</em><b>{p2(hold)}</b>'
+                    f'<span>{week_pretty(nw)} 전년 기저 '
+                    f'{"+" if reb >= 0 else "△"}{abs(reb) * 100:.2f}% 반등</span></div>')
+    rows.append(f'<div class="dt-sr"><em>지난주</em><b>{p2(yw)}</b>'
+                f'<span>{p2(yp)} → {p2(yw)}, {abs(cut) * 100:.2f}%p '
+                f'{"축소" if cut >= 0 else "확대"}</span></div>')
+    note = ("직전 마감주 DAU 전년비를 시드에서 자동 산출. "
+            "&#10;목표(레버 적용 후)는 문자·브랜드 실적이 필요해 수동 갱신(별도)")
+    return (f'<div class="dt-sum" title="{note}">'
+            f'<div class="dt-sbase">{week_pretty(cw)} 마감 기준 · 자동 산출</div>'
+            + "".join(rows) + '</div>')
 
 
 def _dt_card(cls, chip, title, mets, tips):
@@ -2829,12 +2872,15 @@ FIXED_NOTE = ('<div class="dt-fix">아래 요약·현황·레버는 <b>금주 �
 
 
 def _dt_done(focus, mode="wtd"):
-    """LEVEL-V 상단 현황·실행 결과. 레버와 같은 행 구조로 가로로 나란히 둔다."""
+    """LEVEL-V 상단 현황·실행 결과. 레버와 같은 행 구조로 가로로 나란히 둔다.
+    지난주 현황은 시드에서 자동 산출(_status_card), 실행 완료/레버는 STATUS(수동)."""
+    _sc = _status_card()
+    _rows = ([_sc] if _sc else []) + STATUS
     cards = [_dt_card(f"dt-done {cls}".strip(), when, title, mets, tips)
-             for key, title, when, cls, mets, tips in STATUS if key in focus]
+             for key, title, when, cls, mets, tips in _rows if key in focus]
     if not cards:
         return ""
-    return ((FIXED_NOTE if mode != "wtd" else "") + SUMMARY
+    return ((FIXED_NOTE if mode != "wtd" else "") + _summary_block()
             + f'<div class="dt-donegrp"><div class="dt-levrow">{"".join(cards)}</div></div>')
 
 
