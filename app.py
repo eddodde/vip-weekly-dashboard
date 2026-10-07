@@ -350,7 +350,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-10-06-repair5"
+SEED_CACHE_VER = "2026-10-07-wk3"
 
 
 @st.cache_data(show_spinner=False)
@@ -601,6 +601,33 @@ def load_events(ver=SEED_CACHE_VER):   # events.csv 변경 반영 위해 캐시 
 
 
 EVENTS = load_events()
+
+
+# --------------------------------------------------------------------------- SMS 발송 실적 (문자 레버 ③)
+# 표(문자) BI export를 sms_convert.ps1로 주차별 집계한 tidy CSV를 읽는다. 시드와 무관한
+# 별도 소스라 적재 손상(전체관점)과 무관하게 항상 유효하다. 주간 갱신:
+#   powershell -ExecutionPolicy Bypass -File sms_convert.ps1 -Src "...표(문자) (NN).xlsx"
+# → data/sms_long.csv 재생성 후 커밋. 리마인드 실행 결과 카드가 이걸로 자동 산출된다.
+SMS_CSV = "data/sms_long.csv"
+
+
+@st.cache_data(show_spinner=False)
+def load_sms(ver=SEED_CACHE_VER):   # 캐시 버스터 공유 — 집계 CSV 갱신 시 함께 무효화
+    """(week, group, metric) → value. 주차 라벨은 시드와 동일한 'MM월 N주차'(ISO 목요일)."""
+    try:
+        s = pd.read_csv(SMS_CSV, encoding="utf-8-sig")
+        return {(str(r.week), str(r.group), str(r.metric)): float(r.value)
+                for r in s.itertuples(index=False)}
+    except Exception:
+        return {}
+
+
+SMS = load_sms()
+
+
+def SV(week, group, metric):
+    """SMS 주차별 집계값 조회. 없으면 None."""
+    return SMS.get((str(week), str(group), str(metric)))
 
 
 def _evname(t):
@@ -2588,12 +2615,16 @@ LEVERS = [
         #   올해가 나빠서가 아니라 전년 그날이 높았기 때문이다 — 전년비와 전년 DAU의
         #   상관이 r=-0.770이고, 올해 일별 DAU는 변동계수 1.4%로 거의 평탄하다.
         #   요일별 방문 규모 차이는 원래 있는 것이라 평탄화는 근거가 되지 않는다.
-        ("고관여 브랜드 라이브 모수 확대", "브랜드별 유입률이 5배까지 벌어짐",
-         _imp(("역신장 축소", "0.51%p", True),
-              ("DAU", "+96명/일", False),
-              ("거래액", "+2,753,790원", False),
+        # ★ 준거 유입률은 VIP 라이브 실측(캠페인명에 'VIP' 포함)으로만 잡는다. MKT_라이브본방/
+        #   재방 등은 전체 대상 발송이라 VIP 대시보드 근거로 쓰지 않는다(사용자 확인).
+        # ★ 이 레버는 상설이 아니다 — 그 주 VIP 고관여 브랜드 라이브 편성이 많을 때만,
+        #   그 편성에 VIP 모수를 얹어 보내는 상황성 액션이다. 편성 없는 주엔 세우지 않는다.
+        ("고관여 브랜드 라이브 모수 확대", "VIP 고관여 라이브 유입률 5.41~10.78%",
+         _imp(("역신장 축소", "0.68%p", True),
+              ("DAU", "+129명/일", False),
+              ("거래액", "+5,905,700원", False),
               ("", "모수 1만명 추가 기준", False),
-              ("준거", "ACC 라이브 유입 6.69%", False)), [
+              ("준거", "VIP ACC 라이브 유입 9.01%", False)), [
             "── 금주 라이브 편성 판정 (브랜드 거래액, 09월 2주차) ──",
             "  9/20 일 닥스ACC        75,796,045원  +89.3%  ← 1순위",
             "  9/14 월 아떼ACC        37,033,890원  +40.0%  ← 2순위",
@@ -2602,26 +2633,21 @@ LEVERS = [
             "  9/17 목 스타우브&장듀보    2,344,818원   +9.3%",
             "  9/18 금 놋담              142,727원  +118%(기저 극소)",
             "→ 닥스ACC·아떼ACC·바버아울렛 3건에 모수를 집중한다",
-            "★ 규모 1위와 최하위가 531배 차이다. 같은 물량을 어디에 쓰느냐가",
-            "  유입률 2.36~12.32%의 격차로 그대로 나타난다",
             "※ 참고로 헤지스ACC는 34,878,682원(+77.4%)으로 2순위급이나 금주 편성에",
             "  ACC 건이 없다. 9/16은 경량패딩(히스헤지스)으로 계열이 다르다",
-            "── 근거: 09월 2주차 라이브 7건 유입률 ──",
-            "  여성컨템        4,179명 12.32%  /  라이브재방 여성수입 8,745명 9.74%",
-            "  헤지스ACC      35,072명  6.90%  /  아떼ACC        42,570명 6.52%",
-            "  페어라이어       31,869명  3.59%  /  순금          34,552명 2.36%",
-            "★ 비패션(순금)·비주력 브랜드가 최하위다. 저관여 2건에 물량의 42%",
-            "  (66,421명)가 들어갔는데 유입은 1,960건(2.95%)뿐이었다",
-            "★ 리드타임 없음 — 편성은 그대로 두고 CRM이 정하는 발송 모수만 조정",
+            "── 근거: VIP 고관여 라이브 실측 (표(문자), 캠페인명 VIP 한정) ──",
+            "  바버아울렛 4,146명 10.78%  /  아떼ACC 4,060명 7.19%",
+            "  빠투 3,925명 7.85%(2건)   /  여성수입 3,903명 5.41%",
+            "★ ACC·아울렛 2건 준거: 발송 8,206명 유입 9.01%, 1명당 거래액 591원",
+            "★ 리드타임 없음 — 편성은 그대로 두고 CRM이 정하는 VIP 발송 모수만 조정",
             "대상: 고관여 브랜드 구매·조회 이력 보유 VIP / 채널: SMS·LMS",
-            "측정: 라이브 건별 유입률(준거 6.69%), 1명당 거래액(준거 275원)",
+            "측정: 라이브 건별 유입률(준거 9.01%), 1명당 거래액(준거 591원)",
             "※ 브랜드 거래액은 VIP 기준 ADMIN브랜드명 단위 합산(BPU·카테고리 전량).",
             "  닥스ACC·아떼ACC·헤지스ACC는 액세서리 계열 코드를 모두 더한 값",
             "※ 모수를 넓히면 관여도가 낮은 층이 섞여 유입률이 떨어진다. 1만명 단위로",
             "  끊어 유입률을 확인하며 늘릴 것",
-            "※ 여성 3건이 9.74~12.32%로 최상위지만 물량이 14,921명(9%)뿐이라",
-            "  준거로 쓰지 않았다. 금주 편성에 여성 단독 건은 없음",
-            "※ 저관여 2건 물량(66,421명)을 그대로 돌리면 1.88%p — 상한"]),
+            "※ VIP 고관여 라이브 모수 자체가 제한적(기간 누적 16,034명)이라 확대엔 상한",
+            "※ 상설 아님 — 그 주 VIP 고관여 라이브 편성이 많을 때만 세우는 상황성 레버"]),
         ("닥스 여성·뷰티 기획전 발송", "금주 편성 — 브랜드 실적이 뒷받침",
          _imp(("역신장 축소", "1.62%p", True),
               ("DAU", "+305명/일", False),
@@ -2744,20 +2770,67 @@ def focus_keys(v):
 #   둔다. 세로로 쌓으면 LEVEL-V만 길어지고 오른쪽 여백이 빈다.
 # ★ '지난주 현황' 카드는 시드에서 자동 산출한다(②번 자동화). 직전 마감 2주의 DAU
 #   전년비를 뽑아 역신장 축소를 '전년 흐름 대비 초과'로 분해한다. 데이터 갱신 시 자동 반영.
-#   ※ '실행 완료(리마인드)' 카드와 레버 견인치는 문자 발송 실적(외부)이라 아직 수동(③).
-def _status_card():
+# ★ '실행 완료(리마인드)' 카드도 문자 발송 실적(sms_long.csv)에서 자동 산출한다(③번,
+#   _reminder_card). 레버 견인치(브랜드 라이브 편성·기획전)만 브랜드 거래액이 더 필요해 수동.
+# ★ LEVEL-V 카드·요약의 기간 기준을 트리 옵션(진행주/직전 마감주/직전 마감월)에 맞춘다.
+#   트리 노드(tree_values)와 같은 소스·절단 규칙을 써서 '트리는 움직이는데 카드만 09월
+#   2주차에 고정'인 어긋남을 없앤다. 금주/전주 DAU 4종과 라벨을 돌려주고, weekly=True면
+#   그 주차 라벨로 문자(SMS) 리마인드 카드도 같은 기간으로 조회한다. 데이터 없으면 None 요소.
+def _levelv_cmp(mode):
+    if mode == "month":
+        ld = last_daily_date()
+        if not ld:
+            return None
+        last = calendar.monthrange(ld.year, ld.month)[1]
+        cmo = ld.month if ld.day >= last else (ld.month - 1 or 12)
+        pmo = cmo - 1 or 12
+        d = lambda y, m: month_value("DAU", y, m, None)
+        return dict(weekly=False, cw=f"{cmo:02d}월", pw=f"{pmo:02d}월",
+                    cc=d(CUR, cmo), cp=d(PREV, cmo), pc=d(CUR, pmo), pp=d(PREV, pmo),
+                    curlab=f"{cmo}월", prevlab=f"{pmo}월", rel="전년 동월", title="지난달 현황")
+    if mode == "wtd":
+        hi = last_daily_date()
+        cl = wk_all_closed
+        if not hi or not cl:
+            return None
+        cw = week_label_of(hi)
+        pw = cl[-1]
+        lo = hi - datetime.timedelta(days=hi.weekday())
+        plo = hi - datetime.timedelta(days=364 + hi.weekday())
+        phi = hi - datetime.timedelta(days=364)
+
+        def cur_dau(y):   # 진행주 DAU: 일마감(week_wtd) → 주마감 → 일자별 순 폴백
+            for g in ("week_wtd", "week"):
+                v = V(g, "overall", "DAU", "TOTAL", "", y, cw)
+                if v is not None:
+                    return v
+            return range_metric("DAU", CUR, lo, hi) if y == CUR else range_metric("DAU", PREV, plo, phi)
+        pd_ = lambda y: V("week", "overall", "DAU", "TOTAL", "", y, pw)
+        return dict(weekly=True, cw=cw, pw=pw,
+                    cc=cur_dau(CUR), cp=cur_dau(PREV), pc=pd_(CUR), pp=pd_(PREV),
+                    curlab=week_pretty(cw) + " 진행", prevlab=week_pretty(pw),
+                    rel="전년 동주", title="금주 현황(진행)")
+    # week (직전 마감주)
     cl = wk_all_closed
     if not cl or len(cl) < 2:
         return None
-    cw, pw = cl[-1], cl[-2]                       # 금주(직전 마감주), 전주
-    def _d(y, wk):
-        return V("week", "overall", "DAU", "TOTAL", "", y, wk)
-    cc, cp, pc, pp = _d(CUR, cw), _d(PREV, cw), _d(CUR, pw), _d(PREV, pw)
+    cw, pw = cl[-1], cl[-2]
+    d = lambda y, wk: V("week", "overall", "DAU", "TOTAL", "", y, wk)
+    return dict(weekly=True, cw=cw, pw=pw,
+                cc=d(CUR, cw), cp=d(PREV, cw), pc=d(CUR, pw), pp=d(PREV, pw),
+                curlab=week_pretty(cw), prevlab=week_pretty(pw), rel="전년 동주", title="지난주 현황")
+
+
+def _status_card(mode="week"):
+    b = _levelv_cmp(mode)
+    if not b:
+        return None
+    cc, cp, pc, pp = b["cc"], b["cp"], b["pc"], b["pp"]
     if None in (cc, cp, pc, pp) or 0 in (cp, pp, pc):
         return None
     yw, yp = cc / cp - 1, pc / pp - 1             # 금주·전주 전년비
     cut = yw - yp                                 # 역신장 축소(양수=개선)
-    wc, wp = cc / pc - 1, cp / pp - 1             # 올해·전년 주차 증감
+    wc, wp = cc / pc - 1, cp / pp - 1             # 올해·전년 기간 증감
     expect = pc * (cp / pp)                       # 전년 흐름 적용 시 기대 DAU
     excess = cc - expect
     def p2(r):
@@ -2767,35 +2840,75 @@ def _status_card():
     mets = [
         ("역신장 축소" if cut >= 0 else "역신장 확대", f"{abs(cut) * 100:.2f}%p", True),
         ("", f"{p2(yp)} → {p2(yw)}", False),
-        ("주차 증감", f"올해 {s2(wc)} / 전년 {s2(wp)}", False),
+        ("기간 증감", f"올해 {s2(wc)} / 전년 {s2(wp)}", False),
         ("전년 흐름 적용 시", f"{expect:,.0f}명", False),
         ("", f"실제 {cc:,.0f}명 — 초과 {excess:+,.0f}명/일", False),
     ]
     tips = [
-        f"직전 마감 2주({week_pretty(pw)}→{week_pretty(cw)}) DAU 전년비를 시드에서 자동 산출",
-        "'전년 흐름 적용 시' = 전년의 전주→금주 증감률을 올해 전주 DAU에 적용한 값.",
-        "  우리가 전년만큼만 했을 때 나왔을 DAU → 그 경우 전년비는 전주와 같다",
+        f"{b['prevlab']}→{b['curlab']} DAU 전년비를 시드에서 자동 산출(기간 옵션에 연동)",
+        "'전년 흐름 적용 시' = 전년의 전기→금기 증감률을 올해 전기 DAU에 적용한 값.",
+        "  우리가 전년만큼만 했을 때 나왔을 DAU → 그 경우 전년비는 전기와 같다",
         f"실제는 {cc:,.0f}명으로 {excess:+,.0f}명/일, 이 초과분이 역신장 축소의 실체",
-        "축소분은 전년 기저 변동이 아니라 양년 주차 증감률의 차이로만 움직인다",
-        "※ 데이터 갱신 시 자동 반영. '실행 완료·레버'는 문자 실적(외부)이라 수동 갱신",
+        "축소분은 전년 기저 변동이 아니라 양년 기간 증감률의 차이로만 움직인다",
+        "※ 데이터 갱신 시 자동 반영. '실행 완료(리마인드)'도 문자 실적에서 자동 산출",
     ]
-    return ("visit", "지난주 현황", f"{week_pretty(cw)} vs {week_pretty(pw)}", "ctx", mets, tips)
+    return ("visit", b["title"], f"{b['curlab']} vs {b['prevlab']}", "ctx", mets, tips)
 
 
-STATUS = [
-    ("visit", "최근 조회 상품 리마인드 확대", "실행 완료 · 09월 2주차", "", [
-        ("역신장 축소", "0.91%p", True),
-        ("", "전체 2.69%p의 34%", False),
-        ("발송 대비 유입", "3.82% → 6.26%", False),
-        ("주간 거래액", "6,094,890 → 13,744,562원", False)], [
-        "09월 1주차 대비 발송 대상 14,895 → 28,298명, 유입 569 → 1,771건(일 81 → 253명)",
-        "'발송 대비 유입' = 유입 UV ÷ 발송 대상 수. 100명에게 보내 6.26명이 들어옴",
-        "증분 172명은 전년 흐름 대비 초과분 507명의 34% (= 0.91%p / 2.69%p)",
+# '실행 완료(리마인드)' 카드 — 문자 발송 실적(sms_long.csv)에서 자동 산출(③).
+# 직전 마감주 vs 전주의 '최근 조회 상품 리마인드(최근본 파일럿)' 발송·유입을 비교하고,
+# 그 유입 증분이 DAU 역신장 축소에 얼마나 기여했는지 전년 금주 DAU 대비 %p로 분해한다.
+# ★ 그룹 분류는 캠페인명 '최근본'으로만 잡는다(sms_convert.ps1). AF코드 EV01은 미구매
+#   리텐션 대량 발송과 공유돼, 코드로 잡으면 리마인드 유입률이 붕괴한 것처럼 보인다.
+# ★ 데이터 갱신 시 자동으로 최신 마감주로 이동한다. 주차는 시드(wk_all_closed)를 따른다.
+def _reminder_card(mode="week"):
+    b = _levelv_cmp(mode)
+    if not b or not b["weekly"]:   # 월 모드는 주간 SMS 집계와 기간이 안 맞아 생략
+        return None
+    cw, pw = b["cw"], b["pw"]
+    tc, uc, sc = SV(cw, "EV01", "타겟"), SV(cw, "EV01", "UV"), SV(cw, "EV01", "거래액")
+    tp, up, sp = SV(pw, "EV01", "타겟"), SV(pw, "EV01", "UV"), SV(pw, "EV01", "거래액")
+    if None in (tc, uc, tp, up) or 0 in (tc, tp):
+        return None
+    rc, rp = uc / tc, up / tp                     # 발송 대비 유입(UV ÷ 발송 대상)
+    inc_day = (uc - up) / 7.0                      # 일평균 유입 증분
+    # 전체 DAU 역신장 축소(%p)와 그중 리마인드 기여 — _status_card와 같은 기간·공식
+    cc, cp, pc, pp = b["cc"], b["cp"], b["pc"], b["pp"]
+    cut = share = None
+    if None not in (cc, cp, pc, pp) and 0 not in (cp, pp):
+        cut = (cc / cp - 1) - (pc / pp - 1)        # 전체 역신장 축소 %p(소수)
+    contrib = (inc_day / cp) if cp else None       # 리마인드 증분의 전년비 %p(소수)
+    if cut and contrib is not None and cut > 0:
+        share = contrib / cut
+    sgn = "축소" if (contrib is not None and contrib >= 0) else "확대"
+    mets = [("역신장 " + sgn, f"{abs(contrib) * 100:.2f}%p" if contrib is not None else "—", True)]
+    if share is not None:
+        mets.append(("", f"전체 {cut * 100:.2f}%p의 {share * 100:.0f}%", False))
+    mets += [
+        ("발송 대비 유입", f"{rp * 100:.2f}% → {rc * 100:.2f}%", False),
+        ("주간 거래액",
+         f"{sp:,.0f} → {sc:,.0f}원" if (sp is not None and sc is not None) else "—", False),
+    ]
+    tips = [
+        f"{week_pretty(pw)} 대비 발송 대상 {tp:,.0f} → {tc:,.0f}명, "
+        f"유입 {up:,.0f} → {uc:,.0f}건(일 {up / 7:,.0f} → {uc / 7:,.0f}명)",
+        "'발송 대비 유입' = 유입 UV ÷ 발송 대상 수",
+    ]
+    if contrib is not None and cp:
+        tips.append(f"증분 {inc_day:,.0f}명/일을 전년 금주 DAU({cp:,.0f}명) 대비 %p로 환산 = "
+                    f"{abs(contrib) * 100:.2f}%p")
+    if share is not None:
+        tips.append(f"전년 흐름 대비 전체 역신장 축소 {cut * 100:.2f}%p의 {share * 100:.0f}%")
+    tips += [
         "전년에 없던 신규 파일럿이라 증분 전량을 전년 대비 순증으로 본다",
-        "거래액 13,744,562원 — 같은 주 자동화 전체(15,522,062원)의 89%",
         "유입은 UV(방문 건수)라 동일인 중복 포함 — DAU와 분모가 다른 상한값",
-        "잔여 여지: 9/7·9/8 미발송 — 7일 가동 시 추가분 있음"]),
-]
+        "그룹은 캠페인명 '최근본'으로만 집계 — 코드(EV01)를 공유하는 미구매 리텐션 대량 발송 제외",
+        "※ 문자 발송 실적에서 자동 산출 — sms_convert.ps1로 주간 갱신(③)",
+    ]
+    return ("visit", "최근 조회 상품 리마인드 확대", f"실행 완료 · {week_pretty(cw)}", "", mets, tips)
+
+
+STATUS = []   # 상시 수동 카드 없음. 리마인드는 _reminder_card()로 자동 산출.
 
 
 # ★ 장애·데이터 오류(예: 9/10 쇼핑찬스 발송 실패)는 여기 두지 않는다. 이 영역은
@@ -2815,19 +2928,15 @@ STATUS = [
 #   (+8.06%는 엘페스타가 걸린 09월 1주차). 재배분 기준으로 다시 산출했다.
 # ★ 세 줄. 라벨 / 숫자 / 한 구절만 둔다. 산출 근거는 카드 툴팁에 있으므로
 #   여기서 되풀이하지 않는다 — 문장을 길게 쓰면 정작 숫자가 안 읽힌다.
-def _summary_block():
-    """LEVEL-V 머리말. 시드에서 자동 산출(②번).
-    · 지난주: 직전 마감주 DAU 전년비 + 역신장 축소폭
-    · 유지 시(무대응): 진행주에 지난주 실적 유지 시 전년비(전년 기저 반등 반영)
+def _summary_block(mode="week"):
+    """LEVEL-V 머리말. 시드에서 자동 산출(②번). 기간 옵션에 연동된다.
+    · 금기: 선택 기간 DAU 전년비 + 역신장 축소폭
+    · 유지 시(무대응): 진행주에 금기 실적 유지 시 전년비(전년 기저 반등 반영) — week 모드만
     목표(레버 적용 후 수치)는 외부 데이터가 필요해(③) 여기 자동으론 안 올린다."""
-    cl = wk_all_closed
-    if not cl or len(cl) < 2:
+    b = _levelv_cmp(mode)
+    if not b:
         return ""
-    cw, pw = cl[-1], cl[-2]
-    nw = latest_wk if (wk_partial and latest_wk and latest_wk != cw) else None
-    def _d(y, wk):
-        return V("week", "overall", "DAU", "TOTAL", "", y, wk)
-    cc, cp, pc, pp = _d(CUR, cw), _d(PREV, cw), _d(CUR, pw), _d(PREV, pw)
+    cc, cp, pc, pp = b["cc"], b["cp"], b["pc"], b["pp"]
     if None in (cc, cp, pc, pp) or 0 in (cp, pp):
         return ""
     yw, yp = cc / cp - 1, pc / pp - 1
@@ -2835,20 +2944,24 @@ def _summary_block():
     def p2(r):
         return f"{'△' if r < 0 else ''}{abs(r) * 100:.2f}%"
     rows = []
-    pn = _d(PREV, nw) if nw else None
+    # '유지 시' 전망은 아직 열리지 않은 진행주가 따로 있을 때(=직전 마감주 모드)만 의미가 있다.
+    cw = b["cw"]
+    nw = (latest_wk if (mode == "week" and wk_partial and latest_wk and latest_wk != cw)
+          else None)
+    pn = V("week", "overall", "DAU", "TOTAL", "", PREV, nw) if nw else None
     if pn and pn != 0:
-        hold = cc / pn - 1                      # 지난주 실적(cc) 유지 시 진행주 전년비
-        reb = pn / cp - 1                        # 전년 기저 반등(진행주 전년/지난주 전년)
+        hold = cc / pn - 1                      # 금기 실적(cc) 유지 시 진행주 전년비
+        reb = pn / cp - 1                        # 전년 기저 반등(진행주 전년/금기 전년)
         rows.append(f'<div class="dt-sr"><em>유지 시</em><b>{p2(hold)}</b>'
                     f'<span>{week_pretty(nw)} 전년 기저 '
                     f'{"+" if reb >= 0 else "△"}{abs(reb) * 100:.2f}% 반등</span></div>')
-    rows.append(f'<div class="dt-sr"><em>지난주</em><b>{p2(yw)}</b>'
+    rows.append(f'<div class="dt-sr"><em>{b["prevlab"]}→</em><b>{p2(yw)}</b>'
                 f'<span>{p2(yp)} → {p2(yw)}, {abs(cut) * 100:.2f}%p '
                 f'{"축소" if cut >= 0 else "확대"}</span></div>')
-    note = ("직전 마감주 DAU 전년비를 시드에서 자동 산출. "
+    note = (f"{b['prevlab']}→{b['curlab']} DAU 전년비를 시드에서 자동 산출(기간 옵션 연동). "
             "&#10;목표(레버 적용 후)는 문자·브랜드 실적이 필요해 수동 갱신(별도)")
     return (f'<div class="dt-sum" title="{note}">'
-            f'<div class="dt-sbase">{week_pretty(cw)} 마감 기준 · 자동 산출</div>'
+            f'<div class="dt-sbase">{b["curlab"]} 기준 · 자동 산출</div>'
             + "".join(rows) + '</div>')
 
 
@@ -2863,25 +2976,24 @@ def _dt_card(cls, chip, title, mets, tips):
             f'<b>{title}</b><div class="dt-dmets">{rows}</div></div>')
 
 
-# ★ LEVEL-V(요약·현황·레버)는 기간 선택을 따르지 않는다. 문자 발송 실적·브랜드 거래액·
-#   라이브 편성처럼 시드에 없는 외부 자료로 짠 금주 보고 맥락이라 8월이나 지난주로
-#   되돌려 만들 수가 없다. 그렇다고 말없이 두면 기간을 바꾼 사람이 같은 기준으로 읽는다
-#   → 진행주가 아닐 때 고정이라는 사실을 띠로 밝힌다.
-FIXED_NOTE = ('<div class="dt-fix">아래 요약·현황·레버는 <b>금주 보고 기준으로 고정</b>입니다 '
-              '— 기간 선택은 좌측 트리에만 적용됩니다</div>')
+# ★ 요약·현황·실행완료 카드는 기간 옵션(진행주/직전 마감주/직전 마감월)에 연동된다
+#   (_levelv_cmp). 단 '레버'의 브랜드 라이브 편성·문자 견인치는 시드에 없는 외부 자료로
+#   짠 '작성 기준 주(09월 2주차)' 실측이라 기간을 돌려도 그 주 상수다 — 레버가 뜰 때만 띠로 밝힌다.
+LEVER_NOTE = ('<div class="dt-fix">현황·요약 카드는 <b>선택 기간 기준</b>입니다. '
+              '단 아래 <b>레버의 브랜드 편성·문자 견인치</b>는 작성 기준 주(09월 2주차) 실측입니다</div>')
 
 
 def _dt_done(focus, mode="wtd"):
     """LEVEL-V 상단 현황·실행 결과. 레버와 같은 행 구조로 가로로 나란히 둔다.
-    지난주 현황은 시드에서 자동 산출(_status_card), 실행 완료/레버는 STATUS(수동)."""
-    _sc = _status_card()
-    _rows = ([_sc] if _sc else []) + STATUS
+    현황·리마인드는 시드·문자 실적에서 기간 옵션에 맞춰 자동 산출."""
+    _sc = _status_card(mode)
+    _rc = _reminder_card(mode)
+    _rows = ([_sc] if _sc else []) + ([_rc] if _rc else []) + STATUS
     cards = [_dt_card(f"dt-done {cls}".strip(), when, title, mets, tips)
              for key, title, when, cls, mets, tips in _rows if key in focus]
-    if not cards:
-        return ""
-    return ((FIXED_NOTE if mode != "wtd" else "") + _summary_block()
-            + f'<div class="dt-donegrp"><div class="dt-levrow">{"".join(cards)}</div></div>')
+    return (_summary_block(mode)
+            + (f'<div class="dt-donegrp"><div class="dt-levrow">{"".join(cards)}</div></div>'
+               if cards else ""))
 
 
 def _dt_levers(focus, v, mode="wtd"):
@@ -2903,7 +3015,8 @@ def _dt_levers(focus, v, mode="wtd"):
             cards.append(f'<div class="dt-lev" title="{tip}"><b>{t}</b><p>{d}</p>{box}</div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>'
                     f'<div class="dt-levrow">{"".join(cards)}</div></div>')
-    return f'<div class="dt-levs">{_dt_done(focus, mode)}{"".join(grps)}</div>'
+    lev = (LEVER_NOTE + "".join(grps)) if grps else ""
+    return f'<div class="dt-levs">{_dt_done(focus, mode)}{lev}</div>'
 
 
 def driver_tree_html(v, focus, mode="wtd"):
