@@ -206,9 +206,8 @@ REPAIR_CORRUPT = True
 REPAIR_METRICS_HALVE = ("DAU", "유효회원수", "일평균거래액")   # ÷2 (중복 적재 2배)
 REPAIR_METRICS_DOUBLE = ("CR",)                # ×2 (DAU 반감 상쇄)
 _REPAIR_STATS = {"keys": 0, "rows": 0}          # 디버그: 실제 보정된 키·행 수
-REPAIR_NOTE = ("⚠️ BI 재적재 완료 — 주별은 재적재 clean, 월별은 전년 2025-09-23~10-30 '일자별'을 "
-               "÷2 보정(중복 적재 2배)해 집계: DAU·거래액·회원수 ÷2, CR ×2 → 월별 전년비는 BI와 일치. "
-               "2025 일자별 재적재분 반영 시 보정 완전 해제(일자별 차트까지 원본)")
+REPAIR_NOTE = ("ℹ️ 전년 2025-09~10월 '일자별'만 중복적재 ÷2 보정 중 — 주별·월별 지표는 BI와 일치. "
+               "2025 일자별 재적재 반영 시 자동 해제")
 
 
 def _drop_corrupt(df):
