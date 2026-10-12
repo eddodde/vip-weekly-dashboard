@@ -2775,6 +2775,11 @@ def _levelv_cmp(mode):
         if not hi or not cl:
             return None
         cw = week_label_of(hi)
+        # ★ 일자별이 '마감된 주'의 경계에서 끝나면(=진행주에 아직 새 데이터가 안 들어옴)
+        #   cw가 직전 마감주와 같아져 금주=전주가 되고 카드가 전부 0%p로 빈다.
+        #   이때는 진행주로 보여줄 당주가 없으므로 '직전 마감주' 기준으로 내려준다.
+        if cw == cl[-1]:
+            return _levelv_cmp("week")
         pw = cl[-1]
         lo = hi - datetime.timedelta(days=hi.weekday())
         plo = hi - datetime.timedelta(days=364 + hi.weekday())
