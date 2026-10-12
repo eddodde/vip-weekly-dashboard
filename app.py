@@ -202,8 +202,8 @@ DUP_LO, DUP_HI = 1.8, 2.2          # 이 배율 범위면 '스냅샷 2회 적재
 #   배수가 불규칙(1.6~1.7배)하고 추석·핏플랍 실제분이 섞여 있어 손대지 않는다.
 #   ※ 임시 조치. BI 마트 재적재되면 손상이 사라져 보정 로직이 자동으로 작동하지 않는다.
 DROP_CORRUPT = False
-REPAIR_CORRUPT = True
-REPAIR_METRICS_HALVE = ("DAU", "유효회원수", "일평균거래액")   # ÷2 (중복 적재 2배)
+REPAIR_CORRUPT = False
+REPAIR_METRICS_HALVE = ("DAU", "유효회원수")   # (REPAIR_CORRUPT=False, 미사용)
 REPAIR_METRICS_DOUBLE = ("CR",)                # ×2 (DAU 반감 상쇄)
 _REPAIR_STATS = {"keys": 0, "rows": 0}          # 디버그: 실제 보정된 키·행 수
 REPAIR_NOTE = ("ℹ️ 전년 2025-09~10월 '일자별'만 중복적재 ÷2 보정 중 — 주별·월별 지표는 BI와 일치. "
@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-10-12-reload2"
+SEED_CACHE_VER = "2026-10-12-clean"
 
 
 @st.cache_data(show_spinner=False)
