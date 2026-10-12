@@ -206,9 +206,9 @@ REPAIR_CORRUPT = True
 REPAIR_METRICS_HALVE = ("DAU", "유효회원수")   # ÷2
 REPAIR_METRICS_DOUBLE = ("CR",)                # ×2 (DAU 반감 상쇄)
 _REPAIR_STATS = {"keys": 0, "rows": 0}          # 디버그: 실제 보정된 키·행 수
-REPAIR_NOTE = ("⚠️ 전년 2025-09-23~10-30 구간은 BI 적재 오류(회원수 2배)로 "
-               "DAU·CR·회원수를 ÷2 보정 표시 중입니다 · 거래액·객단가는 원본(추석·핏플랍 "
-               "기저 혼재) · BI 재적재 후 정상화")
+REPAIR_NOTE = ("⚠️ BI 재적재 완료 — 주별·월별 지표는 전 구간 정상(2025 09·10월 포함)입니다. "
+               "전년 2025-09-23~10-30 '일자별'만 아직 옛 export라 DAU·CR·회원수를 ÷2 보정 표시 중 "
+               "(일자별 차트·일단위 한정) · 2025 일자별 재적재분 반영 시 완전 해제")
 
 
 def _drop_corrupt(df):
@@ -350,7 +350,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-10-07-wk3"
+SEED_CACHE_VER = "2026-10-12-reload"
 
 
 @st.cache_data(show_spinner=False)
