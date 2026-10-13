@@ -1368,7 +1368,8 @@ def chart_monthly():
     fc = forecast_month(cm, cd) if cm else None
     if fc and not fc.get("unavailable"):          # 추정 불가(전년 결손 과다)면 마커 자체를 그리지 않음
         ht = (f"{cm}월 예상마감 {fc['daily']/1e6:,.0f}백만<br>"
-              f"근거: {cm}/1~{cd} 실적 + 잔여 {fc['rem']}일 전년 동월 실적×MTD수준"
+              f"근거: {cm}/1~{cd} 실적 + 잔여 {fc['rem']}일 전년 동월 실적×최근 6주 수준차"
+              f"(명절·행사 양년 상쇄)"
               + (f"<br>전년 반복행사: {', '.join(fc['events'][:2])}" if fc["events"] else "")
               + (f"<br>전년 손상 폐기일 {fc['gap']*100:.0f}%는 정상일 평균으로 보정"
                  if fc.get("gap") else "") + "<extra></extra>")
@@ -1549,22 +1550,20 @@ def forecast_month(mo, cutoff):
     b_rem = filled(PREV, cutoff + 1, dim)
     if b_mtd <= 0:
         return None
-    # 월초엔 MTD 표본이 며칠뿐이라 노이즈가 커 ratio가 튐
-    #   → MTD 14일 미만이면 '최근 28일(요일 4주기 포함) 추세'와 가중 블렌딩.
+    # ★ ratio(전년 잔여일 스케일 계수)는 명절 이동에 취약하다 — MTD(1~cutoff)만 쓰면
+    #   전년 MTD 창에 추석/설이 끼어 눌릴 때 계수가 폭증해 잔여일 추정이 통째로 과대된다
+    #   (2026-10: 전년 추석 10/6으로 MTD 1.43배 → 예상마감 823백만으로 과대).
+    #   → 양년 '같은 날짜 최근 42일(≈6주)' 수준차로 산출한다. 명절·대형행사가 양쪽 창에
+    #   다 들어와 상쇄되므로 '순수 수준 차이'만 남는다(월초 MTD 노이즈도 함께 해소).
     mtd_ratio = mtd26_m / b_mtd
-    ratio, blended = mtd_ratio, False
-    if cutoff < 14:
-        c28 = p28 = 0.0
-        for i in range(28):
-            d0 = datetime.date(CUR, mo, cutoff) - datetime.timedelta(days=i)
-            d1 = d0 - datetime.timedelta(days=364)
-            a, b_ = dv(CUR, d0.month, d0.day), dv(PREV, d1.month, d1.day)
-            if a and b_:
-                c28 += a; p28 += b_
-        if p28 > 0:
-            w = cutoff / 14.0                      # MTD 표본 비중(0~1)
-            ratio = w * mtd_ratio + (1 - w) * (c28 / p28)
-            blended = True
+    _c42 = _p42 = 0.0
+    for i in range(42):
+        d0 = datetime.date(CUR, mo, cutoff) - datetime.timedelta(days=i)
+        a, b_ = dv(CUR, d0.month, d0.day), dv(PREV, d0.month, d0.day)   # 같은 날짜, 전년
+        if a is not None and b_ is not None:
+            _c42 += a; _p42 += b_
+    ratio = (_c42 / _p42) if _p42 > 0 else mtd_ratio
+    blended = _p42 > 0
     proj_total = mtd26 + b_rem * ratio
     proj_daily = proj_total / dim
     # 전년비는 실제 비교 기준(전년 월 마감 = 달력 총액) 대비로 표기.
@@ -2216,10 +2215,11 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
     # ★ 기저(추석·슈퍼위크) 보정 진단 — 전년비는 추석·슈퍼위크 이동으로 왜곡된다. 양년의
     #   추석·슈퍼위크를 모두 창 안에 넣어 상쇄한 8/29~10/11(41일) 기준. 외부 창 계산이라
     #   정적이며 창 라벨로 기준을 밝힌다(데이터가 넓어지면 창을 늘려 재산출).
-    "· <b>기저(추석·슈퍼위크) 보정 시 구조는 역신장</b> — 양년 추석·슈퍼위크를 맞춘 기간"
-    "(8/29~10/11)으로 보면 거래액 <b>+4.7%</b>는 <b>객단가(+13.9%) 단독 견인</b>이고, "
-    "방문 <b>△5.4%</b>·유입율 △4.4%·전환 △3.4%·고객수 △8.5%는 전부 역신장"
-    "(모수 △0.9% 유지). <b>전년비 +43%는 추석·슈퍼위크 착시</b> — 보정 창을 바꿔도 결론 동일",
+    "· <b>기저(추석·슈퍼위크) 보정(8/29~10/11) 시 구조는 역신장</b> — 거래액 <b>+4.7%</b>는 "
+    "<b>객단가(+13.9%) 단독 견인</b>,<br>"
+    "&nbsp;&nbsp;방문 <b>△5.4%</b> · 유입율 △4.4% · 전환 △3.4% · 고객수 △8.5% 전부 역신장"
+    "(모수 △0.9% 유지).<br>"
+    "&nbsp;&nbsp;<b>전년비 +43%는 추석·슈퍼위크 착시</b> — 보정 창을 바꿔도 결론 동일",
 ]
 if _dg_ev:
     _dg_lines.append(_dg_ev.replace("<br>", "", 1))
