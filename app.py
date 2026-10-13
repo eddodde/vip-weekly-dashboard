@@ -1815,8 +1815,12 @@ def insight_product(wk):
         return []
     lead, steep = _decline_drivers([(r[2], r[3], r[4]) for r in recs])
     b = []
+    # ★ 전체(상품 거래액)가 플러스인 주(행사 견인)엔 '전체 하락 주도'가 역방향이라,
+    #   전체 방향에 맞춰 라벨을 바꾼다. 빠진 카테고리를 짚는 건 양쪽 다 유효.
+    _tot_delta = sum(r[3] for r in recs)
     if lead:
-        b.append("전체 하락 주도(규모순): " + ", ".join(_fmt_cat(*r) for r in lead))
+        _lbl = "전체 하락 주도(규모순)" if _tot_delta < 0 else "부진 카테고리(규모순)"
+        b.append(f"{_lbl}: " + ", ".join(_fmt_cat(*r) for r in lead))
     if steep:
         b.append("급락 신호(소규모): " + _fmt_cat(*steep))
     own = [r for r in recs if r[0] in OWN]
