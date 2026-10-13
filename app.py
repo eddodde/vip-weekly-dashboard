@@ -1368,8 +1368,8 @@ def chart_monthly():
     fc = forecast_month(cm, cd) if cm else None
     if fc and not fc.get("unavailable"):          # 추정 불가(전년 결손 과다)면 마커 자체를 그리지 않음
         ht = (f"{cm}월 예상마감 {fc['daily']/1e6:,.0f}백만<br>"
-              f"근거: {cm}/1~{cd} 실적 + 잔여 {fc['rem']}일 전년 동월 실적×최근 6주 수준차"
-              f"(명절·행사 양년 상쇄)"
+              f"근거: {cm}/1~{cd} 실적 + 잔여 {fc['rem']}일을 올해 현 run-rate"
+              f"(당월 일별 중앙값, 피크 스파이크 제외)로 투영"
               + (f"<br>전년 반복행사: {', '.join(fc['events'][:2])}" if fc["events"] else "")
               + (f"<br>전년 손상 폐기일 {fc['gap']*100:.0f}%는 정상일 평균으로 보정"
                  if fc.get("gap") else "") + "<extra></extra>")
@@ -1564,7 +1564,17 @@ def forecast_month(mo, cutoff):
             _c42 += a; _p42 += b_
     ratio = (_c42 / _p42) if _p42 > 0 else mtd_ratio
     blended = _p42 > 0
-    proj_total = mtd26 + b_rem * ratio
+    # ★ 잔여일 투영: 전년 후반 '절대 수준'을 빌리지 않는다 — 전년이 추석월이면 후반이 명절
+    #   반등으로 비정상 高라(2025 10/12~31=640백만/일), ratio만 보정해도 그걸 그대로 적용해
+    #   과대 투영된다(2026-10: 667백만으로 여전히 높음). 2026은 반대로 월초가 슈퍼위크로 높아
+    #   잔여는 평상시로 '복귀'한다. → 전년 대신 '올해 당월 보유일의 중앙값'(피크 스파이크에
+    #   강건한 현 run-rate)으로 잔여를 채운다. (대가: 전년 반복 대형행사가 잔여에 몰린 달은
+    #   보수적으로 잡힐 수 있으나, 과대보다 과소가 보고 리스크가 작다.)
+    _curv = sorted(v for v in (dv(CUR, mo, d) for d in range(1, cutoff + 1)) if v is not None)
+    _m = len(_curv)
+    rest_level = ((_curv[_m // 2] if _m % 2 else (_curv[_m // 2 - 1] + _curv[_m // 2]) / 2)
+                  if _curv else mtd26 / cutoff)
+    proj_total = mtd26 + (dim - cutoff) * rest_level
     proj_daily = proj_total / dim
     # 전년비는 실제 비교 기준(전년 월 마감 = 달력 총액) 대비로 표기.
     # 기저도 결손 보정본을 써야 분자(보정된 예상치)와 기준이 맞는다.
