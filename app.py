@@ -1757,15 +1757,23 @@ def insight_channel(period):
         rows.append((ch, c - p, (c / tc if tc else 0), yoy(c, p)))
     if not rows:
         return []
-    big = [r for r in rows if r[2] >= 0.05] or rows          # 규모 있는 채널 위주 해석
-    sw = sorted(big, key=lambda r: r[1])
-    worst = min(rows, key=lambda r: r[1])
-    lift = sw[-1]
-    b = [f"거래액이 가장 많이 빠진 채널은 <b>{worst[0]}</b>(비중 {worst[2]*100:.0f}%) — {worst[1]/1e6:+,.0f}백만, {_pct(worst[3])}"]
-    sec = [r for r in sw if r[1] < 0 and r[0] != worst[0]]
-    b.append((f"큰 채널 중 {sec[0][0]}({_pct(sec[0][3])})도 부진, " if sec else "")
-             + f"<b>{lift[0]}</b>(비중 {lift[2]*100:.0f}%, {_pct(lift[3])})는 그나마 선방")
-    b.append(f'<span class="imp">→ 비중 큰 {worst[0]}부터 살려야 전체가 반등</span>')
+    # ★ worst/lift는 '비중 5%+' 채널에서만 고른다 — 비중 1% 제휴 같은 소규모가 delta 최소로
+    #   잡혀 '비중 큰 제휴' 같은 모순이 나던 버그 수정. 또 거래액이 전 채널 플러스인 주
+    #   (행사 견인)엔 '가장 많이 빠진/살려야' 문구가 역방향이라, 방향에 맞춰 분기한다.
+    big = [r for r in rows if r[2] >= 0.05] or rows
+    sw = sorted(big, key=lambda r: r[1])                     # delta 오름차순
+    worst, lift = sw[0], sw[-1]
+    if worst[1] < 0:                                         # 실제로 빠진 '비중 있는' 채널이 있을 때
+        b = [f"거래액이 가장 많이 빠진 채널은 <b>{worst[0]}</b>(비중 {worst[2]*100:.0f}%) — "
+             f"{worst[1]/1e6:+,.0f}백만, {_pct(worst[3])}"]
+        sec = [r for r in sw if r[1] < 0 and r[0] != worst[0]]
+        b.append((f"{sec[0][0]}({_pct(sec[0][3])})도 부진, " if sec else "")
+                 + f"<b>{lift[0]}</b>(비중 {lift[2]*100:.0f}%, {_pct(lift[3])})는 그나마 선방")
+        b.append(f'<span class="imp">→ 비중 큰 {worst[0]}부터 살려야 전체가 반등</span>')
+    else:                                                   # 비중 있는 채널이 전부 플러스(행사 견인)
+        b = [f"비중 있는 채널은 전반 플러스 — 최대 견인 <b>{lift[0]}</b>"
+             f"(비중 {lift[2]*100:.0f}%, {_pct(lift[3])}), 최저도 {worst[0]}({_pct(worst[3])})",
+             '<span class="imp">→ 전 채널 플러스는 행사 견인 — 방문·구조는 하단 진단 참조</span>']
     return b
 
 
