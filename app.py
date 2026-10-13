@@ -2626,9 +2626,11 @@ LEVERS = [
         #   09월 편성(닥스ACC·아떼ACC 등)은 그 주 한정이라 폐기. 10월엔 유입율이 전년
         #   수준(+0.3%)으로 회복돼, 이 레버는 '역신장 회수'가 아니라 '편성 위 유지·전환'이다.
         ("고관여 브랜드 라이브 모수 확대", "금주 편성 헤지스 여성·골프 · VIP 라이브 반응율 9.01%",
-         _imp(("역신장 축소", "0.54%p", True),
+         _imp(("유입 기여(상한)", "0.54%p", True),
               ("DAU", "+103명/일", False),
-              ("거래액", "+4,728,000원", False),
+              ("순증(가정)", "약 +52명/일 · 0.27%p", False),
+              ("", "순증률 50% · 자연 방문·라이브 기본발송 중복 제외", False),
+              ("거래액(상한)", "+4,728,000원", False),
               ("", "헤지스여성 순증 8,000 기준(골프 가산 별도)", False),
               ("준거", "VIP 라이브 발송 유입 9.01%", False)), [
             "── 금주 라이브 편성 (VIP 브랜드 거래액, 10월 ~11일 누적) ──",
@@ -2655,9 +2657,11 @@ LEVERS = [
         #   (신장율만 보지 말 것 — 사용자 지적). 수입메가세일(2BPU)·라이브(헤지스)와 겹치지
         #   않는 국내 1BPU 최대 볼륨 닥스여성. 준거는 '시크릿' 반응율(10월 실측 7.4%).
         ("닥스 여성 VIP 시크릿", "닥스여성 VIP시크릿 10월 실측 유입 7.4%",
-         _imp(("역신장 축소", "0.50%p", True),
+         _imp(("유입 기여(상한)", "0.50%p", True),
               ("DAU", "+95명/일", False),
-              ("거래액", "+6,957,000원", False),
+              ("순증(가정)", "약 +48명/일 · 0.25%p", False),
+              ("", "순증률 50% · 자연 방문 제외", False),
+              ("거래액(상한)", "+6,957,000원", False),
               ("", "모수 9,000 기준(상위등급 fresh)", False),
               ("준거", "VIP 닥스여성 시크릿 유입 7.4%", False)), [
             "── 브랜드 선정 (1BPU=e-영업1 거래액, ~10/11, 볼륨 우선) ──",
@@ -2995,6 +2999,14 @@ def _dt_card(cls, chip, title, mets, tips):
 LEVER_NOTE = ('<div class="dt-fix">현황·요약 카드는 <b>선택 기간 기준</b>입니다. '
               '단 아래 <b>레버의 브랜드 편성·문자 견인치</b>는 작성 기준(10월 3주차 라이브 편성·~10/11 실측) 값입니다</div>')
 
+# ★ 레버 기여는 '도달 유입(gross)'이지 순증이 아니다 — VIP는 활성층이라 상당수가 문자
+#   없이도 방문하고(자연 방문), 라이브 기본 발송·타 액션과 대상이 겹친다. 그래서 그대로
+#   합산하면 과대계상된다(사용자 지적). 보고용 '실질'은 gross에 순증률과 액션 간 중복
+#   할인을 적용해 산출한다. 정확한 순증은 라이브 기본발송 중복·대상 교집합 실측이 있어야
+#   하므로, 아래 둘은 명시한 '가정'이다(사용자 선택: 순증률 가정 + 중복 할인).
+LEVER_INCREMENTALITY = 0.50   # 도달 유입 중 순증으로 보는 비율(자연 방문·기본발송 중복 제외)
+LEVER_CROSS_OVERLAP = 0.20    # 같은 상위등급 VIP를 공유하는 액션 간 중복 할인
+
 
 def _dt_done(focus, mode="wtd"):
     """LEVEL-V 상단 현황·실행 결과. 레버와 같은 행 구조로 가로로 나란히 둔다.
@@ -3022,7 +3034,7 @@ def _dt_levers(focus, v, mode="wtd"):
         for t, d, imp, tips in items:
             tip = "&#10;".join(f"· {x}" for x in tips)
             got = imp(v) if imp else None
-            if got and got[0][0].startswith("역신장"):
+            if got and "%p" in str(got[0][1]):     # 첫 행 '유입 기여(상한) X.XX%p'
                 try:
                     sum_pp += float(got[0][1].replace("%p", "").replace("+", "").strip())
                 except ValueError:
@@ -3038,11 +3050,14 @@ def _dt_levers(focus, v, mode="wtd"):
         dau = v.get("dau")
         if key == "visit" and sum_pp > 0 and dau and dau[1] is not None:
             cur = dau[1] * 100
-            tgt = cur + sum_pp
+            net_pp = sum_pp * LEVER_INCREMENTALITY * (1 - LEVER_CROSS_OVERLAP)  # 순증·중복 반영
             f = lambda x: (f"△{abs(x):.2f}%" if x < 0 else f"+{x:.2f}%")   # noqa: E731
-            head = (f'<div class="dt-levhead">아래 액션 합산 시 '
-                    f'<b>방문(DAU) 전년비 {f(cur)} → {f(tgt)}</b> '
-                    f'(역신장 {sum_pp:.2f}%p 해소, 중복 전 상한)</div>')
+            head = (f'<div class="dt-levhead">아래 액션 — 유입 상한 +{sum_pp:.2f}%p, '
+                    f'순증·중복 반영 <b>실질 +{net_pp:.2f}%p</b> → '
+                    f'<b>방문(DAU) 전년비 {f(cur)} → {f(cur + net_pp)}</b>'
+                    f'<span style="color:#7a8aa3;font-weight:400"> '
+                    f'(순증률 {LEVER_INCREMENTALITY*100:.0f}% × 중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}%, '
+                    f'가정 — 정확 순증은 대상 교집합 실측 필요)</span></div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>{head}'
                     f'<div class="dt-levrow">{"".join(cards)}</div></div>')
     lev = (LEVER_NOTE + "".join(grps)) if grps else ""
