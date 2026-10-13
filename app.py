@@ -1666,8 +1666,14 @@ def insight_month(mo, cutoff, is_cur, unit_label):
             b.insert(1, f"<b>전월비</b> 거래액 <b>{_pct(mom)}</b> "
                         f"<span style='color:#93a0b3'>({CUR}년 {mo-1}월 1~{cutoff}일 대비 · 위는 전년비)</span>")
     if is_cur:
-        # DAU 3개월 추세만 자동 표기. (회원번호별 방문일수 분해는 외부 추출본이 필요해
-        #  최신 월 데이터 확보 시에만 별도 반영 — 과거월 수치를 그대로 붙이면 오독 유발)
+        fc = forecast_month(mo, cutoff)
+        # ★ 당월 전년비가 '명절·대형행사 이동'으로 왜곡됐는지 판정 — MTD 거래액 전년비 vs
+        #   기저 보정(최근 42일 같은 날짜 수준차 = fc.ratio)이 크게 벌어지면 '착시'로 본다.
+        #   (2026-10: MTD +43% vs 보정 +5% → 착시). 정상월은 둘이 비슷해 결론을 그대로 둔다.
+        _smtd = g("일평균거래액")
+        _base = (fc["ratio"] - 1) if (fc and fc.get("ratio")) else None
+        _distort = (_smtd is not None and _base is not None and (_smtd - _base) > 0.10)
+        # DAU 3개월 추세만 자동 표기. 단 착시 구간이면 '축소 흐름' 단정 금지(최근 월 반등은 명절 착시).
         dseq = []
         for k in (2, 1, 0):
             m2 = mo - k
@@ -1679,15 +1685,20 @@ def insight_month(mo, cutoff, is_cur, unit_label):
                 dseq.append((m2, d))
         if b and len(dseq) >= 2:
             trend = " → ".join(f"{m}월 {_pct(d)}" for m, d in dseq)
-            improving = dseq[-1][1] > dseq[0][1]
-            b.insert(max(len(b) - 1, 0),
-                     f"<b>DAU 추세</b>({trend}) — "
-                     + ("역신장폭 축소 흐름" if improving else "역신장폭 확대 흐름"))
-        fc = forecast_month(mo, cutoff)
+            tail = ("최근 월 반등은 명절·행사 배치 착시 — 추세로 보지 말 것(기저 보정은 역신장)"
+                    if _distort else
+                    ("역신장폭 축소 흐름" if dseq[-1][1] > dseq[0][1] else "역신장폭 확대 흐름"))
+            b.insert(max(len(b) - 1, 0), f"<b>DAU 추세</b>({trend}) — {tail}")
         if fc and fc["yoy"] is not None:
-            evtxt = f" (잔여기간 {', '.join(fc['events'][:2])} 등 전년 반복 행사 포함)" if fc["events"] else ""
+            evtxt = (f" (잔여기간 {', '.join(fc['events'][:2])} 예정 · 올해 현 run-rate로 투영)"
+                     if fc["events"] else " (잔여는 올해 현 run-rate로 투영)")
             b.insert(len(b) - 1, f"<b>{mo}월 예상 마감</b> 일평균 <b>{fc['daily']/1e6:,.0f}백만</b>"
                                  f"(전년비 {_pct(fc['yoy'])}, 월 거래액 약 {fc['total']/1e8:,.0f}억){evtxt}")
+        # ★ 결론 교체 — 착시면 '전 지표 개선/상승세'로 끝내지 않는다(사용자 지적).
+        if _distort and b:
+            b[-1] = ('<span class="imp">→ <b>전 지표 플러스는 추석(전년 10월)·슈퍼위크(올해 10월) '
+                     f'배치 착시</b> — 명절·행사 보정 시 거래액 약 {_base*100:+.0f}%, '
+                     '방문(유입율)은 역신장. 상승세가 아니라 캘린더 효과(하단 구조 진단 참조)</span>')
     return b
 
 
