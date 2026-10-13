@@ -2346,6 +2346,17 @@ if not df[df.perspective == "product"].empty:
     if _p6_short and len(pwk_all) >= 2:
         _sel6 = pwk_all[-2]
     if sel:
+        # ★ 상품관점은 전체관점과 별도 파일이라 재적재가 늦으면 이 섹션만 뒤처진다
+        #   (2026-10: 전체관점 10월 2주차인데 상품관점은 09월 2주차가 마지막). 가용 최신 주를
+        #   자동으로 쓰되, 전체관점 최신 완료주보다 뒤면 눈에 띄게 경고를 단다.
+        _ov_latest = wk_all_closed[-1] if wk_all_closed else None
+        if _ov_latest and sel != _ov_latest:
+            st.markdown(
+                "<div style='font-size:12px;color:#8a6d3b;background:#fdf3e3;border-left:3px solid "
+                "#e0b84c;padding:6px 12px;border-radius:4px;margin:2px 0 6px'>⚠️ <b>상품관점(상품별) "
+                "데이터 미갱신</b> — 전체관점은 <b>" + week_pretty(_ov_latest) + "</b>까지인데 상품관점은 "
+                "<b>" + week_pretty(sel) + "</b>가 마지막입니다. ‘상품관점 - 주별 실적’ 최신 파일 반영 시 "
+                "갱신됩니다(이 섹션만 뒤처짐)</div>", unsafe_allow_html=True)
         _b6 = insight_product(_sel6)           # 상단 전체 요약(파란 박스)
         if _p6_short and _sel6 != sel and _b6:
             _b6 = _b6 + ['<span style="color:#93a0b3">'
