@@ -1702,7 +1702,7 @@ def insight_month(mo, cutoff, is_cur, unit_label):
     return b
 
 
-def insight_dau(period):
+def insight_dau(period, distort=False):
     """'DAU 견인 필요'(누구나 아는 얘기)를 넘어: 지속성·주도 채널·행사 무관 구조성까지."""
     rows = []
     for _, ch in CH_ROWS[1:]:
@@ -1734,14 +1734,20 @@ def insight_dau(period):
     except ValueError:
         pass
     _delta = ((_cur - sum(_hist) / len(_hist)) * 100) if (_cur is not None and len(_hist) >= 2) else None
-    if _delta is not None and _delta >= 1.0:
+    if _delta is not None and _delta >= 1.0 and not distort:
         b = [f"DAU {_pct(_cur)} — {cons}주 연속 전년 하회이나 <b>직전 4주 대비 낙폭 {_delta:+.1f}%p 축소</b>. "
              f"감소는 <b>{worst[0]} 채널</b>에 집중({_pct(worst[2])})"]
         b.append('<span class="imp">→ 회복 흐름 유지가 관건 — 재방문 유도 발송을 이어가되 '
                  '<b>평상시 방문</b>(안 오던 VIP 다시 부르기) 전환까지 확장</span>')
     else:
-        b = [f"DAU가 <b>{cons}주 연속</b> 전년보다 낮음(잠깐이 아니라 계속되는 하락) — "
-             f"특히 <b>{worst[0]} 채널</b>에서 많이 빠짐({_pct(worst[2])})"]
+        # ★ 착시 구간이면 '최근 낙폭 축소'를 회복으로 읽지 않는다 — 추석·슈퍼위크 배치 효과다.
+        if distort and _delta is not None and _delta >= 1.0:
+            b = [f"DAU {_pct(_cur)} — <b>{cons}주 연속 전년 하회</b>. 최근 낙폭 축소(직전 4주 대비 "
+                 f"{_delta:+.1f}%p)는 <b>추석·슈퍼위크 배치 착시</b>(기저 보정은 역신장) — "
+                 f"특히 <b>{worst[0]} 채널</b>({_pct(worst[2])})"]
+        else:
+            b = [f"DAU가 <b>{cons}주 연속</b> 전년보다 낮음(잠깐이 아니라 계속되는 하락) — "
+                 f"특히 <b>{worst[0]} 채널</b>에서 많이 빠짐({_pct(worst[2])})"]
         b.append('<span class="imp">→ 행사 때 잠깐 오는 방문이 아니라 <b>평상시 방문</b>(안 오던 VIP 다시 부르기·앱 재방문) 회복이 핵심</span>')
     return b
 
@@ -1917,6 +1923,11 @@ def final_direction(wk_all, cur_mo, cutoff):
     buf = [k for k in ("DAU", "CR", "객단가") if comp.get(k, 0) > 0]
     # 즉효(전술) 레버 = 전환(CR): 행사 고트래픽 위에서 단기에 움직임 / 구조 레버 = 방문(DAU)
     tactical = "CR" if (cr is not None and cr < 0) else None
+    # ★ 명절·행사 착시 판정 — 주간 거래액 전년비 vs 기저 보정(최근 42일 수준차=fc.ratio)이
+    #   10%p+ 벌어지면 '최근 반등/낙폭 축소'를 회복으로 읽지 않는다(추석·슈퍼위크 배치 효과).
+    _fc = forecast_month(cur_mo, cutoff) if (cur_mo and cutoff) else None
+    _base_pp = ((_fc["ratio"] - 1) * 100) if (_fc and _fc.get("ratio")) else None
+    _distort = (sales is not None and _base_pp is not None and (sales * 100 - _base_pp) > 10.0)
 
     # 지표별 '최근 흐름' 판정: 직전 4주 전년비 평균과 비교해 개선/악화를 구분.
     # (음수라도 낙폭이 크게 줄었으면 '부진'이 아니라 '개선 중'으로 읽어야 함)
@@ -1940,7 +1951,8 @@ def final_direction(wk_all, cur_mo, cutoff):
     diag, now, nxt = [], [], []
     # 진단: 퍼널 어디가 새는지 + 최근 개선/악화 흐름
     if sales is not None:
-        _improving = [k for k in drags if (_trend(k) or 0) >= 1.0]     # 낙폭 1%p 이상 축소
+        # 착시 구간이면 '직전 4주 대비 개선'으로 읽지 않는다(최근 반등이 명절·행사 배치 효과).
+        _improving = [k for k in drags if (_trend(k) or 0) >= 1.0 and not _distort]
         _worsening = [k for k in drags if k not in _improving]
         parts = []
         if _worsening:
@@ -1953,7 +1965,11 @@ def final_direction(wk_all, cur_mo, cutoff):
             parts.append(", ".join(f"{k}({_pct(comp[k])})" for k in buf) + "는 상방 기여")
         diag.append(f"거래액 <b>{_pct(sales)}</b> = " + "; ".join(parts) if parts else
                     f"거래액 <b>{_pct(sales)}</b>")
-    diag += insight_dau(period)     # DAU 지속성·주도채널·평상시 방문
+        if _distort and _base_pp is not None:
+            diag.append('<span class="imp">※ 단 이 전년비는 <b>추석(전년 10월)·슈퍼위크(올해 10월) '
+                        f'배치 착시</b> — 기저 보정 시 거래액 약 {_base_pp:+.0f}%, 방문(유입율)은 역신장'
+                        '(하단 구조 진단 참조)</span>')
+    diag += insight_dau(period, _distort)     # DAU 지속성·주도채널·평상시 방문
     # 금주 액션(진행중): 전환(CR)을 최우선으로
     if tactical and (ip or ge):
         now.append(f"<b>{cur_nm} 기간 전환(CR) 화력 집중</b> — {DRIVER_ACTION['CR']} "
@@ -2002,7 +2018,7 @@ def final_direction(wk_all, cur_mo, cutoff):
                    f"(절반만 잡아도 {_pct(half)}) — 방문 회복(구조)은 다음 분기 과제로 병행")
     if ce:
         nxt.append(f"이후 <b>{ce[0]}</b>({ce[1].month}/{ce[1].day}) 전관행사가 이어져 반등 흐름 연장 가능")
-    nxt.append("중기: 방문(DAU) 구조 회복 — 직접/앱 재방문 프로그램으로 상시 트래픽 복원")
+    nxt.append("중기: 방문(DAU) 구조 역신장 과제 — 직접/앱 재방문 프로그램으로 상시 트래픽 복원")
 
     # 헤드라인: 어디가 새고, 이번 주 무엇을 당길지(비자명한 우선순위)
     head = ""
@@ -2018,8 +2034,11 @@ def final_direction(wk_all, cur_mo, cutoff):
                 lead = (f"지난주 {_pct(sales)}는 <span class='k'>방문·전환 동반 부진</span> — 방문(DAU)은 구조적이라 오래 걸림")
             head = (lead + f" → 이번 주 <span class='k'>{evnm_t} 고트래픽에서 '전환(CR)'을 끌어올리는 것</span>이 즉효 레버"
                     f"(작년 전환율 회복 시 <span class='k'>{_pct(sales)}→{_pct(scen)}</span>)")
+        elif _distort:
+            head = (f"지난주 거래액 {_pct(sales)}는 <span class='k'>추석·슈퍼위크 배치 착시</span> — "
+                    "기저 보정 시 방문(DAU) <span class='k'>구조 역신장</span>이 근본 과제")
         else:
-            head = f"지난주 거래액 {_pct(sales)} — 방문(DAU) 구조 회복이 근본 과제"
+            head = f"지난주 거래액 {_pct(sales)} — 방문(DAU) 구조 역신장이 근본 과제"
     return head, diag, now, nxt
 
 
