@@ -906,8 +906,9 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-tgt{font-size:10px;font-weight:700;color:#1f5fbf;letter-spacing:.02em;}
 /* 그룹 통합 효과 — 액션 박스 위에 '이 액션들로 역신장 △X→△Y' 한 줄. 보고 두괄식. */
 .dt-levhead{font-size:11px;color:#14203a;background:#eaf1fb;border:1px solid #cfe0f6;
-  border-radius:5px;padding:5px 9px;margin:1px 0 3px;line-height:1.45;}
+  border-radius:5px;padding:6px 9px;margin:1px 0 3px;line-height:1.5;}
 .dt-levhead b{color:#1f5fbf;}
+.dt-lh-sub{display:block;margin-top:3px;font-size:10px;font-weight:400;color:#7a8aa3;}
 .dt-lev{width:250px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
   border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}
 .dt-lev b{font-size:11.5px;color:#14203a;display:block;}
@@ -3053,11 +3054,11 @@ def _dt_levers(focus, v, mode="wtd"):
             net_pp = sum_pp * LEVER_INCREMENTALITY * (1 - LEVER_CROSS_OVERLAP)  # 순증·중복 반영
             f = lambda x: (f"△{abs(x):.2f}%" if x < 0 else f"+{x:.2f}%")   # noqa: E731
             head = (f'<div class="dt-levhead">아래 액션 — 유입 상한 +{sum_pp:.2f}%p, '
-                    f'순증·중복 반영 <b>실질 +{net_pp:.2f}%p</b> → '
-                    f'<b>방문(DAU) 전년비 {f(cur)} → {f(cur + net_pp)}</b>'
-                    f'<span style="color:#7a8aa3;font-weight:400"> '
-                    f'(순증률 {LEVER_INCREMENTALITY*100:.0f}% × 중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}%, '
-                    f'가정 — 정확 순증은 대상 교집합 실측 필요)</span></div>')
+                    f'순증·중복 반영 <b>실질 +{net_pp:.2f}%p</b><br>'
+                    f'→ <b>방문(DAU) 전년비 {f(cur)} → {f(cur + net_pp)}</b>'
+                    f'<span class="dt-lh-sub">순증률 {LEVER_INCREMENTALITY*100:.0f}% × '
+                    f'중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
+                    f'정확 순증은 대상 교집합 실측 필요</span></div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>{head}'
                     f'<div class="dt-levrow">{"".join(cards)}</div></div>')
     lev = (LEVER_NOTE + "".join(grps)) if grps else ""
