@@ -1601,20 +1601,38 @@ def insight_trend(wk_all):
     if fr:
         icon = "✅ 전년비 공정" if fr[0] == "fair" else "⚠️ 전년비 주의"
         b.append(f'<span style="color:#5b6472"><b>{icon}</b> — {fr[1]}</span>')
+    # ★ 작년 '차주 반등'은 작년 그 주에 전관행사가 있었기 때문일 수 있다. 올해 금주에 같은
+    #   동력(전관행사)이 없으면 그 반등은 재현되지 않으므로, 금주에 행사가 걸쳐 있는지 먼저 본다.
+    _ld = last_daily_date()
+    _wend = (_ld + datetime.timedelta(days=6 - _ld.weekday())) if _ld else None   # 금주 일요일
+    _geum_evt = None
+    if _wend:
+        for _o in sorted(event_occurrences(CUR, only_major=True), key=lambda o: o[0]):
+            if _o[0] <= _wend and sell_end(_o[0], _o[1]) >= _ld:   # 금주에 진행/예정인 전관행사
+                _geum_evt = _o
+                break
     if geum:
         a, c = _wk_sales(PREV, period), _wk_sales(PREV, geum)   # 전년 지난주, 전년 금주(동주)
         seas = yoy(c, a)
         if a and c and seas is not None:
-            b.append(f"작년 같은 시기엔 {week_pretty(period)}→{week_pretty(geum)} "
-                     f"{a/1e6:,.0f}→{c/1e6:,.0f}백만(<b>{_pct(seas)}</b>)로 {'올랐음' if seas > 0 else '내렸음'} "
-                     f'→ <span class="imp">올해 <b>금주({week_pretty(geum)})</b>도 '
-                     f'{"반등 기대" if seas > 0 else "약세 이어질 수 있어 방어 필요"}</span>')
+            _bb = (f"작년 같은 시기엔 {week_pretty(period)}→{week_pretty(geum)} "
+                   f"{a/1e6:,.0f}→{c/1e6:,.0f}백만(<b>{_pct(seas)}</b>)로 {'올랐음' if seas > 0 else '내렸음'}")
+            if seas > 0 and not _geum_evt:
+                # 작년 반등은 행사 효과인데 올해 금주엔 전관행사가 없다 → 반등 기대 금물
+                b.append(_bb + ' — 단 <span class="imp">그 반등은 <b>작년 그 주 전관행사</b>(슈퍼위크 등) '
+                         '효과이고, 올해 금주엔 전관행사가 없어 같은 반등은 기대하기 어렵다</span>')
+            elif seas > 0:
+                b.append(_bb + f' → <span class="imp">올해 <b>금주({week_pretty(geum)})</b>도 '
+                         f'반등 기대(금주 <b>{_geum_evt[2]}</b> 동력)</span>')
+            else:
+                b.append(_bb + ' → <span class="imp">올해 금주도 약세 이어질 수 있어 방어 필요</span>')
     up = upcoming_major(last_daily_date(), horizon=10)
     if up:
         nm, ed = up[0]
+        _when = "금주" if (_wend and ed <= _wend) else "차주"   # 금주 일요일 지나 시작하면 차주
         lift = event_prior_lift(nm, ed)
         liftxt = f" (작년 이 행사 때 거래액 직전주보다 <b>{_pct(lift)}</b>)" if lift is not None else ""
-        b.append(f"<b>금주 {nm}</b>({ed.month}/{ed.day} 진행) 예정{liftxt} "
+        b.append(f"<b>{_when} {nm}</b>({ed.month}/{ed.day} 진행) 예정{liftxt} "
                  f'→ <span class="imp">행사 효과로 반등 유도, 사전 알림·고관여 타겟팅</span>')
     return b
 
