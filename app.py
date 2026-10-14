@@ -2443,9 +2443,26 @@ if not df[df.perspective == "product"].empty:
                 "갱신됩니다(이 섹션만 뒤처짐)</div>", unsafe_allow_html=True)
         _b6 = insight_product(_sel6)           # 상단 전체 요약(파란 박스)
         if _p6_short and _sel6 != sel and _b6:
-            _b6 = _b6 + ['<span style="color:#93a0b3">'
+            # ★ 이번주(진행주, 2일치) 자사 카테고리 움직임을 '일마감(week_wtd, 양년 같은 경과일)'으로
+            #   한 줄 넣는다 — 마감(직전주)만 보면 금주 상품 트렌드가 비어, 금주 상품 액션 근거가 없다.
+            _p6r = []
+            for _ye in OWN:
+                for _ca in CATS_ORDER:
+                    _cc = V("week_wtd", "product", SALES, _ye, _ca, CUR, sel)
+                    _pp = V("week_wtd", "product", SALES, _ye, _ca, PREV, sel)
+                    if _cc is not None and _pp is not None:
+                        _p6r.append((f"영업{_ye[-1]} {_ca}", _cc - _pp, yoy(_cc, _pp)))
+            _thisln = None
+            if _p6r:
+                _p6r.sort(key=lambda r: r[1])
+                _w6, _best6 = _p6r[0], max(_p6r, key=lambda r: r[1])
+                _thisln = (f'<b>이번주({wk_label(sel)}, {wk_elapsed}일치 진행)</b>: 자사 '
+                           f'<b>{_w6[0]} {_pct(_w6[2])}</b>({_w6[1]/1e6:+,.0f}백만) 하락 주도'
+                           + (f' / <b>{_best6[0]} {_pct(_best6[2])}</b> 선전' if _best6[1] > 0 else '')
+                           + ' <span style="color:#93a0b3">— 2일치 일마감(전년 동기간) 참고용</span>')
+            _b6 = _b6 + ([_thisln] if _thisln else []) + ['<span style="color:#93a0b3">'
                          f'{wk_label(sel)}는 {wk_elapsed}일치라 전년 동주(7일) 대비 왜곡이 커, '
-                         f'이 섹션(인사이트·표)은 <b>마감 기준({week_pretty(_sel6)})</b>입니다</span>']
+                         f'아래 인사이트·표는 <b>마감 기준({week_pretty(_sel6)})</b>입니다</span>']
         elif wk_partial and sel == latest_wk and _b6:
             _b6 = ['<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
                    'font-weight:600;margin-right:6px">진행중</span>'
