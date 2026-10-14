@@ -3200,6 +3200,24 @@ def _dt_levers(focus, v, mode="wtd"):
                     f'<span class="dt-lh-sub">순증률 {LEVER_INCREMENTALITY*100:.0f}% × '
                     f'중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
                     f'정확 순증은 대상 교집합 실측 필요</span></div>')
+        # 전환(cr) 그룹도 같은 양식의 두괄식 헤더. 단 유입율처럼 %p를 더하지 않는다 —
+        # 두 카드(혜택 미사용=전사 CR 갭, 직접 리타겟=직접 채널 CR 갭)는 같은 갭을
+        # 범위만 달리 본 것이라 더하면 중복이다. 헤더엔 '전사 CR 갭 상한'만 싣고,
+        # 직접 채널이 그 갭의 최대 집중처임을 보조로 붙인다. 수치는 v에서 즉석 계산.
+        elif key == "cr":
+            cr, aov = v.get("cr"), v.get("aov")
+            if cr and dau and aov and None not in (cr[0], cr[1], dau[0], aov[0]) \
+                    and -1 < cr[1] < 0:
+                prev = cr[0] / (1 + cr[1])
+                if prev > cr[0]:
+                    wk = (prev - cr[0]) * dau[0] * aov[0] * 7
+                    cu = (prev - cr[0]) * dau[0]
+                    head = (f'<div class="dt-levhead">아래 액션 — 전환 CR 전년 수준 회복 시 '
+                            f'<b>상한 주간 +{wk:,.0f}원</b> · 구매고객 +{cu:,.0f}명/일<br>'
+                            f'→ <b>CR 전년비 △{abs(cr[1]*100):.1f}% → 0% (상한)</b>'
+                            f'<span class="dt-lh-sub">두 카드는 같은 CR 갭을 전사·직접 '
+                            f'범위로 나눠 본 것 — 합산하지 않음. 직접 채널이 갭의 '
+                            f'최대 집중처(+75명/일)</span></div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>{head}'
                     f'<div class="dt-levrow">{"".join(cards)}</div></div>')
     lev = (LEVER_NOTE + "".join(grps)) if grps else ""
