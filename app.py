@@ -2269,42 +2269,45 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
     #   정적이며 창 라벨로 기준을 밝힌다(데이터가 넓어지면 창을 늘려 재산출).
     # ★ 다각도 실적 비교 표(정적 — 명절·행사 보정은 외부 창 계산, 작성 기준 10/13).
     #   전년비 하나로 판단하지 않도록 ①슈퍼위크 대비 ②월 누계(추석 제거) ③이번주 흐름을 한 표에.
-    ("<table style='border-collapse:collapse;font-size:11px;margin:3px 0 4px;color:#5b4a32'>"
-     "<tr style='color:#9a855a'><td style='padding:1px 0'></td>"
-     "<td style='padding:1px 18px;text-align:right'>거래액</td>"
-     "<td style='padding:1px 0;text-align:right'>방문(DAU)</td></tr>"
-     "<tr><td style='padding:1px 0'>① 전년 슈퍼위크 대비(10/5~11 vs 전년 10/17~23)</td>"
-     "<td style='text-align:right;color:#c0392b'>△9.0%</td>"
-     "<td style='text-align:right;color:#c0392b'>△10.9%</td></tr>"
-     "<tr><td colspan='3' style='padding:3px 0 1px'><b>② 10월 월 누계 — 전년 추석 효과 제거</b></td></tr>"
-     "<tr><td style='padding:1px 0 1px 10px'>· 추석 보정 합산(9/1~10/13)</td>"
-     "<td style='text-align:right;color:#1f5fbf'>+4.0%</td>"
-     "<td style='text-align:right;color:#c0392b'>△5.9%</td></tr>"
-     "<tr><td style='padding:1px 0 1px 10px'>· 전년 추석 종료 후(10/10~13)</td>"
-     "<td style='text-align:right;color:#c0392b'>△6.7%</td>"
-     "<td style='text-align:right;color:#c0392b'>△9.7%</td></tr>"
-     "<tr><td style='padding:1px 0'>③ 이번주 2일(10/12~13, 슈퍼위크 후)</td>"
-     "<td style='text-align:right;color:#c0392b'>△21.0%</td>"
-     "<td style='text-align:right;color:#c0392b'>△9.6%</td></tr>"
-     "<tr style='color:#93a0b3'><td style='padding:1px 0'>(참고) 표면 MTD(10/1~13, 전년 추석 포함)</td>"
-     "<td style='text-align:right'>+30.8%</td><td style='text-align:right'>△0.4%</td></tr>"
+    ("<table style='border-collapse:collapse;font-size:11.5px;color:#5b4a32;margin:2px 0 4px;"
+     "line-height:1.3'>"
+     "<tr style='color:#9a855a;border-bottom:1px solid #e3d3a6'>"
+     "<td style='padding:3px 0 5px'></td>"
+     "<td style='padding:3px 16px 5px;text-align:right'>거래액</td>"
+     "<td style='padding:3px 0 5px;text-align:right'>방문(DAU)</td></tr>"
+     "<tr><td style='padding:4px 28px 4px 0'>① 전년 슈퍼위크 대비 "
+     "<span style='color:#a99a7a'>(10/5~11 vs 전년 10/17~23)</span></td>"
+     "<td style='padding:4px 16px;text-align:right;color:#c0392b'>△9.0%</td>"
+     "<td style='padding:4px 0;text-align:right;color:#c0392b'>△10.9%</td></tr>"
+     "<tr><td colspan='3' style='padding:7px 0 1px;font-weight:600'>"
+     "② 10월 월 누계 — 전년 추석 효과 제거</td></tr>"
+     "<tr><td style='padding:3px 0 3px 12px'>· 추석 보정 합산 (9/1~10/13)</td>"
+     "<td style='padding:3px 16px;text-align:right;color:#1f5fbf'>+4.0%</td>"
+     "<td style='padding:3px 0;text-align:right;color:#c0392b'>△5.9%</td></tr>"
+     "<tr><td style='padding:3px 0 3px 12px'>· 전년 추석 종료 후 (10/10~13)</td>"
+     "<td style='padding:3px 16px;text-align:right;color:#c0392b'>△6.7%</td>"
+     "<td style='padding:3px 0;text-align:right;color:#c0392b'>△9.7%</td></tr>"
+     "<tr><td style='padding:6px 0 4px'>③ 이번주 2일 (10/12~13, 슈퍼위크 후)</td>"
+     "<td style='padding:6px 16px 4px;text-align:right;color:#c0392b'>△21.0%</td>"
+     "<td style='padding:6px 0 4px;text-align:right;color:#c0392b'>△9.6%</td></tr>"
+     "<tr style='color:#a79a7a;border-top:1px solid #efe4c8'>"
+     "<td style='padding:4px 0'>(참고) 표면 MTD (10/1~13, 전년 추석 포함)</td>"
+     "<td style='padding:4px 16px;text-align:right'>+30.8%</td>"
+     "<td style='padding:4px 0;text-align:right'>△0.4%</td></tr>"
      "</table>"
-     "<b>판단:</b> 표면 MTD +30.8%는 전년 추석 착시 — 명절·행사 보정하면 모든 축에서 전년에 "
-     "미달, 방문은 어느 기준이든 △6~11% 역신장. 매출은 객단가가 방어했을 뿐 방문(유입율)은 "
-     "구조적 역신장. <span style='color:#93a0b3'>※ 2025 슈퍼위크 2회(8/29·10/17) 중 10월 건(10/17)과 "
-     "맞비교 · 추석 종료 후는 4일 창이라 안정 기준은 합산 +4.0%</span>"),
+     "<div style='margin-top:6px;line-height:1.5'><b>판단</b> — 표면 +30.8%는 전년 추석 착시입니다. "
+     "보정하면 모든 축에서 전년에 미달하고, 방문은 어느 기준이든 △6~11% 역신장입니다. "
+     "매출은 객단가가 방어했을 뿐 방문(유입율)은 구조적 역신장입니다."
+     "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
+     "※ 2025 슈퍼위크 2회(8/29·10/17) 중 10월 건(10/17)과 맞비교 · "
+     "‘추석 종료 후’는 4일 창이라 안정 기준은 합산 +4.0%</span></div>"),
 ]
-if _dg_ev:
-    _dg_lines.append(_dg_ev.replace("<br>", "", 1))
 _dg_dau = yoy(dmean("DAU", CUR, cur_mo, cutoff), dmean("DAU", PREV, cur_mo, cutoff)) if cur_mo else None
 if _dg_s is not None and _dg_s < 0:
     _dg_lines.append(
         f"· <b>플러스 전환 문턱은 낮음</b> — 거래액 {_pct(_dg_s)}는 객단가({_pct(_dg_a)}) 쿠션이 DAU를 상쇄한 결과로, "
         f"CR({_pct(_dg_cr)})만 전년 수준 회복해도 플러스 전환 가능")
-else:
-    _dg_lines.append(
-        f"· <b>표면 거래액 플러스({_pct(_dg_s)})는 객단가({_pct(_dg_a)}) 의존</b> — "
-        f"단 전년비는 행사·명절 이동으로 왜곡되니 흐름 판단은 위 <b>기저 보정</b> 기준으로")
+# else(표면 거래액 플러스)는 위 다각도 표·판단이 이미 설명하므로 중복 줄을 넣지 않는다.
 _dg_head = (f"🔍 <b>참고 · 구조 진단</b> <span style='color:#a08b5f'>— 지표 자동 갱신(~{cur_mo}/{cutoff})"
             + (f" · 브랜드·등급 교차분석(~{BRAND_ASOF.month}/{BRAND_ASOF.day} 기준) 포함" if _brand_ok else
                f"</span><span style='color:#c0a875'> · 브랜드 분석(~{BRAND_ASOF.month}/{BRAND_ASOF.day})은 "
