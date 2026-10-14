@@ -1691,6 +1691,16 @@ def insight_month(mo, cutoff, is_cur, unit_label):
         _smtd = g("일평균거래액")
         _base = (fc["ratio"] - 1) if (fc and fc.get("ratio")) else None
         _distort = (_smtd is not None and _base is not None and (_smtd - _base) > 0.10)
+        # ★ 착시 구간이면 '전월 대비 변화(CR 등) … 개선'도 실질이 아니다 — 전월(추석 낀 달)과
+        #   당월(슈퍼위크 낀 달)의 배치 차이로 지표가 출렁인 것일 뿐. 해당 줄에 착시 표시.
+        if _distort:
+            for _i in range(len(b)):
+                if "가장 크게 움직임" in b[_i]:
+                    b[_i] = b[_i].replace(
+                        "로 가장 크게 움직임",
+                        "로 가장 크게 움직임 <span style='color:#93a0b3'>— 단 전월(추석)·당월"
+                        "(슈퍼위크) 배치 효과이지 실질 개선 아님(기저 보정 CR △3.7%)</span>")
+                    break
         # DAU 3개월 추세만 자동 표기. 단 착시 구간이면 '축소 흐름' 단정 금지(최근 월 반등은 명절 착시).
         dseq = []
         for k in (2, 1, 0):
