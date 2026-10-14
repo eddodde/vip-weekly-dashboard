@@ -2267,11 +2267,32 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
     # ★ 기저(추석·슈퍼위크) 보정 진단 — 전년비는 추석·슈퍼위크 이동으로 왜곡된다. 양년의
     #   추석·슈퍼위크를 모두 창 안에 넣어 상쇄한 8/29~10/11(41일) 기준. 외부 창 계산이라
     #   정적이며 창 라벨로 기준을 밝힌다(데이터가 넓어지면 창을 늘려 재산출).
-    "· <b>기저(명절) 보정(9/1~10/13 합산) 시 구조는 역신장</b> — 거래액 <b>+4.0%</b>는 "
-    "<b>객단가(+14.3%) 단독 견인</b>,<br>"
-    "&nbsp;&nbsp;방문 <b>△5.9%</b> · 유입율 △5.0% · 전환 △3.7% · 고객수 △9.4% 전부 역신장"
-    "(모수 △1.0% 유지).<br>"
-    "&nbsp;&nbsp;<b>표면 월 누계 +31%는 추석·슈퍼위크 배치 착시</b> — 전년 가을 슈퍼위크 대비도 △9%",
+    # ★ 다각도 실적 비교 표(정적 — 명절·행사 보정은 외부 창 계산, 작성 기준 10/13).
+    #   전년비 하나로 판단하지 않도록 ①슈퍼위크 대비 ②월 누계(추석 제거) ③이번주 흐름을 한 표에.
+    ("<table style='border-collapse:collapse;font-size:11px;margin:3px 0 4px;color:#5b4a32'>"
+     "<tr style='color:#9a855a'><td style='padding:1px 0'></td>"
+     "<td style='padding:1px 18px;text-align:right'>거래액</td>"
+     "<td style='padding:1px 0;text-align:right'>방문(DAU)</td></tr>"
+     "<tr><td style='padding:1px 0'>① 전년 슈퍼위크 대비(10/5~11 vs 전년 10/17~23)</td>"
+     "<td style='text-align:right;color:#c0392b'>△9.0%</td>"
+     "<td style='text-align:right;color:#c0392b'>△10.9%</td></tr>"
+     "<tr><td colspan='3' style='padding:3px 0 1px'><b>② 10월 월 누계 — 전년 추석 효과 제거</b></td></tr>"
+     "<tr><td style='padding:1px 0 1px 10px'>· 추석 보정 합산(9/1~10/13)</td>"
+     "<td style='text-align:right;color:#1f5fbf'>+4.0%</td>"
+     "<td style='text-align:right;color:#c0392b'>△5.9%</td></tr>"
+     "<tr><td style='padding:1px 0 1px 10px'>· 전년 추석 종료 후(10/10~13)</td>"
+     "<td style='text-align:right;color:#c0392b'>△6.7%</td>"
+     "<td style='text-align:right;color:#c0392b'>△9.7%</td></tr>"
+     "<tr><td style='padding:1px 0'>③ 이번주 2일(10/12~13, 슈퍼위크 후)</td>"
+     "<td style='text-align:right;color:#c0392b'>△21.0%</td>"
+     "<td style='text-align:right;color:#c0392b'>△9.6%</td></tr>"
+     "<tr style='color:#93a0b3'><td style='padding:1px 0'>(참고) 표면 MTD(10/1~13, 전년 추석 포함)</td>"
+     "<td style='text-align:right'>+30.8%</td><td style='text-align:right'>△0.4%</td></tr>"
+     "</table>"
+     "<b>판단:</b> 표면 MTD +30.8%는 전년 추석 착시 — 명절·행사 보정하면 모든 축에서 전년에 "
+     "미달, 방문은 어느 기준이든 △6~11% 역신장. 매출은 객단가가 방어했을 뿐 방문(유입율)은 "
+     "구조적 역신장. <span style='color:#93a0b3'>※ 2025 슈퍼위크 2회(8/29·10/17) 중 10월 건(10/17)과 "
+     "맞비교 · 추석 종료 후는 4일 창이라 안정 기준은 합산 +4.0%</span>"),
 ]
 if _dg_ev:
     _dg_lines.append(_dg_ev.replace("<br>", "", 1))
