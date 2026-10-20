@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-10-14-upd1013"
+SEED_CACHE_VER = "2026-10-21-upd1018"
 
 
 @st.cache_data(show_spinner=False)
@@ -3237,7 +3237,7 @@ def _dt_levers(focus, v, mode="wtd"):
                         f'→ <b>전환(CR) 전년비 {f(cur)} → {f(new_yoy)}</b>'
                         f'<span class="dt-lh-sub">발송 1회/주 · 순증률 {LEVER_INCREMENTALITY*100:.0f}% '
                         f'× 중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
-                        f'쿠폰사용유도 +43명·수입메가세일 +36명/발송(실측)</span></div>')
+                        f'실측은 AF코드(세션) 집계라 세션 이탈 후 구매는 제외 — 실제 전환은 상회(하한치)</span></div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>{head}'
                     f'<div class="dt-levrow">{"".join(cards)}</div></div>')
     lev = (LEVER_NOTE + "".join(grps)) if grps else ""
