@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-10-21-upd1018"
+SEED_CACHE_VER = "2026-10-21-upd1020"
 
 
 @st.cache_data(show_spinner=False)
@@ -2353,7 +2353,7 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
      "※ 2025 슈퍼위크 2회(8/29·10/17) 중 10월 건(10/17)과 맞비교 · "
      "마감주(△20.6%)·추석 종료 후(△14.7%)는 올해 슈퍼위크 종료 직후 트로프를 담아 과대 하락 — "
-     "안정 기준은 추석 보정 합산 +0.8%와 baseline(최근 4주 동요일) DAU △7.9%</span></div>"),
+     "안정 기준은 추석 보정 합산 +0.8%와 baseline(최근 4주 동요일) DAU 약 △8%</span></div>"),
 ]
 if _dg_ev:
     _dg_lines.append(_dg_ev.replace("<br>", "", 1))
