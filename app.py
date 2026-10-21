@@ -628,6 +628,18 @@ def baseline_cr(days=28):
     return (c26 / d26, c25 / d25, d26 / n)
 
 
+def _inprog_week():
+    """진행 중인 주 정보 → (경과일 N, 주 pretty 라벨). 주가 완결(7일)이면 None.
+    baseline 커버를 '이번주 주 전체 예상 → 방어 목표 → 주 마감 검증' 서사로 쓰기 위한 것."""
+    hi = last_daily_date()
+    if hi is None:
+        return None
+    n = hi.weekday() + 1          # 월요일 시작 기준 경과일
+    if n >= 7:
+        return None
+    return (n, week_pretty(week_label_of(hi)))
+
+
 # ----------------------------------------------------------------------------- events (가변탭 행사 캘린더)
 EVENTS_CSV = "data/events.csv"
 
@@ -3276,15 +3288,26 @@ def _dt_levers(focus, v, mode="wtd"):
             cur = (_bl if _bl is not None else dau[1]) * 100
             net_pp = sum_pp * LEVER_INCREMENTALITY * (1 - LEVER_CROSS_OVERLAP)  # 순증·중복 반영
             f = lambda x: (f"△{abs(x):.2f}%" if x < 0 else f"+{x:.2f}%")   # noqa: E731
-            _blab = ("방문(DAU) baseline(최근 4주 동요일)" if _bl is not None
-                     else "방문(DAU) 전년비")
+            _ipw = _inprog_week()
+            if _bl is not None and _ipw:
+                _n, _wl = _ipw
+                _arrow = (f'→ <b>{_wl} 방문(DAU) 주 전체 예상(baseline) {f(cur)} '
+                          f'→ 방어 목표 {f(cur + net_pp)}</b>')
+                _sub = (f'baseline = 직전 4주 일평균 DAU ÷ 전년 동요일(−364) = {_wl} 주 전체 예상치 '
+                        f'(진행 {_n}일 실측은 전년 {_n}일 편차·행사 타이밍에 흔들려 기준에서 제외) · '
+                        f'순증률 {LEVER_INCREMENTALITY*100:.0f}%×중복 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
+                        f'주 마감 후 실제가 이 수준이면 예상·방어 성공')
+            else:
+                _blab = ("방문(DAU) baseline(최근 4주 동요일)" if _bl is not None
+                         else "방문(DAU) 전년비")
+                _arrow = f'→ <b>{_blab} {f(cur)} → {f(cur + net_pp)}</b>'
+                _sub = ('기준선 = 직전 4주 일평균 DAU ÷ 전년 동요일(−364) · '
+                        f'순증률 {LEVER_INCREMENTALITY*100:.0f}% × '
+                        f'중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
+                        '정확 순증은 대상 교집합 실측 필요')
             head = (f'<div class="dt-levhead">아래 액션 — 유입 상한 +{sum_pp:.2f}%p, '
                     f'순증·중복 반영 <b>실질 +{net_pp:.2f}%p</b><br>'
-                    f'→ <b>{_blab} {f(cur)} → {f(cur + net_pp)}</b>'
-                    f'<span class="dt-lh-sub">기준선 = 직전 4주 일평균 DAU ÷ 전년 동요일(−364) · '
-                    f'순증률 {LEVER_INCREMENTALITY*100:.0f}% × '
-                    f'중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
-                    f'정확 순증은 대상 교집합 실측 필요</span></div>')
+                    f'{_arrow}<span class="dt-lh-sub">{_sub}</span></div>')
         # 전환(cr) 그룹도 유입율 박스와 '동일 폼'으로 전년비 개선을 보여준다(사용자 지시).
         # 두 액션의 발송 1회당 구매고객(실측 상수 +43·+36)을 일평균(÷7, 발송 1회/주)으로
         # 바꿔 상한을 내고, 유입율과 같은 순증·중복 할인을 적용해 실질 구매고객/일을 구한다.
@@ -3300,15 +3323,24 @@ def _dt_levers(focus, v, mode="wtd"):
                 cr26, cr25, dau_mean = _bcr
                 cur = (cr26 / cr25 - 1) * 100
                 new_yoy = ((cr26 + net / dau_mean) / cr25 - 1) * 100
-                _clab = "전환(CR) baseline(최근 4주 동요일)"
-                _csub = ("기준선 = 직전 4주 (고객수 ÷ DAU) 전년 동요일(−364) · "
-                         f"발송 1회/주 · 순증률 {LEVER_INCREMENTALITY*100:.0f}% "
-                         f"× 중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · "
-                         "실측은 AF코드(세션) 집계라 세션 이탈 후 구매는 제외 — 실제 전환은 상회(하한치)")
+                _ipw = _inprog_week()
+                if _ipw:
+                    _n, _wl = _ipw
+                    _arrow = (f'→ <b>{_wl} 전환(CR) 주 전체 예상(baseline) {f(cur)} '
+                              f'→ 방어 목표 {f(new_yoy)}</b>')
+                    _csub = (f"baseline = 직전 4주 (고객수 ÷ DAU) ÷ 전년 동요일(−364) = {_wl} 주 전체 예상치 "
+                             f"(진행 {_n}일 실측은 편차 커 기준 제외) · 발송 1회/주 · "
+                             f"순증률 {LEVER_INCREMENTALITY*100:.0f}%×중복 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · "
+                             "주 마감 후 실제가 이 수준이면 예상·방어 성공 · 실측은 AF코드(세션) 집계라 하한치")
+                else:
+                    _arrow = f'→ <b>전환(CR) baseline(최근 4주 동요일) {f(cur)} → {f(new_yoy)}</b>'
+                    _csub = ("기준선 = 직전 4주 (고객수 ÷ DAU) 전년 동요일(−364) · "
+                             f"발송 1회/주 · 순증률 {LEVER_INCREMENTALITY*100:.0f}% "
+                             f"× 중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · "
+                             "실측은 AF코드(세션) 집계라 세션 이탈 후 구매는 제외 — 실제 전환은 상회(하한치)")
                 head = (f'<div class="dt-levhead">아래 2건 — 구매고객 상한 +{gross:.0f}명/일, '
                         f'순증·중복 반영 <b>실질 +{net:.1f}명/일</b><br>'
-                        f'→ <b>{_clab} {f(cur)} → {f(new_yoy)}</b>'
-                        f'<span class="dt-lh-sub">{_csub}</span></div>')
+                        f'{_arrow}<span class="dt-lh-sub">{_csub}</span></div>')
             elif cr and dau and None not in (cr[0], cr[1], dau[0]) and cr[1] < 0:
                 cur = cr[1] * 100
                 prev = cr[0] / (1 + cr[1])
