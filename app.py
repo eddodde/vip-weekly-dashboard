@@ -2318,8 +2318,8 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
     # ★ 기저(추석·슈퍼위크) 보정 진단 — 전년비는 추석·슈퍼위크 이동으로 왜곡된다. 양년의
     #   추석·슈퍼위크를 모두 창 안에 넣어 상쇄한 8/29~10/11(41일) 기준. 외부 창 계산이라
     #   정적이며 창 라벨로 기준을 밝힌다(데이터가 넓어지면 창을 늘려 재산출).
-    # ★ 다각도 실적 비교 표(정적 — 명절·행사 보정은 외부 창 계산, 작성 기준 10/13).
-    #   전년비 하나로 판단하지 않도록 ①슈퍼위크 대비 ②월 누계(추석 제거) ③이번주 흐름을 한 표에.
+    # ★ 다각도 실적 비교 표(정적 — 명절·행사 보정은 외부 창 계산, 작성 기준 10/18).
+    #   전년비 하나로 판단하지 않도록 ①슈퍼위크 대비 ②월 누계(추석 제거) ③마감주 흐름을 한 표에.
     ("<table style='display:inline-table;width:auto;border-collapse:collapse;font-size:11.5px;"
      "color:#5b4a32;margin:3px 0 6px;border:1px solid #d8c398'>"
      "<tr style='background:#f3e9cf;color:#7a6838'>"
@@ -2332,26 +2332,28 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△10.9%</td></tr>"
      "<tr><td colspan='3' style='border:1px solid #e6d8b6;padding:4px 10px;font-weight:600;"
      "background:#faf5e6'>② 10월 월 누계 — 전년 추석 효과 제거</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 추석 보정 합산 (9/1~10/13)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f5fbf'>+4.0%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△5.9%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 추석 종료 후 (10/10~13)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△6.7%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△9.7%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>③ 이번주 2일 (10/12~13, 슈퍼위크 후)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△21.0%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△9.6%</td></tr>"
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 추석 보정 합산 (9/1~10/18, 48일)</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f5fbf'>+0.8%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△6.8%</td></tr>"
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 추석 종료 후 (10/10~18)</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△14.7%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△12.0%</td></tr>"
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>③ 마감주 10월 3주차 "
+     "<span style='color:#a99a7a'>(10/12~18, 슈퍼위크 후)</span></td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△20.6%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△12.6%</td></tr>"
      "<tr style='color:#a79a7a'><td style='border:1px solid #e6d8b6;padding:4px 10px'>"
-     "(참고) 표면 MTD (10/1~13, 전년 추석 포함)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>+30.8%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>△0.4%</td></tr>"
+     "(참고) 표면 MTD (10/1~18, 전년 추석 포함)</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>+12.9%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>△4.4%</td></tr>"
      "</table>"
-     "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 표면 +30.8%는 전년 추석 착시입니다. "
-     "보정하면 모든 축에서 전년에 미달하고, 방문은 어느 기준이든 △6~11% 역신장입니다. "
+     "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 표면 MTD +12.9%는 전년 추석 착시입니다. "
+     "보정하면 거래액은 전년과 동률(+0.8%)이나, 방문(DAU)은 어느 기준으로 봐도 △7~13% 역신장입니다. "
      "매출은 객단가가 방어했을 뿐 방문(유입율)은 구조적 역신장입니다."
      "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
      "※ 2025 슈퍼위크 2회(8/29·10/17) 중 10월 건(10/17)과 맞비교 · "
-     "‘추석 종료 후’는 4일 창이라 안정 기준은 합산 +4.0%</span></div>"),
+     "마감주(△20.6%)·추석 종료 후(△14.7%)는 올해 슈퍼위크 종료 직후 트로프를 담아 과대 하락 — "
+     "안정 기준은 추석 보정 합산 +0.8%와 baseline(최근 4주 동요일) DAU △7.9%</span></div>"),
 ]
 if _dg_ev:
     _dg_lines.append(_dg_ev.replace("<br>", "", 1))
