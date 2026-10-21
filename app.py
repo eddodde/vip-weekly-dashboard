@@ -1690,6 +1690,9 @@ def insight_perf(grain, period, unit_label):
 
 
 MO_MIN_DAYS = 5                                   # 당월 경과일이 이 미만이면 전월(마감) 기준으로 대체
+MIN_WTD_DAYS = 3                                  # 진행주 경과일이 이 미만이면 직전 마감주 기준으로 대체
+#   (1~2일치는 전년 동주 같은 경과일이어도 하루 편차·전년 행사 타이밍에 심하게 흔들려
+#    트리 노드·현황 카드가 착시 수치로 뜬다 — 인사이트들의 '3일 이상 누적 후 표기'와 일치)
 
 
 def insight_month(mo, cutoff, is_cur, unit_label):
@@ -2670,6 +2673,15 @@ def tree_values(mode, wk):
         days = (hi - lo).days + 1
         cw = week_label_of(hi)
         lbl = f"{week_pretty(cw)} 진행중 ({lo.month}/{lo.day}~{hi.month}/{hi.day}, {days}일)"
+        # ★ 진행주가 3일 미만이면 전년 동주 같은 경과일이라도 1~2일 편차·전년 행사 타이밍
+        #   (예: 전년 동기가 슈퍼위크면)에 심하게 흔들려 노드가 착시 수치로 뜬다 → 직전 마감주로.
+        if days < MIN_WTD_DAYS and wk_all_closed:
+            lw = wk_all_closed[-1]
+            for k, met in TREE_MET.items():
+                c = V("week", "overall", met, "TOTAL", "", CUR, lw)
+                out[k] = (c, yoy(c, V("week", "overall", met, "TOTAL", "", PREV, lw)))
+            return (out, f"{week_pretty(lw)} 마감 (진행주 {days}일치뿐이라 직전 마감주 기준)",
+                    "전년 동주 대비", _tree_channels(lw), None)
         # 집계일까지 7일이 다 찼으면 그 주는 이미 끝난 주다 → '직전 마감주'와 같은 구간이므로
         # 같은 주마감 값을 쓴다. (일마감 스냅샷을 그대로 두면 한 주가 두 값으로 보인다.)
         if days >= 7 and V("week", "overall", SALES, "TOTAL", "", CUR, cw) is not None:
@@ -3018,6 +3030,8 @@ def _levelv_cmp(mode):
         #   cw가 직전 마감주와 같아져 금주=전주가 되고 카드가 전부 0%p로 빈다.
         #   이때는 진행주로 보여줄 당주가 없으므로 '직전 마감주' 기준으로 내려준다.
         if cw == cl[-1]:
+            return _levelv_cmp("week")
+        if hi.weekday() + 1 < MIN_WTD_DAYS:          # 진행주 1~2일치 → 직전 마감주 기준(착시 방지)
             return _levelv_cmp("week")
         pw = cl[-1]
         lo = hi - datetime.timedelta(days=hi.weekday())
