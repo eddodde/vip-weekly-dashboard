@@ -582,6 +582,29 @@ def range_metric(metric, year, lo, hi):
     return range_mean(metric, year, lo, hi)
 
 
+def baseline_dau_yoy(days=28):
+    """방문(DAU) 구조 baseline — 직전 완료 N일(기본 28=4주)의 일평균 DAU를
+    전년 동요일(−364일) 대비로 본다. 단일 주의 전년비는 전년 행사(명절·슈퍼위크)
+    타이밍에 흔들려 노이즈가 크므로, 4주를 평균해 요일·행사 편차를 상쇄한다.
+    매주 같은 공식(직전 4주 일평균 DAU ÷ 전년 동기(−364) − 1)으로 자동 산출되어
+    상대에게 그대로 설명·재현 가능한 기준선이다. 현재 약 △8%."""
+    hi = last_daily_date()
+    if hi is None:
+        return None
+    c26 = c25 = 0.0
+    n = 0
+    for i in range(days):
+        d = hi - datetime.timedelta(days=i)
+        d0 = d - datetime.timedelta(days=364)
+        a = dv(d.year, d.month, d.day, "DAU")
+        b = dv(d0.year, d0.month, d0.day, "DAU")
+        if a is not None and b is not None:
+            c26 += a
+            c25 += b
+            n += 1
+    return (c26 / c25 - 1) if (n and c25) else None
+
+
 # ----------------------------------------------------------------------------- events (가변탭 행사 캘린더)
 EVENTS_CSV = "data/events.csv"
 
@@ -3210,13 +3233,17 @@ def _dt_levers(focus, v, mode="wtd"):
         head = ""
         dau = v.get("dau")
         if key == "visit" and sum_pp > 0 and dau and dau[1] is not None:
-            cur = dau[1] * 100
+            _bl = baseline_dau_yoy()
+            cur = (_bl if _bl is not None else dau[1]) * 100
             net_pp = sum_pp * LEVER_INCREMENTALITY * (1 - LEVER_CROSS_OVERLAP)  # 순증·중복 반영
             f = lambda x: (f"△{abs(x):.2f}%" if x < 0 else f"+{x:.2f}%")   # noqa: E731
+            _blab = ("방문(DAU) baseline(최근 4주 동요일)" if _bl is not None
+                     else "방문(DAU) 전년비")
             head = (f'<div class="dt-levhead">아래 액션 — 유입 상한 +{sum_pp:.2f}%p, '
                     f'순증·중복 반영 <b>실질 +{net_pp:.2f}%p</b><br>'
-                    f'→ <b>방문(DAU) 전년비 {f(cur)} → {f(cur + net_pp)}</b>'
-                    f'<span class="dt-lh-sub">순증률 {LEVER_INCREMENTALITY*100:.0f}% × '
+                    f'→ <b>{_blab} {f(cur)} → {f(cur + net_pp)}</b>'
+                    f'<span class="dt-lh-sub">기준선 = 직전 4주 일평균 DAU ÷ 전년 동요일(−364) · '
+                    f'순증률 {LEVER_INCREMENTALITY*100:.0f}% × '
                     f'중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
                     f'정확 순증은 대상 교집합 실측 필요</span></div>')
         # 전환(cr) 그룹도 유입율 박스와 '동일 폼'으로 전년비 개선을 보여준다(사용자 지시).
