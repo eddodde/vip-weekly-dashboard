@@ -605,6 +605,29 @@ def baseline_dau_yoy(days=28):
     return (c26 / c25 - 1) if (n and c25) else None
 
 
+def baseline_cr(days=28):
+    """전환(CR) 구조 baseline — 직전 완료 N일(기본 28=4주) (고객수합 ÷ DAU합)을
+    전년 동요일(−364) 대비. DAU baseline과 같은 취지(단일 주 전년 행사 타이밍 노이즈를
+    4주 평균으로 상쇄, 매주 동일 공식·재현 가능). returns (cr26, cr25, dau26_mean)."""
+    hi = last_daily_date()
+    if hi is None:
+        return None
+    c26 = d26 = c25 = d25 = 0.0
+    n = 0
+    for i in range(days):
+        da = hi - datetime.timedelta(days=i)
+        d0 = da - datetime.timedelta(days=364)
+        cu = dv(da.year, da.month, da.day, "일평균고객수")
+        du = dv(da.year, da.month, da.day, "DAU")
+        cp = dv(d0.year, d0.month, d0.day, "일평균고객수")
+        dp = dv(d0.year, d0.month, d0.day, "DAU")
+        if None not in (cu, du, cp, dp):
+            c26 += cu; d26 += du; c25 += cp; d25 += dp; n += 1
+    if not n or not d26 or not d25 or not c25:
+        return None
+    return (c26 / d26, c25 / d25, d26 / n)
+
+
 # ----------------------------------------------------------------------------- events (가변탭 행사 캘린더)
 EVENTS_CSV = "data/events.csv"
 
@@ -3254,13 +3277,28 @@ def _dt_levers(focus, v, mode="wtd"):
         # 이를 현재 구매고객에 얹어 CR을 올리고, 전년비 △X% → △Y%로 환산한다.
         elif key == "cr":
             cr = v.get("cr")
-            if cr and dau and None not in (cr[0], cr[1], dau[0]) and cr[1] < 0:
-                gross = (43 + 36) / 7.0                                        # 발송 1회/주
-                net = gross * LEVER_INCREMENTALITY * (1 - LEVER_CROSS_OVERLAP)  # 순증·중복 반영
+            _bcr = baseline_cr()
+            f = lambda x: (f"△{abs(x):.2f}%" if x < 0 else f"+{x:.2f}%")       # noqa: E731
+            gross = (43 + 36) / 7.0                                            # 발송 1회/주
+            net = gross * LEVER_INCREMENTALITY * (1 - LEVER_CROSS_OVERLAP)      # 순증·중복 반영
+            if _bcr is not None:
+                # DAU와 동일하게 진행주 노이즈 대신 '최근 4주 동요일' baseline에 커버.
+                cr26, cr25, dau_mean = _bcr
+                cur = (cr26 / cr25 - 1) * 100
+                new_yoy = ((cr26 + net / dau_mean) / cr25 - 1) * 100
+                _clab = "전환(CR) baseline(최근 4주 동요일)"
+                _csub = ("기준선 = 직전 4주 (고객수 ÷ DAU) 전년 동요일(−364) · "
+                         f"발송 1회/주 · 순증률 {LEVER_INCREMENTALITY*100:.0f}% "
+                         f"× 중복 할인 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · "
+                         "실측은 AF코드(세션) 집계라 세션 이탈 후 구매는 제외 — 실제 전환은 상회(하한치)")
+                head = (f'<div class="dt-levhead">아래 2건 — 구매고객 상한 +{gross:.0f}명/일, '
+                        f'순증·중복 반영 <b>실질 +{net:.1f}명/일</b><br>'
+                        f'→ <b>{_clab} {f(cur)} → {f(new_yoy)}</b>'
+                        f'<span class="dt-lh-sub">{_csub}</span></div>')
+            elif cr and dau and None not in (cr[0], cr[1], dau[0]) and cr[1] < 0:
                 cur = cr[1] * 100
                 prev = cr[0] / (1 + cr[1])
                 new_yoy = ((cr[0] + net / dau[0]) / prev - 1) * 100
-                f = lambda x: (f"△{abs(x):.2f}%" if x < 0 else f"+{x:.2f}%")   # noqa: E731
                 head = (f'<div class="dt-levhead">아래 2건 — 구매고객 상한 +{gross:.0f}명/일, '
                         f'순증·중복 반영 <b>실질 +{net:.1f}명/일</b><br>'
                         f'→ <b>전환(CR) 전년비 {f(cur)} → {f(new_yoy)}</b>'
