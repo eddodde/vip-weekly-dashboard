@@ -940,6 +940,9 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .sumtbl th.curcol{border-top:2px solid #1f5fbf;}
 .sumtbl .curbot{border-bottom:2px solid #1f5fbf;}
 .sumwrap{overflow-x:auto;border:1px solid #e6e6e6;border-radius:6px;}
+.yoy-mark{height:0;margin:0;}
+div[data-testid="stHorizontalBlock"]:has(.yoy-mark){overflow-x:auto;flex-wrap:nowrap;}
+div[data-testid="stHorizontalBlock"]:has(.yoy-mark)>div[data-testid="column"]{min-width:340px;flex:0 0 auto;}
 .insight{background:#f0f6ff;border-left:4px solid #1f5fbf;border-radius:4px;
   padding:8px 14px 8px 16px;margin:2px 0 12px;font-size:13.5px;line-height:1.7;}
 .insight ul{margin:0;padding-left:18px;}
@@ -1489,6 +1492,106 @@ def chart_channel_yoy(wkp, pretty=None):
              for p in wkp]
         series[ch] = (y, color, "solid")
     return _fig("주차별·채널별 거래액 전년비", x, series, ypct=True)
+
+
+# ---- 연간 주차별 2025 vs 2026 레벨 + 예측 (거래액 트렌드 맨 오른쪽, 지표 선택) ----
+#   두 해의 주별 실제 레벨을 겹쳐 그려 '전년비=두 선의 간격'을 직관적으로 본다. 2026 미완주는
+#   구조 예측(전년 × 구조비율=연중 비행사주 전년비 중앙값)으로 점선 연장. 전년 행사주는 노란 점
+#   (그 주에서 간격이 벌어지는 이유), 12월 후반은 전년 행사 밀집으로 외삽 불안정이라 저신뢰 음영.
+@st.cache_data(show_spinner=False)
+def _weekly_level_data(ver=SEED_CACHE_VER):
+    if _DAY.empty:
+        return {}
+    df = _DAY[_DAY["seg1"].isin(["TOTAL", ""])].copy()
+    df["date"] = pd.to_datetime(df["ps"].astype(str), format="%Y%m%d")
+    df["mon"] = df["date"] - pd.to_timedelta(df["date"].dt.weekday, unit="D")
+
+    def wk(metric):
+        return df[df["metric"] == metric].groupby("mon")["value"].mean()
+    dau, cus, sal = wk("DAU"), wk("일평균고객수"), wk(SALES)
+    hi = last_daily_date()
+    mons, m = [], datetime.date(2025, 1, 6)
+    while m <= datetime.date(2025, 12, 22):
+        mons.append(pd.Timestamp(m)); m += datetime.timedelta(days=7)
+
+    def lv(g, key):
+        return float(g.loc[key]) if key in g.index else None
+
+    def series(kind):
+        raw = []
+        for mon in mons:
+            mon26 = mon + pd.Timedelta(days=364)
+            if kind == "CR":
+                c25, d25 = lv(cus, mon), lv(dau, mon)
+                L25 = (c25 / d25 * 100) if (c25 and d25) else None
+                c26, d26 = lv(cus, mon26), lv(dau, mon26)
+                A26 = (c26 / d26 * 100) if (c26 and d26 and mon26.date() <= hi) else None
+            else:
+                g = dau if kind == "DAU" else sal
+                L25 = lv(g, mon)
+                A26 = lv(g, mon26) if mon26.date() <= hi else None
+            raw.append((mon, L25, A26))
+        # 구조비율 = 전 실측주 (올해÷전년) 중앙값. 행사는 연중 상시라 제외하지 않고 중앙값으로 흡수.
+        ratios = [A / L for (_, L, A) in raw if A and L]
+        ratio = float(np.median(ratios)) if ratios else 0.91
+        devs = [abs(A / L / ratio - 1) for (_, L, A) in raw if A and L]
+        thr = max(0.04, float(np.quantile(devs, 0.85))) if devs else 0.04   # 지표별 상위 ~15% 이탈주만
+        rows = []
+        for mon, L25, A26 in raw:
+            thu = mon + pd.Timedelta(days=3)
+            dev = (A26 / L25 / ratio - 1) if (A26 and L25) else None    # 구조비율 대비 이탈(행사 타이밍)
+            rows.append({"lab": f"{thu.month}/{(thu.day - 1) // 7 + 1}", "d25": L25, "a26": A26,
+                         "p26": (L25 * ratio) if L25 else None,
+                         "ev": bool(dev is not None and abs(dev) >= thr),
+                         "lc": mon.date() >= datetime.date(2025, 12, 8)})
+        return {"ratio": round((ratio - 1) * 100, 1), "rows": rows}
+    return {"DAU": series("DAU"), "CR": series("CR"), "SALES": series("SALES")}
+
+
+_YOY_META = {"방문(DAU)": ("DAU", 1.0, "명"), "전환(CR)": ("CR", 1.0, "%"), "거래액": ("SALES", 1e6, "백만")}
+
+
+def chart_yoy_level(label):
+    key, scale, unit = _YOY_META[label]
+    data = _weekly_level_data()
+    D = data.get(key)
+    if not D:
+        return _fig(f"연간 {label} 2025 vs 2026", [], {})
+    rows = D["rows"]
+    n = len(rows)
+    xi = list(range(n))
+    sc = lambda v: (v / scale) if v is not None else None   # noqa: E731
+    now = max([i for i, r in enumerate(rows) if r["a26"] is not None], default=-1)
+    y25 = [sc(r["d25"]) for r in rows]
+    y26a = [sc(r["a26"]) if (i <= now and r["a26"] is not None) else None for i, r in enumerate(rows)]
+    y26p = [sc(rows[i]["a26"]) if i == now else (sc(rows[i]["p26"]) if i > now else None) for i in range(n)]
+    lab = [r["lab"] for r in rows]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=xi, y=y25, name=f"{PREV}", mode="lines", text=lab,
+                             line=dict(color=GREY, width=2), connectgaps=True,
+                             hovertemplate="%{text} · " + f"{PREV} " + "%{y:,.0f}" + unit + "<extra></extra>"))
+    fig.add_trace(go.Scatter(x=xi, y=y26a, name=f"{CUR} 실측", mode="lines", text=lab,
+                             line=dict(color=BLUE_CUR, width=2.5), connectgaps=False,
+                             hovertemplate="%{text} · " + f"{CUR} 실측 " + "%{y:,.0f}" + unit + "<extra></extra>"))
+    fig.add_trace(go.Scatter(x=xi, y=y26p, name=f"{CUR} 예측", mode="lines", text=lab,
+                             line=dict(color=BLUE_CUR, width=2, dash="dot"), connectgaps=True,
+                             hovertemplate="%{text} · " + f"{CUR} 예측 " + "%{y:,.0f}" + unit + "<extra></extra>"))
+    ex = [i for i, r in enumerate(rows) if r["ev"]]
+    fig.add_trace(go.Scatter(x=ex, y=[y26a[i] if y26a[i] is not None else y25[i] for i in ex],
+                             name="행사 영향주(±4%p 이탈)", mode="markers",
+                             marker=dict(symbol="circle", size=7, color="#eda100"), hoverinfo="skip"))
+    lc = [i for i, r in enumerate(rows) if r["lc"]]
+    if lc:
+        fig.add_vrect(x0=lc[0] - 0.5, x1=n - 0.5, fillcolor="#e24b4a", opacity=0.06, line_width=0)
+    rt = D["ratio"]
+    fig.update_layout(title=dict(text=f"연간 주차별 {label} · 구조 전년비 {'+' if rt > 0 else ''}{rt}%",
+                                 font=dict(size=13)), height=300, margin=dict(t=38, b=28, l=8, r=8),
+                      plot_bgcolor="white", legend=dict(orientation="h", y=-0.18, font=dict(size=9)))
+    tv = [i for i, r in enumerate(rows) if r["lab"].split("/")[1] == "1"]
+    fig.update_xaxes(showgrid=False, tickmode="array", tickvals=tv,
+                     ticktext=[rows[i]["lab"].split("/")[0] + "월" for i in tv], tickfont=dict(size=9))
+    fig.update_yaxes(showgrid=True, gridcolor="#eee", tickfont=dict(size=9))
+    return fig
 
 
 # ----------------------------------------------------------------------------- insights (분석형)
@@ -2296,11 +2399,15 @@ if cutoff and (not cur_months or cur_months[-1] != last_daily_date().month):
 st.header("1) 거래액 트렌드", anchor="s1")
 render_insight(insight_trend(wk_all_closed))
 wk_lbls = (week_pretty(wk_all[-2]) if len(wk_all) >= 2 else "", week_pretty(latest_wk) if latest_wk else "")
-cc = st.columns(4)
+cc = st.columns(5)
+cc[0].markdown('<div class="yoy-mark"></div>', unsafe_allow_html=True)
 cc[0].plotly_chart(chart_daily(wk_lbls), use_container_width=True)
 cc[1].plotly_chart(chart_monthly(), use_container_width=True)
 cc[2].plotly_chart(chart_weekly(wk_periods, wk_label), use_container_width=True)
 cc[3].plotly_chart(chart_channel_yoy(wk_periods, wk_label), use_container_width=True)
+with cc[4]:
+    _yoym = st.selectbox("지표", list(_YOY_META), key="yoy_metric")
+    st.plotly_chart(chart_yoy_level(_yoym), use_container_width=True)
 
 # ---- 2) 월별 ----
 st.header("2) 월별", anchor="s2")
