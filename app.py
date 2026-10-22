@@ -940,9 +940,6 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .sumtbl th.curcol{border-top:2px solid #1f5fbf;}
 .sumtbl .curbot{border-bottom:2px solid #1f5fbf;}
 .sumwrap{overflow-x:auto;border:1px solid #e6e6e6;border-radius:6px;}
-.yoy-mark{height:0;margin:0;}
-div[data-testid="stHorizontalBlock"]:has(.yoy-mark){overflow-x:auto;flex-wrap:nowrap;}
-div[data-testid="stHorizontalBlock"]:has(.yoy-mark)>div[data-testid="column"]{min-width:340px;flex:0 0 auto;}
 .insight{background:#f0f6ff;border-left:4px solid #1f5fbf;border-radius:4px;
   padding:8px 14px 8px 16px;margin:2px 0 12px;font-size:13.5px;line-height:1.7;}
 .insight ul{margin:0;padding-left:18px;}
@@ -2399,14 +2396,14 @@ if cutoff and (not cur_months or cur_months[-1] != last_daily_date().month):
 st.header("1) 거래액 트렌드", anchor="s1")
 render_insight(insight_trend(wk_all_closed))
 wk_lbls = (week_pretty(wk_all[-2]) if len(wk_all) >= 2 else "", week_pretty(latest_wk) if latest_wk else "")
-cc = st.columns(5)
-cc[0].markdown('<div class="yoy-mark"></div>', unsafe_allow_html=True)
+cc = st.columns(4)
 cc[0].plotly_chart(chart_daily(wk_lbls), use_container_width=True)
 cc[1].plotly_chart(chart_monthly(), use_container_width=True)
 cc[2].plotly_chart(chart_weekly(wk_periods, wk_label), use_container_width=True)
 cc[3].plotly_chart(chart_channel_yoy(wk_periods, wk_label), use_container_width=True)
-with cc[4]:
-    _yoym = st.selectbox("지표", list(_YOY_META), key="yoy_metric")
+# 연간 2025 vs 2026 비교는 상시 노출 않고 접이식(펼쳐볼 때만) — 50주 차트는 전체 폭이 가독성↑
+with st.expander("📈 연간 주차별 2025 vs 2026 비교 — 방문(DAU)·전환(CR)·거래액 펼쳐보기", expanded=False):
+    _yoym = st.selectbox("지표 선택", list(_YOY_META), key="yoy_metric")
     st.plotly_chart(chart_yoy_level(_yoym), use_container_width=True)
 
 # ---- 2) 월별 ----
