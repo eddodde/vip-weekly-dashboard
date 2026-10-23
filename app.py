@@ -1581,7 +1581,7 @@ def chart_yoy_level(label):
     if lc:
         fig.add_vrect(x0=lc[0] - 0.5, x1=n - 0.5, fillcolor="#e24b4a", opacity=0.06, line_width=0)
     rt = D["ratio"]
-    fig.update_layout(title=dict(text=f"연간 주차별 {label} · 구조 전년비 {'+' if rt > 0 else ''}{rt}%",
+    fig.update_layout(title=dict(text=f"연간 주차별 {label} · 연중 중앙값 전년비 {'+' if rt > 0 else ''}{rt}%",
                                  font=dict(size=13)), height=300, margin=dict(t=38, b=28, l=8, r=8),
                       plot_bgcolor="white", legend=dict(orientation="h", y=-0.18, font=dict(size=9)))
     tv = [i for i, r in enumerate(rows) if r["lab"].split("/")[1] == "1"]
