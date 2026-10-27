@@ -3434,7 +3434,7 @@ def _dt_levers(focus, v, mode="wtd"):
                         f'주 마감 후 실제가 이 수준이면 예상·방어 성공')
             else:
                 cur = (_bl if _bl is not None else (dau[1] if dau else 0)) * 100
-                base_dau = _prev if _wf else 19500
+                base_dau = _wf[2] if _wf else 19500   # _wf=(yoy, run-rate, 전년 동주) — 전년 동주를 %p 분모로
                 new = cur + net_gross / base_dau * 100
                 _arrow = f'→ <b>방문(DAU) 구조 baseline(최근 4주 동요일) {f(cur)} → {f(new)}</b>'
                 _sub = ('기준선 = 직전 4주 일평균 DAU ÷ 전년 동요일(−364) · '
