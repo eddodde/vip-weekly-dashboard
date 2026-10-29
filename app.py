@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-10-26-upd1025"
+SEED_CACHE_VER = "2026-10-29-upd1028"
 
 
 @st.cache_data(show_spinner=False)
@@ -3214,7 +3214,7 @@ def _status_card(mode="week"):
     ]
     # ★ 예측 결산 — 완료된 주에 대해 '직전주 수준 유지 시 예상 전년비'(들어가기 전 기대)와
     #   실제를 대조. 편차(+)가 이번주 액션·자연변동이 끌어올린 몫. 데이터 갱신 시 자동.
-    if b.get("weekly"):
+    if b.get("weekly") and "진행" not in b.get("title", ""):   # 완료된 주에만(진행주는 마감 전)
         pred = pc / cp - 1                        # 직전 마감주 수준 유지 시 예상 전년비
         gap = (yw - pred) * 100                    # 실제 − 예측 (%p, 양수=예측 상회=선전)
         mets += [
