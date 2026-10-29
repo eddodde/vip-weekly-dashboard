@@ -1501,7 +1501,7 @@ def _weekly_level_data(ver=SEED_CACHE_VER):
         return {}
     df = _DAY[_DAY["seg1"].isin(["TOTAL", ""])].copy()
     df["date"] = pd.to_datetime(df["ps"].astype(str), format="%Y%m%d")
-    df["mon"] = df["date"] - pd.to_timedelta(df["date"].dt.weekday, unit="D")
+    df["mon"] = df["date"] - pd.to_timedelta(df["date"].dt.day_of_week, unit="D")
 
     def wk(metric):
         return df[df["metric"] == metric].groupby("mon")["value"].mean()
