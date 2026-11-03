@@ -1567,6 +1567,7 @@ def chart_yoy_level(label):
     if not D:
         return _fig(f"연간 {label} 2025 vs 2026", [], {})
     rows = D["rows"]
+    pred_ok = (key == "DAU")   # 예측 going-in은 DAU만 검증됨(MAE 2.6%p). 거래액·CR은 행사 지배라 숨김.
     n = len(rows)
     xi = list(range(n))
     sc = lambda v: (v / scale) if v is not None else None   # noqa: E731
@@ -1582,9 +1583,10 @@ def chart_yoy_level(label):
     fig.add_trace(go.Scatter(x=xi, y=y26a, name=f"{CUR} 실측", mode="lines", text=lab,
                              line=dict(color=BLUE_CUR, width=2.5), connectgaps=False,
                              hovertemplate="%{text} · " + f"{CUR} 실측 " + "%{y:,.0f}" + unit + "<extra></extra>"))
-    fig.add_trace(go.Scatter(x=xi, y=y26p, name=f"{CUR} 예측", mode="lines", text=lab,
-                             line=dict(color=BLUE_CUR, width=2, dash="dot"), connectgaps=True,
-                             hovertemplate="%{text} · " + f"{CUR} 예측 " + "%{y:,.0f}" + unit + "<extra></extra>"))
+    if pred_ok:
+        fig.add_trace(go.Scatter(x=xi, y=y26p, name=f"{CUR} 예측", mode="lines", text=lab,
+                                 line=dict(color=BLUE_CUR, width=2, dash="dot"), connectgaps=True,
+                                 hovertemplate="%{text} · " + f"{CUR} 예측 " + "%{y:,.0f}" + unit + "<extra></extra>"))
     ex = [i for i, r in enumerate(rows) if r["ev"]]
     fig.add_trace(go.Scatter(x=ex, y=[y26a[i] if y26a[i] is not None else y25[i] for i in ex],
                              name="행사 영향주(±4%p 이탈)", mode="markers",
@@ -1611,6 +1613,9 @@ def yoy_level_table(label):
     if not D:
         return ""
     rows, rt = D["rows"], D["ratio"]
+    # 예측 going-in은 DAU만 검증됨(백테스트 MAE 2.6%p). 거래액(11.4%p)·CR(5.2%p)은
+    # 행사·캠페인 타이밍 지배라 going-in이 원리상 안 맞아 예측·결과 열을 숨긴다(사용자 확정).
+    pred_ok = (key == "DAU")
 
     def fl(v):
         if v is None:
@@ -1636,29 +1641,34 @@ def yoy_level_table(label):
         devs = ("—" if dev is None else
                 (f"<b style='color:#1f7a1f'>+{dev:.1f}%p</b>" if dev >= 0 else f"<b style='color:#b03030'>△{abs(dev):.1f}%p</b>"))
         bg = "background:#fff7e6;" if ev else ("background:#fdeeee;" if lc else "")
+        pred_cells = (f"<td style='{td}text-align:right;color:#8a8a8a'>{fl(p26)}</td>"
+                      f"<td style='{td}text-align:right;color:#8a8a8a'>{pc(py)}</td>"
+                      f"<td style='{td}text-align:right'>{devs}</td>") if pred_ok else ""
         body.append(
             f"<tr style='{bg}'><td style='{td}'>{r['lab']}{' ●' if ev else ''}</td>"
             f"<td style='{td}text-align:right;color:#8a8a8a'>{fl(d25)}</td>"
             f"<td style='{td}text-align:right;font-weight:600'>{fl(a26)}</td>"
-            f"<td style='{td}text-align:right;color:#8a8a8a'>{fl(p26)}</td>"
             f"<td style='{td}text-align:right;font-weight:600'>{pc(ay)}</td>"
-            f"<td style='{td}text-align:right;color:#8a8a8a'>{pc(py)}</td>"
-            f"<td style='{td}text-align:right'>{devs}</td></tr>")
+            f"{pred_cells}</tr>")
+    pred_hdr = ("<th style='padding:4px 8px;text-align:right;white-space:nowrap'>예측 레벨</th>"
+                "<th style='padding:4px 8px;text-align:right;white-space:nowrap'>전년비 예측</th>"
+                "<th style='padding:4px 8px;text-align:right;white-space:nowrap'>결과(실측−예측)</th>") if pred_ok else ""
     hdr = ("<tr style='position:sticky;top:0;background:#f3e9cf;color:#7a6838'>"
            "<th style='padding:4px 8px;text-align:left;white-space:nowrap'>주</th>"
            "<th style='padding:4px 8px;text-align:right;white-space:nowrap'>전년 레벨</th>"
            "<th style='padding:4px 8px;text-align:right;white-space:nowrap'>실측 레벨</th>"
-           "<th style='padding:4px 8px;text-align:right;white-space:nowrap'>예측 레벨</th>"
            "<th style='padding:4px 8px;text-align:right;white-space:nowrap'>전년비 실측</th>"
-           "<th style='padding:4px 8px;text-align:right;white-space:nowrap'>전년비 예측</th>"
-           "<th style='padding:4px 8px;text-align:right;white-space:nowrap'>결과(실측−예측)</th></tr>")
+           f"{pred_hdr}</tr>")
+    note = (f"예측 = <b>직전 완료 4주 평균 올해 실측 ÷ 전년 동주</b>(going-in, 백테스트 MAE 2.6%p) · "
+            f"미완주는 직전 4주 평균 유지라 예측 레벨은 평평하나 전년비 예측은 전년 레벨 변동 따라 움직임 · "
+            f"결과 = 실측−예측(+면 그 주 액션·모멘텀이 끌어올림) · " if pred_ok else
+            f"<b>예측 열은 방문(DAU)에서만 제공</b> — {label}은 행사·캠페인 타이밍이 지배해 "
+            f"going-in 예측 신뢰도가 낮아 실측·전년비만 표시 · ")
     return (f"<div style='max-height:132px;overflow-y:auto;border:1px solid #e6d8b6;border-radius:6px;margin-top:8px'>"
             f"<table style='width:100%;border-collapse:collapse;font-size:11px;color:#444'>{hdr}{''.join(body)}</table></div>"
             f"<div style='font-size:10.5px;color:#999;margin-top:4px;line-height:1.5'>"
             f"단위: {'명' if key == 'DAU' else ('%' if key == 'CR' else '백만원')} · "
-            f"예측 = <b>직전 완료 4주 평균 올해 실측 ÷ 전년 동주</b>(going-in 전망, 단일주 급락 흡수) · "
-            f"미완주는 직전 4주 평균 유지라 예측 레벨은 평평하나 전년비 예측은 전년 레벨 변동 따라 움직임 · "
-            f"결과 = 실측−예측(+면 그 주 액션·모멘텀이 끌어올림) · "
+            f"{note}"
             f"참고: 구조 전년비(연중 중앙값) {'+' if rt > 0 else ''}{rt}% · "
             f"● 행사 영향주(구조 대비 큰 이탈) · 분홍 = 12월 후반 저신뢰</div>")
 
