@@ -1533,25 +1533,26 @@ def _weekly_level_data(ver=SEED_CACHE_VER):
         ratio = float(np.median(ratios)) if ratios else 0.91
         devs = [abs(A / L / ratio - 1) for (_, L, A) in raw if A and L]
         thr = max(0.04, float(np.quantile(devs, 0.85))) if devs else 0.04   # 지표별 상위 ~15% 이탈주만
-        # ★ 예측(p26) = '직전 완료주 올해 실측 수준(run) ÷ 전년 동주'의 going-in 전망(B안).
-        #   완료주·미완주 공통 단일 규칙 — 예측 레벨 = 직전 완료주 실측을 유지(run).
+        # ★ 예측(p26) = '직전 완료 4주 평균 올해 실측 수준 ÷ 전년 동주'의 going-in 전망(B안).
+        #   완료주·미완주 공통 단일 규칙 — 예측 레벨 = 직전 완료 4주 실측 평균(baseline 정의와 일치).
+        #   직전 1주만 쓰면 추석 등 단일주 급락에 예측이 휘둘림(10월1주 +11.8%p 사례) → 4주 평균으로 흡수.
         #   미완주는 새 실측이 없어 레벨이 평평하나(= going-in 가정상 당연), 전년비 예측은
         #   전년 동주 레벨 변동을 그대로 받아 '주별로 움직임'(역신장 트렌드가 보이게 하려는 것).
         #   전년 동주가 행사주면 예측 전년비가 낮게, 평상이면 구조(△9%) 근방으로 변동.
-        #   첫 주만 run이 없어 구조(전년×비율)로 폴백.
+        #   완료 4주가 아직 없는 초반 주만 구조(전년×비율)로 폴백.
         #   ev 마커는 구조비율(연중 중앙값) 대비 이탈로 유지 — 큰 행사 타이밍 주를 표시.
         rows = []
-        run = None
+        hist = []    # 완료주 올해 실측 레벨 누적(직전 4주 평균 산출용)
         for mon, L25, A26 in raw:
             thu = mon + pd.Timedelta(days=3)
             dev = (A26 / L25 / ratio - 1) if (A26 and L25) else None    # 구조비율 대비 이탈(행사 타이밍)
-            pred = run if run is not None else ((L25 * ratio) if L25 else None)
+            pred = (sum(hist[-4:]) / len(hist[-4:])) if hist else ((L25 * ratio) if L25 else None)
             rows.append({"lab": f"{thu.month}/{(thu.day - 1) // 7 + 1}", "d25": L25, "a26": A26,
                          "p26": pred,
                          "ev": bool(dev is not None and abs(dev) >= thr),
                          "lc": mon.date() >= datetime.date(2025, 12, 8)})
             if A26 is not None:
-                run = A26
+                hist.append(A26)
         return {"ratio": round((ratio - 1) * 100, 1), "rows": rows}
     return {"DAU": series("DAU"), "CR": series("CR"), "SALES": series("SALES")}
 
@@ -1655,8 +1656,8 @@ def yoy_level_table(label):
             f"<table style='width:100%;border-collapse:collapse;font-size:11px;color:#444'>{hdr}{''.join(body)}</table></div>"
             f"<div style='font-size:10.5px;color:#999;margin-top:4px;line-height:1.5'>"
             f"단위: {'명' if key == 'DAU' else ('%' if key == 'CR' else '백만원')} · "
-            f"예측 = <b>직전 완료주 올해 실측 수준 ÷ 전년 동주</b>(going-in 전망) · "
-            f"미완주는 직전 실측 수준 유지라 예측 레벨은 평평하나 전년비 예측은 전년 레벨 변동 따라 움직임 · "
+            f"예측 = <b>직전 완료 4주 평균 올해 실측 ÷ 전년 동주</b>(going-in 전망, 단일주 급락 흡수) · "
+            f"미완주는 직전 4주 평균 유지라 예측 레벨은 평평하나 전년비 예측은 전년 레벨 변동 따라 움직임 · "
             f"결과 = 실측−예측(+면 그 주 액션·모멘텀이 끌어올림) · "
             f"참고: 구조 전년비(연중 중앙값) {'+' if rt > 0 else ''}{rt}% · "
             f"● 행사 영향주(구조 대비 큰 이탈) · 분홍 = 12월 후반 저신뢰</div>")
