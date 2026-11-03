@@ -1591,6 +1591,62 @@ def chart_yoy_level(label):
     return fig
 
 
+def yoy_level_table(label):
+    """연간 비교 차트 하단 표 — 주별 2025·2026 실측·예측(구조) 레벨과 전년비, 결과(실측−예측 %p).
+    차트 두 선이 붙어 구별이 어려울 때 숫자로 읽게 한다(사용자 요청). 스크롤 표."""
+    key, scale, unit = _YOY_META[label]
+    D = _weekly_level_data().get(key)
+    if not D:
+        return ""
+    rows, rt = D["rows"], D["ratio"]
+
+    def fl(v):
+        if v is None:
+            return "—"
+        if key == "CR":
+            return f"{v:.2f}%"
+        if key == "SALES":
+            return f"{v / 1e6:,.0f}"
+        return f"{v:,.0f}"
+
+    def pc(r):
+        if r is None:
+            return "—"
+        return (f"<span style='color:#c0392b'>△{abs(r) * 100:.1f}%</span>" if r < 0
+                else f"<span style='color:#1f5fbf'>+{r * 100:.1f}%</span>")
+    td = "padding:2px 8px;border-bottom:1px solid #f0e6c8;"
+    body = []
+    for r in rows:
+        d25, a26, p26, ev, lc = r["d25"], r["a26"], r["p26"], r["ev"], r.get("lc")
+        ay = (a26 / d25 - 1) if (a26 and d25) else None
+        py = (p26 / d25 - 1) if (p26 and d25) else None
+        dev = (ay - py) * 100 if (ay is not None and py is not None) else None
+        devs = ("—" if dev is None else
+                (f"<b style='color:#1f7a1f'>+{dev:.1f}%p</b>" if dev >= 0 else f"<b style='color:#b03030'>△{abs(dev):.1f}%p</b>"))
+        bg = "background:#fff7e6;" if ev else ("background:#fdeeee;" if lc else "")
+        body.append(
+            f"<tr style='{bg}'><td style='{td}'>{r['lab']}{' ●' if ev else ''}</td>"
+            f"<td style='{td}text-align:right'>{fl(d25)}</td>"
+            f"<td style='{td}text-align:right;font-weight:600'>{fl(a26)}</td>"
+            f"<td style='{td}text-align:right;color:#8a8a8a'>{fl(p26)}</td>"
+            f"<td style='{td}text-align:right'>{pc(ay)}</td>"
+            f"<td style='{td}text-align:right'>{devs}</td></tr>")
+    hdr = ("<tr style='position:sticky;top:0;background:#f3e9cf;color:#7a6838'>"
+           "<th style='padding:3px 8px;text-align:left'>주</th>"
+           "<th style='padding:3px 8px;text-align:right'>전년</th>"
+           "<th style='padding:3px 8px;text-align:right'>실측</th>"
+           "<th style='padding:3px 8px;text-align:right'>예측</th>"
+           "<th style='padding:3px 8px;text-align:right'>전년비</th>"
+           "<th style='padding:3px 8px;text-align:right'>결과(실측−예측)</th></tr>")
+    return (f"<div style='max-height:300px;overflow-y:auto;border:1px solid #e6d8b6;border-radius:6px;margin-top:8px'>"
+            f"<table style='width:100%;border-collapse:collapse;font-size:11px;color:#444'>{hdr}{''.join(body)}</table></div>"
+            f"<div style='font-size:10.5px;color:#999;margin-top:4px;line-height:1.5'>"
+            f"단위: {'명' if key == 'DAU' else ('%' if key == 'CR' else '백만원')} · "
+            f"예측 = 구조(연중 전년비 중앙값 {'+' if rt > 0 else ''}{rt}%) 기준, 2026 미완주는 이 예측 · "
+            f"결과(+) = 구조 예측 상회 · ● 행사 영향주(전년·올해 행사 타이밍 어긋나 전년비 왜곡된 주) · "
+            f"분홍 = 12월 후반 저신뢰</div>")
+
+
 # ----------------------------------------------------------------------------- insights (분석형)
 # 섹션 인사이트엔 '핵심 레버'만(짧게). 상세 액션(전술)은 최하단 종합 방향성에서만 노출.
 DRIVER_LEVER = {"DAU": "방문(DAU) 회복이 가장 중요", "CR": "잔존 방문의 구매전환(CR) 제고가 실질 레버",
@@ -2405,6 +2461,7 @@ cc[3].plotly_chart(chart_channel_yoy(wk_periods, wk_label), use_container_width=
 with st.expander("📈 연간 주차별 2025 vs 2026 비교 — 방문(DAU)·전환(CR)·거래액 펼쳐보기", expanded=False):
     _yoym = st.selectbox("지표 선택", list(_YOY_META), key="yoy_metric")
     st.plotly_chart(chart_yoy_level(_yoym), use_container_width=True)
+    st.markdown(yoy_level_table(_yoym), unsafe_allow_html=True)
 
 # ---- 2) 월별 ----
 st.header("2) 월별", anchor="s2")
