@@ -1542,7 +1542,10 @@ def _weekly_level_data(ver=SEED_CACHE_VER):
         for mon, L25, A26 in raw:
             thu = mon + pd.Timedelta(days=3)
             dev = (A26 / L25 / ratio - 1) if (A26 and L25) else None    # 구조비율 대비 이탈(행사 타이밍)
-            pred = run if run is not None else ((L25 * ratio) if L25 else None)   # 직전주 수준(going-in)
+            if A26 is not None:                        # 완료주: going-in = 직전 완료주 올해 수준
+                pred = run if run is not None else ((L25 * ratio) if L25 else None)
+            else:                                      # 미완주: 구조 투영(전년×비율) — 올해도 계절 상승
+                pred = (L25 * ratio) if L25 else None
             rows.append({"lab": f"{thu.month}/{(thu.day - 1) // 7 + 1}", "d25": L25, "a26": A26,
                          "p26": pred,
                          "ev": bool(dev is not None and abs(dev) >= thr),
@@ -1653,6 +1656,7 @@ def yoy_level_table(label):
             f"<div style='font-size:10.5px;color:#999;margin-top:4px;line-height:1.5'>"
             f"단위: {'명' if key == 'DAU' else ('%' if key == 'CR' else '백만원')} · "
             f"예측 = <b>직전 완료주 올해 수준 ÷ 전년 동주</b>(going-in 전망, 전년 행사주면 낮게 변동) · "
+            f"미완주는 구조(전년×비율) 투영(올해도 계절 상승) · "
             f"결과 = 실측−예측(+면 그 주 액션·모멘텀이 끌어올림) · "
             f"참고: 구조 전년비(연중 중앙값) {'+' if rt > 0 else ''}{rt}% · "
             f"● 행사 영향주(구조 대비 큰 이탈) · 분홍 = 12월 후반 저신뢰</div>")
