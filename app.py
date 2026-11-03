@@ -1626,18 +1626,20 @@ def yoy_level_table(label):
         bg = "background:#fff7e6;" if ev else ("background:#fdeeee;" if lc else "")
         body.append(
             f"<tr style='{bg}'><td style='{td}'>{r['lab']}{' ●' if ev else ''}</td>"
-            f"<td style='{td}text-align:right'>{fl(d25)}</td>"
+            f"<td style='{td}text-align:right;color:#8a8a8a'>{fl(d25)}</td>"
             f"<td style='{td}text-align:right;font-weight:600'>{fl(a26)}</td>"
             f"<td style='{td}text-align:right;color:#8a8a8a'>{fl(p26)}</td>"
-            f"<td style='{td}text-align:right'>{pc(ay)}</td>"
+            f"<td style='{td}text-align:right;font-weight:600'>{pc(ay)}</td>"
+            f"<td style='{td}text-align:right;color:#8a8a8a'>{pc(py)}</td>"
             f"<td style='{td}text-align:right'>{devs}</td></tr>")
     hdr = ("<tr style='position:sticky;top:0;background:#f3e9cf;color:#7a6838'>"
            "<th style='padding:3px 8px;text-align:left'>주</th>"
-           "<th style='padding:3px 8px;text-align:right'>전년</th>"
-           "<th style='padding:3px 8px;text-align:right'>실측</th>"
-           "<th style='padding:3px 8px;text-align:right'>예측</th>"
-           "<th style='padding:3px 8px;text-align:right'>전년비</th>"
-           "<th style='padding:3px 8px;text-align:right'>결과(실측−예측)</th></tr>")
+           "<th style='padding:3px 8px;text-align:right'>전년<br>레벨</th>"
+           "<th style='padding:3px 8px;text-align:right'>실측<br>레벨</th>"
+           "<th style='padding:3px 8px;text-align:right'>예측<br>레벨</th>"
+           "<th style='padding:3px 8px;text-align:right'>전년비<br>실측</th>"
+           "<th style='padding:3px 8px;text-align:right'>전년비<br>예측</th>"
+           "<th style='padding:3px 8px;text-align:right'>결과<br>실측−예측</th></tr>")
     return (f"<div style='max-height:300px;overflow-y:auto;border:1px solid #e6d8b6;border-radius:6px;margin-top:8px'>"
             f"<table style='width:100%;border-collapse:collapse;font-size:11px;color:#444'>{hdr}{''.join(body)}</table></div>"
             f"<div style='font-size:10.5px;color:#999;margin-top:4px;line-height:1.5'>"
