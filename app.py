@@ -1651,7 +1651,7 @@ def yoy_level_table(label):
            "<th style='padding:3px 8px;text-align:right'>전년비<br>실측</th>"
            "<th style='padding:3px 8px;text-align:right'>전년비<br>예측</th>"
            "<th style='padding:3px 8px;text-align:right'>결과<br>실측−예측</th></tr>")
-    return (f"<div style='max-height:300px;overflow-y:auto;border:1px solid #e6d8b6;border-radius:6px;margin-top:8px'>"
+    return (f"<div style='max-height:132px;overflow-y:auto;border:1px solid #e6d8b6;border-radius:6px;margin-top:8px'>"
             f"<table style='width:100%;border-collapse:collapse;font-size:11px;color:#444'>{hdr}{''.join(body)}</table></div>"
             f"<div style='font-size:10.5px;color:#999;margin-top:4px;line-height:1.5'>"
             f"단위: {'명' if key == 'DAU' else ('%' if key == 'CR' else '백만원')} · "
