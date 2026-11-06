@@ -2579,42 +2579,39 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
     # ★ 기저(추석·슈퍼위크) 보정 진단 — 전년비는 추석·슈퍼위크 이동으로 왜곡된다. 양년의
     #   추석·슈퍼위크를 모두 창 안에 넣어 상쇄한 8/29~10/11(41일) 기준. 외부 창 계산이라
     #   정적이며 창 라벨로 기준을 밝힌다(데이터가 넓어지면 창을 늘려 재산출).
-    # ★ 다각도 실적 비교 표(정적 — 명절·행사 보정은 외부 창 계산, 작성 기준 10/25).
-    #   전년비 하나로 판단하지 않도록 ①슈퍼위크 대비 ②월 누계(추석 제거) ③마감주 흐름을 한 표에.
+    # ★ 다각도 실적 비교 표(정적 — 명절·행사 보정은 외부 창 계산, 작성 기준 11/5).
+    #   전년비 하나로 판단하지 않도록 ①10월 월마감 ②보정 합산(안정) ③마감주 ④블랙위크 진행을 한 표에.
     ("<table style='display:inline-table;width:auto;border-collapse:collapse;font-size:11.5px;"
      "color:#5b4a32;margin:3px 0 6px;border:1px solid #d8c398'>"
      "<tr style='background:#f3e9cf;color:#7a6838'>"
      "<th style='border:1px solid #d8c398;padding:4px 10px;text-align:left;font-weight:600'>구분</th>"
      "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>거래액</th>"
      "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>방문(DAU)</th></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>① 전년 슈퍼위크 대비 "
-     "<span style='color:#a99a7a'>(10/5~11 vs 전년 10/17~23)</span></td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△9.0%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△10.9%</td></tr>"
-     "<tr><td colspan='3' style='border:1px solid #e6d8b6;padding:4px 10px;font-weight:600;"
-     "background:#faf5e6'>② 10월 월 누계 — 전년 추석 효과 제거</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 추석 보정 합산 (9/1~10/25, 55일)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△2.8%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△7.6%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 추석 종료 후 (10/10~25)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△17.9%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△12.4%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>③ 마감주 10월 4주차 "
-     "<span style='color:#a99a7a'>(10/19~25, 전년 슈퍼위크)</span></td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△21.9%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△12.9%</td></tr>"
-     "<tr style='color:#a79a7a'><td style='border:1px solid #e6d8b6;padding:4px 10px'>"
-     "(참고) 표면 MTD (10/1~25, 전년 추석 포함)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>+1.4%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>△6.9%</td></tr>"
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>① 10월 월 마감 "
+     "<span style='color:#a99a7a'>(표면 전년비)</span></td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△0.3%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△8.2%</td></tr>"
+     "<tr style='background:#faf5e6'><td style='border:1px solid #e6d8b6;padding:4px 10px;font-weight:600'>"
+     "② 명절·행사 보정 합산 <span style='color:#a99a7a;font-weight:400'>(9/1~11/2, 안정 기준)</span></td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b;font-weight:600'>△2.3%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b;font-weight:600'>△8.1%</td></tr>"
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>③ 마감주 10월 5주차 "
+     "<span style='color:#a99a7a'>(10/27~11/2, 전년 기저 높음)</span></td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△5.2%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△12.1%</td></tr>"
+     "<tr style='background:#eef7f1'><td style='border:1px solid #e6d8b6;padding:4px 10px'>④ 11월 1주차 블랙위크 진행 "
+     "<span style='color:#a99a7a'>(11/3~5, 전년 동주 대비)</span></td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>+60.8%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>△3.6%</td></tr>"
      "</table>"
-     "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 표면 MTD 거래액 +1.4%는 전년 추석 눌림 잔여입니다. "
-     "명절·행사를 보정하면 거래액 △2.8%, 방문(DAU)은 어느 기준으로 봐도 △7~13% 역신장입니다. "
-     "매출은 객단가가 방어했을 뿐 방문(유입율)은 구조적 역신장입니다."
+     "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 10월은 객단가(+10.1%)가 매출을 방어해 거래액은 "
+     "거의 보합(△0.3%)이나, 방문(DAU)은 명절·행사를 보정해도 △8% 구조 역신장입니다. 마감주 10월 5주차 △12.1%는 "
+     "전년 동주(2025 10월 말)가 추석 반등·슈퍼위크 기저로 높아 과대 하락분이 섞인 수치입니다. 11월 1주차 블랙위크 "
+     "진입으로 방문 △3.6%·거래액 +60.8%로 반등해 행사가 구조 역신장을 일시 상쇄 중입니다."
      "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
-     "※ 2025 슈퍼위크 2회(8/29·10/17) 중 10월 건(10/17)과 맞비교 · "
-     "마감주(△21.9%)·추석 종료 후(△17.9%)는 전년 슈퍼위크(10/17~24) 기저로 과대 하락 — "
-     "안정 기준은 추석 보정 합산 거래액 △2.8%·방문 △7.6%와 baseline(최근 4주 동요일) DAU 약 △7%</span></div>"),
+     "※ 안정 기준은 보정 합산(거래액 △2.3%·방문 △8.1%) · 마감주 △12%는 전년 기저 효과로 과대, "
+     "블랙위크 반등(△3.6%)은 올해 행사 효과이지 구조 개선과는 구분 · baseline DAU는 전년 슈퍼위크 기저가 "
+     "비교창에 들어 현재 △11% 수준으로 높게 찍힘</span></div>"),
 ]
 if _dg_ev:
     _dg_lines.append(_dg_ev.replace("<br>", "", 1))
