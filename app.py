@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-10-upd1109c"
+SEED_CACHE_VER = "2026-11-11-upd1109d"
 
 
 @st.cache_data(show_spinner=False)
@@ -2040,7 +2040,7 @@ def insight_month(mo, cutoff, is_cur, unit_label):
                 if "가장 크게 움직임" in b[_i]:
                     b[_i] = b[_i].replace(
                         "로 가장 크게 움직임",
-                        "로 가장 크게 움직임 <span style='color:#93a0b3'>— 단 명절·전관행사 "
+                        "로 가장 크게 움직임 <span style='color:#93a0b3'>— 단 전관행사 "
                         "시점 차이에 따른 효과이지 실질 개선 아님</span>")
                     break
         # DAU 3개월 추세만 자동 표기. 단 착시 구간이면 '축소 흐름' 단정 금지(최근 월 반등은 명절 착시).
@@ -2055,7 +2055,7 @@ def insight_month(mo, cutoff, is_cur, unit_label):
                 dseq.append((m2, d))
         if b and len(dseq) >= 2:
             trend = " → ".join(f"{m}월 {_pct(d)}" for m, d in dseq)
-            tail = ("최근 월 반등은 명절·행사 배치 착시 — 추세로 보지 말 것(기저 보정은 역신장)"
+            tail = ("최근 월 반등은 전관행사 시점 차이에 따른 착시 — 추세로 보지 말 것(행사 이전 2개월 누계는 역신장)"
                     if _distort else
                     ("역신장폭 축소 흐름" if dseq[-1][1] > dseq[0][1] else "역신장폭 확대 흐름"))
             b.insert(max(len(b) - 1, 0), f"<b>DAU 추세</b>({trend}) — {tail}")
@@ -2066,7 +2066,7 @@ def insight_month(mo, cutoff, is_cur, unit_label):
                                  f"(전년비 {_pct(fc['yoy'])}, 월 거래액 약 {fc['total']/1e8:,.0f}억){evtxt}")
         # ★ 결론 교체 — 착시면 '전 지표 개선/상승세'로 끝내지 않는다(사용자 지적).
         if _distort and b:
-            b[-1] = ('<span class="imp">→ <b>표면 전년비 플러스는 명절·전관행사 시점 차이에 따른 '
+            b[-1] = ('<span class="imp">→ <b>표면 전년비 플러스는 전관행사 시점 차이에 따른 '
                      f'착시</b> — 최근 6주 같은 날짜 기준 거래액 약 {_base*100:+.0f}%, '
                      '방문(유입율)은 역신장. 상승세가 아니라 캘린더 효과(하단 구조 진단 참조)</span>')
     return b
@@ -2113,7 +2113,7 @@ def insight_dau(period, distort=False):
         # ★ 착시 구간이면 '최근 낙폭 축소'를 회복으로 읽지 않는다 — 추석·슈퍼위크 배치 효과다.
         if distort and _delta is not None and _delta >= 1.0:
             b = [f"DAU {_pct(_cur)} — <b>{cons}주 연속 전년 하회</b>. 최근 낙폭 축소(직전 4주 대비 "
-                 f"{_delta:+.1f}%p)는 <b>명절·전관행사 시점 차이에 따른 착시</b>(기저 보정은 역신장) — "
+                 f"{_delta:+.1f}%p)는 <b>전관행사 시점 차이에 따른 착시</b>(행사 이전 2개월 누계는 역신장) — "
                  f"특히 <b>{worst[0]} 채널</b>({_pct(worst[2])})"]
         else:
             b = [f"DAU가 <b>{cons}주 연속</b> 전년보다 낮음(잠깐이 아니라 계속되는 하락) — "
@@ -2336,7 +2336,7 @@ def final_direction(wk_all, cur_mo, cutoff):
         diag.append(f"거래액 <b>{_pct(sales)}</b> = " + "; ".join(parts) if parts else
                     f"거래액 <b>{_pct(sales)}</b>")
         if _distort and _base_pp is not None:
-            diag.append('<span class="imp">※ 단 이 전년비는 <b>명절·전관행사 시점 차이에 따른 '
+            diag.append('<span class="imp">※ 단 이 전년비는 <b>전관행사 시점 차이에 따른 '
                         f'착시</b> — 최근 6주 같은 날짜 기준 거래액 약 {_base_pp:+.0f}%, 방문(유입율)은 역신장'
                         '(하단 구조 진단 참조)</span>')
     diag += insight_dau(period, _distort)     # DAU 지속성·주도채널·평상시 방문
@@ -2406,7 +2406,7 @@ def final_direction(wk_all, cur_mo, cutoff):
                     f"(작년 전환율 회복 시 <span class='k'>{_pct(sales)}→{_pct(scen)}</span>)")
         elif _distort:
             head = (f"지난주 거래액 {_pct(sales)}는 <span class='k'>전관행사 시점 차이에 따른 착시</span> — "
-                    "기저 보정 시 방문(DAU) <span class='k'>구조 역신장</span>이 근본 과제")
+                    "행사 영향을 빼면 방문(DAU) <span class='k'>구조 역신장</span>이 근본 과제")
         else:
             head = f"지난주 거래액 {_pct(sales)} — 방문(DAU) 구조 역신장이 근본 과제"
     return head, diag, now, nxt
@@ -2653,7 +2653,7 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>거래액</th>"
      "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>방문(DAU)</th></tr>"
      "<tr style='background:#faf5e6'><td style='border:1px solid #e6d8b6;padding:4px 10px;font-weight:600'>"
-     "① 명절·행사 보정 합산 <span style='color:#a99a7a;font-weight:400'>(9/1~11/1, 양년 블랙위크 제외 · 안정 기준)</span></td>"
+     "① 행사 이전 2개월 누계 <span style='color:#a99a7a;font-weight:400'>(9/1~11/1, BLACK FRIDAY 이전 · 기준선)</span></td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b;font-weight:600'>△2.9%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b;font-weight:600'>△8.2%</td></tr>"
      "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>② 마감주 11월 1주차 "
@@ -2680,10 +2680,10 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 마감주 거래액 +44.0%는 올해 BLACK FRIDAY(11/2~9)가 "
      "전년 11월 전관행사(11/10~17, 11/21~28)보다 앞당겨진 영향이 큽니다. 전년 행사 주간과 비교하면 거래액 "
      "+10.7~18.7%(객단가 +13.9~18.5%), 방문(DAU) △2.4~6.0%입니다. 행사 성과는 전년을 웃돌았으나 방문은 행사 "
-     "기간에도 역신장이며, 행사를 걷어낸 구조는 거래액 △2.9%·방문 △8.2%로 변동 없습니다. 이번 주는 올해 전관행사가 "
+     "기간에도 역신장이며, BLACK FRIDAY 이전 2개월 누계는 거래액 △2.9%·방문 △8.2%로, 행사를 빼면 역신장 흐름이 이어지고 있습니다. 이번 주는 올해 전관행사가 "
      "없고 전년 동주가 L+ BLACK WEEK라 날짜 전년비가 반대로 낮게 찍힙니다(11/9 거래액 △19.7%)."
      "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
-     "※ 안정 기준은 보정 합산(거래액 △2.9%·방문 △8.2%) · 11월 전관행사는 양년 2회씩(올해 BLACK FRIDAY 11/2~9·"
+     "※ 기준선은 행사 이전 2개월 누계(거래액 △2.9%·방문 △8.2%) · 11월 전관행사는 양년 2회씩(올해 BLACK FRIDAY 11/2~9·"
      "LF 12th ANNIVERSARY 11/20~27 / 전년 L+ BLACK WEEK 11/10~17·BLACK FRIDAY 11/21~28)이라 주별 전년비는 "
      "시점 차이로 흔들리고 월 누계에서 상쇄 · 11월 MTD(+33.5%)는 현재 올해 행사만 포함</span></div>"),
 ]
@@ -2697,7 +2697,7 @@ if _dg_s is not None and _dg_s < 0:
 else:
     _dg_lines.append(
         f"· <b>표면 거래액 플러스({_pct(_dg_s)})는 객단가({_pct(_dg_a)}) 의존</b> — "
-        f"단 전년비는 행사·명절 이동으로 왜곡되니 흐름 판단은 위 <b>기저 보정</b> 기준으로")
+        f"단 전년비는 전관행사 시점 차이로 왜곡되니 흐름 판단은 위 표 <b>① 기준선</b>으로")
 _dg_head = (f"🔍 <b>참고 · 구조 진단</b> <span style='color:#a08b5f'>— 지표 자동 갱신(~{cur_mo}/{cutoff})"
             + (f" · 브랜드·등급 교차분석(~{BRAND_ASOF.month}/{BRAND_ASOF.day} 기준) 포함" if _brand_ok else
                f"</span><span style='color:#c0a875'> · 브랜드 분석(~{BRAND_ASOF.month}/{BRAND_ASOF.day})은 "
