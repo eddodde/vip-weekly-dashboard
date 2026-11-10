@@ -16,13 +16,24 @@ $excel = New-Object -ComObject Excel.Application
 $excel.Visible = $false; $excel.DisplayAlerts = $false
 $wb = $excel.Workbooks.Open($Src, 0, $true)
 
+# Sheet order changes between file versions -> resolve by name (ASCII-only: char codes for the Korean words).
+# 'hwakjeong' (U+D655 U+C815) marks the confirmed-schedule sheets; the one ending in '2' is the current-year sheet.
+$kw = "$([char]0xD655)$([char]0xC815)"
+$idxPast = 0; $idxCur = 0; $si = 0
+foreach ($s in $wb.Worksheets) {
+  $si++
+  $nm = ([string]$s.Name).Trim()
+  if ($nm.Contains($kw)) { if ($nm.EndsWith("2")) { $idxCur = $si } else { $idxPast = $si } }
+}
+if ($idxPast -eq 0 -or $idxCur -eq 0) { throw "schedule sheets not found (past=$idxPast cur=$idxCur)" }
+
 # 시트별 레이아웃이 다름:
 #   시트3 '가변탭 확정 스케줄'   = 과거(2024/2025) 정상, 날짜열 = B+2..B+8
 #   시트2 '가변탭 확정 스케줄 2' = 올해(2026) 12월까지 확정, 날짜열 = B+1..B+7
 # → 2025는 시트3에서, 2026은 시트2에서 뽑아 합친다.
 $configs = @(
-  @{ sheet = 3; off = 2; bases = @{ 2025 = 31 } },
-  @{ sheet = 2; off = 1; bases = @{ 2026 = 41 } }
+  @{ sheet = $idxPast; off = 2; bases = @{ 2025 = 31 } },
+  @{ sheet = $idxCur; off = 1; bases = @{ 2026 = 41 } }
 )
 $recs = New-Object System.Collections.Generic.List[object]
 

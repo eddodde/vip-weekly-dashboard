@@ -27,7 +27,7 @@ try {
     $mo=[int]$p[0]; $dy=[int]$p[1]
     $dt=Get-Date "2026-$mo-$dy"
     $thu=$dt.AddDays(3 - (([int]$dt.DayOfWeek + 6) % 7))
-    $wn=[int](($thu.Day - 1)/7)+1
+    $wn=[int][math]::Floor(($thu.Day - 1)/7)+1
     $wk="{0:D2}월 {1}주차" -f $thu.Month,$wn
     $nm=[string]$vals.GetValue($r,$iNm); $af=[string]$vals.GetValue($r,$iAF)
     # ★ VIP 대시보드 — 캠페인명에 'VIP'가 든 건만 VIP 대상이다. MKT_라이브본방/재방 등은

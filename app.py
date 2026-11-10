@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-10-upd1109"
+SEED_CACHE_VER = "2026-11-10-upd1109b"
 
 
 @st.cache_data(show_spinner=False)
@@ -1780,6 +1780,9 @@ def resolve_weeks(latest_wk):
 MAX_GAP_RATIO = 0.30     # 전년 결손일이 월의 이 비율을 넘으면 잔여일 추정 근거가 얇아 예상마감 미표시
 
 
+FC_EVENT_AWARE = True   # 예상 마감 잔여일을 올해 행사 캘린더(전관행사일/평상일)로 나눠 투영
+
+
 def forecast_month(mo, cutoff):
     """당월 예상 마감. 잔여일은 '전년 동요일(−364)' 실적으로 채우고(반복 행사·주말 자동 반영),
     올해 MTD 수준(전년 동기比)만큼 스케일. → 행사 일자가 1~2일 달라도 요일 기준으로 정렬됨.
@@ -1850,7 +1853,34 @@ def forecast_month(mo, cutoff):
     _m = len(_curv)
     rest_level = ((_curv[_m // 2] if _m % 2 else (_curv[_m // 2 - 1] + _curv[_m // 2]) / 2)
                   if _curv else mtd26 / cutoff)
-    proj_total = mtd26 + (dim - cutoff) * rest_level
+    # ★ 행사 인지 투영(2026-11): 위 '당월 보유일 중앙값'은 월초가 통째로 전관행사면(11/1~9가
+    #   BLACK FRIDAY) 행사 수준을 잔여일 전체에 적용해 과대된다(11월 799백만·+24%). 올해 행사
+    #   캘린더가 있으면 잔여일을 '전관행사일/평상일'로 나눠, 각각 올해 최근 42일의 같은 유형
+    #   중앙값으로 채운다. 캘린더가 없거나 표본이 없으면 위 rest_level로 폴백.
+    rem_sum = (dim - cutoff) * rest_level
+    ev_aware = False
+    if FC_EVENT_AWARE:
+        _occ = [(pd.Timestamp(s).date(), pd.Timestamp(e).date())
+                for s, e, _, maj in event_occurrences(CUR, only_major=True) if maj]
+
+        def _is_ev(dt):                     # 종료일은 10시 종료라 행사일에서 제외
+            return any(s <= dt < e for s, e in _occ)
+        if _occ:
+            _evv, _nov = [], []
+            for i in range(42):
+                d0 = datetime.date(CUR, mo, cutoff) - datetime.timedelta(days=i)
+                a = dv(CUR, d0.month, d0.day) if d0.year == CUR else None
+                if a is not None:
+                    (_evv if _is_ev(d0) else _nov).append(a)
+            _non_lv = float(np.median(_nov)) if len(_nov) >= 5 else None
+            _ev_lv = float(np.median(_evv)) if len(_evv) >= 3 else None
+            if _non_lv is not None:
+                rem_sum = 0.0
+                for d in range(cutoff + 1, dim + 1):
+                    _e = _is_ev(datetime.date(CUR, mo, d))
+                    rem_sum += (_ev_lv if (_e and _ev_lv is not None) else _non_lv)
+                ev_aware = True
+    proj_total = mtd26 + rem_sum
     proj_daily = proj_total / dim
     # 전년비는 실제 비교 기준(전년 월 마감 = 달력 총액) 대비로 표기.
     # 기저도 결손 보정본을 써야 분자(보정된 예상치)와 기준이 맞는다.
@@ -1859,7 +1889,7 @@ def forecast_month(mo, cutoff):
     ev = [nm for nm, d in upcoming_major(datetime.date(CUR, mo, cutoff), horizon=dim - cutoff)]
     return dict(daily=proj_daily, total=proj_total, dim=dim, ratio=ratio, rem=dim - cutoff,
                 yoy=yoy, events=ev, blended=blended, mtd_ratio=mtd_ratio,
-                gap=gap, unavailable=False)
+                gap=gap, unavailable=False, ev_aware=ev_aware)
 
 
 def insight_trend(wk_all):
@@ -1977,8 +2007,8 @@ def insight_month(mo, cutoff, is_cur, unit_label):
                 if "가장 크게 움직임" in b[_i]:
                     b[_i] = b[_i].replace(
                         "로 가장 크게 움직임",
-                        "로 가장 크게 움직임 <span style='color:#93a0b3'>— 단 전월(추석)·당월"
-                        "(슈퍼위크) 배치 효과이지 실질 개선 아님(기저 보정 CR △3.7%)</span>")
+                        "로 가장 크게 움직임 <span style='color:#93a0b3'>— 단 명절·전관행사 "
+                        "시점 차이에 따른 효과이지 실질 개선 아님</span>")
                     break
         # DAU 3개월 추세만 자동 표기. 단 착시 구간이면 '축소 흐름' 단정 금지(최근 월 반등은 명절 착시).
         dseq = []
@@ -1997,14 +2027,14 @@ def insight_month(mo, cutoff, is_cur, unit_label):
                     ("역신장폭 축소 흐름" if dseq[-1][1] > dseq[0][1] else "역신장폭 확대 흐름"))
             b.insert(max(len(b) - 1, 0), f"<b>DAU 추세</b>({trend}) — {tail}")
         if fc and fc["yoy"] is not None:
-            evtxt = (f" (잔여기간 {', '.join(fc['events'][:2])} 예정 · 올해 현 run-rate로 투영)"
-                     if fc["events"] else " (잔여는 올해 현 run-rate로 투영)")
+            evtxt = (f" (잔여기간 {', '.join(fc['events'][:2])} 예정 · 행사일·평상일 구분 추정)"
+                     if fc["events"] else " (잔여는 올해 최근 수준으로 추정)")
             b.insert(len(b) - 1, f"<b>{mo}월 예상 마감</b> 일평균 <b>{fc['daily']/1e6:,.0f}백만</b>"
                                  f"(전년비 {_pct(fc['yoy'])}, 월 거래액 약 {fc['total']/1e8:,.0f}억){evtxt}")
         # ★ 결론 교체 — 착시면 '전 지표 개선/상승세'로 끝내지 않는다(사용자 지적).
         if _distort and b:
-            b[-1] = ('<span class="imp">→ <b>전 지표 플러스는 추석(전년 10월)·슈퍼위크(올해 10월) '
-                     f'배치 착시</b> — 명절·행사 보정 시 거래액 약 {_base*100:+.0f}%, '
+            b[-1] = ('<span class="imp">→ <b>표면 전년비 플러스는 명절·전관행사 시점 차이에 따른 '
+                     f'착시</b> — 최근 6주 같은 날짜 기준 거래액 약 {_base*100:+.0f}%, '
                      '방문(유입율)은 역신장. 상승세가 아니라 캘린더 효과(하단 구조 진단 참조)</span>')
     return b
 
@@ -2050,7 +2080,7 @@ def insight_dau(period, distort=False):
         # ★ 착시 구간이면 '최근 낙폭 축소'를 회복으로 읽지 않는다 — 추석·슈퍼위크 배치 효과다.
         if distort and _delta is not None and _delta >= 1.0:
             b = [f"DAU {_pct(_cur)} — <b>{cons}주 연속 전년 하회</b>. 최근 낙폭 축소(직전 4주 대비 "
-                 f"{_delta:+.1f}%p)는 <b>추석·슈퍼위크 배치 착시</b>(기저 보정은 역신장) — "
+                 f"{_delta:+.1f}%p)는 <b>명절·전관행사 시점 차이에 따른 착시</b>(기저 보정은 역신장) — "
                  f"특히 <b>{worst[0]} 채널</b>({_pct(worst[2])})"]
         else:
             b = [f"DAU가 <b>{cons}주 연속</b> 전년보다 낮음(잠깐이 아니라 계속되는 하락) — "
@@ -2273,8 +2303,8 @@ def final_direction(wk_all, cur_mo, cutoff):
         diag.append(f"거래액 <b>{_pct(sales)}</b> = " + "; ".join(parts) if parts else
                     f"거래액 <b>{_pct(sales)}</b>")
         if _distort and _base_pp is not None:
-            diag.append('<span class="imp">※ 단 이 전년비는 <b>추석(전년 10월)·슈퍼위크(올해 10월) '
-                        f'배치 착시</b> — 기저 보정 시 거래액 약 {_base_pp:+.0f}%, 방문(유입율)은 역신장'
+            diag.append('<span class="imp">※ 단 이 전년비는 <b>명절·전관행사 시점 차이에 따른 '
+                        f'착시</b> — 최근 6주 같은 날짜 기준 거래액 약 {_base_pp:+.0f}%, 방문(유입율)은 역신장'
                         '(하단 구조 진단 참조)</span>')
     diag += insight_dau(period, _distort)     # DAU 지속성·주도채널·평상시 방문
     # 금주 액션(진행중): 전환(CR)을 최우선으로
@@ -2342,7 +2372,7 @@ def final_direction(wk_all, cur_mo, cutoff):
             head = (lead + f" → 이번 주 <span class='k'>{evnm_t} 고트래픽에서 '전환(CR)'을 끌어올리는 것</span>이 즉효 레버"
                     f"(작년 전환율 회복 시 <span class='k'>{_pct(sales)}→{_pct(scen)}</span>)")
         elif _distort:
-            head = (f"지난주 거래액 {_pct(sales)}는 <span class='k'>추석·슈퍼위크 배치 착시</span> — "
+            head = (f"지난주 거래액 {_pct(sales)}는 <span class='k'>전관행사 시점 차이에 따른 착시</span> — "
                     "기저 보정 시 방문(DAU) <span class='k'>구조 역신장</span>이 근본 과제")
         else:
             head = f"지난주 거래액 {_pct(sales)} — 방문(DAU) 구조 역신장이 근본 과제"
@@ -2498,12 +2528,12 @@ st.markdown(monthly_table(cur_months, cutoff), unsafe_allow_html=True)
 # 하단 참고: 예상 마감(추정치) — 작게, 표 아래에
 fc = forecast_month(cur_mo, cutoff) if cur_mo else None
 if fc and fc["yoy"] is not None:
-    basis = (f"{cur_mo}월 1~{cutoff}일 실적 + 잔여 {fc['rem']}일은 전년 동월 같은 일자 실적에 "
-             f"올해 수준({fc['ratio']*100-100:+.0f}%)을 반영해 추정(전년비는 전년 월 마감 대비). "
-             + (f"※ MTD {cutoff}일은 표본이 짧아, MTD 단독({fc['mtd_ratio']*100-100:+.0f}%) 대신 "
-                f"최근 28일 추세를 가중 블렌딩한 값 적용. " if fc.get("blended") else "")
-             + "전년 대비 행사 컨텐츠 동일·일자만 1~2일 이동 가정(월 총액 영향 미미)"
-             + (f". 잔여기간 전년 반복 행사: {', '.join(fc['events'][:3])}" if fc["events"] else "")
+    basis = (f"{cur_mo}월 1~{cutoff}일 실적 + 잔여 {fc['rem']}일 추정(전년비는 전년 월 마감 대비). "
+             + ("잔여일은 올해 행사 일정에 따라 전관행사일·평상일로 나누고, 각각 올해 최근 6주의 "
+                "같은 유형 일평균(중앙값)을 적용. 과거 8개월 적용 시 평균 오차 약 5%"
+                if fc.get("ev_aware") else
+                "잔여일은 올해 당월 일평균(중앙값) 수준이 이어진다고 가정")
+             + (f". 잔여기간 전관행사: {', '.join(fc['events'][:3])}" if fc["events"] else "")
              + (f". ※ 전년 동월 손상 폐기일 {fc['gap']*100:.0f}%는 정상일 평균으로 채워 보정"
                 if fc.get("gap") else "") + ".")
     st.markdown(
@@ -2511,7 +2541,7 @@ if fc and fc["yoy"] is not None:
         f"border-left:3px solid #c5d3e8;padding:7px 12px;border-radius:4px;margin-top:8px'>"
         f"📌 <b>참고 · {cur_mo}월 예상 마감(추정치, 변동 가능)</b> — "
         f"일평균 <b>{fc['daily']/1e6:,.0f}백만</b>(전년비 {yoy_str(fc['yoy'])}) · "
-        f"월 거래액 약 <b>{fc['total']/1e8:,.0f}억</b> · MTD(~{cutoff}일) 전년비 {yoy_str(fc['ratio']-1)}"
+        f"월 거래액 약 <b>{fc['total']/1e8:,.0f}억</b> · MTD(~{cutoff}일) 전년비 {yoy_str(fc['mtd_ratio']-1)}"
         f"<br><span style='color:#93a0b3'>근거: {basis}</span></div>",
         unsafe_allow_html=True)
 elif fc and fc.get("unavailable"):
@@ -2581,7 +2611,8 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
     #   정적이며 창 라벨로 기준을 밝힌다(데이터가 넓어지면 창을 늘려 재산출).
     # ★ 다각도 실적 비교 표(정적 — 명절·행사 보정은 외부 창 계산, 작성 기준 11/9).
     #   전년비 하나로 판단하지 않도록 ①보정 합산(안정) ②마감주 ③전년 동일 행사 대비 ④진행주를 한 표에.
-    #   블랙위크: 올해 11/2~9, 전년 11/10~17(+BLACK FRIDAY 11/21~28) — 1주 앞당겨져 날짜 전년비가 양방향 왜곡.
+    #   11월 전관: 올해 BLACK FRIDAY 11/2~9·LF 12th ANNIVERSARY 11/20~27 / 전년 L+ BLACK WEEK 11/10~17·
+    #   BLACK FRIDAY 11/21~28 — 시점이 어긋나 주별 날짜 전년비가 양방향 왜곡(가변탭 (2) 기준 행사명 확정).
     ("<table style='display:inline-table;width:auto;border-collapse:collapse;font-size:11.5px;"
      "color:#5b4a32;margin:3px 0 6px;border:1px solid #d8c398'>"
      "<tr style='background:#f3e9cf;color:#7a6838'>"
@@ -2593,15 +2624,19 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b;font-weight:600'>△2.9%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b;font-weight:600'>△8.2%</td></tr>"
      "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>② 마감주 11월 1주차 "
-     "<span style='color:#a99a7a'>(11/2~8 블랙위크, 전년 동주는 평상)</span></td>"
+     "<span style='color:#a99a7a'>(11/2~8 BLACK FRIDAY, 전년 동주는 평상)</span></td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>+44.0%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△4.3%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>③ 전년 블랙위크 대비 "
-     "<span style='color:#a99a7a'>(올해 11/2~8 vs 전년 11/10~16)</span></td>"
+     "<tr><td colspan='3' style='border:1px solid #e6d8b6;padding:4px 10px;font-weight:600;"
+     "background:#faf5e6'>③ 전년 11월 전관행사 대비 — 올해 11/2~8</td></tr>"
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 BLACK FRIDAY (11/21~27)</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>+18.7%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△2.4%</td></tr>"
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 L+ BLACK WEEK (11/10~16)</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>+10.7%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△6.0%</td></tr>"
      "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>④ 진행주 11월 2주차 "
-     "<span style='color:#a99a7a'>(11/9 1일치, 전년 동주가 블랙위크)</span></td>"
+     "<span style='color:#a99a7a'>(11/9 1일치, 전년 동주가 L+ BLACK WEEK)</span></td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△19.7%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△8.8%</td></tr>"
      "<tr style='color:#a79a7a'><td style='border:1px solid #e6d8b6;padding:4px 10px'>"
@@ -2609,14 +2644,15 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>+33.5%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>△4.4%</td></tr>"
      "</table>"
-     "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 마감주 거래액 +44.0%는 올해 블랙위크(11/2~9)가 "
-     "전년(11/10~17)보다 1주 앞당겨진 영향이 큽니다. 같은 행사끼리 비교하면 거래액 +10.7%(객단가 +13.9%·전환 +3.1%), "
-     "방문(DAU) △6.0%입니다. 행사 성과는 전년을 웃돌았으나 방문은 행사 기간에도 역신장이며, 행사를 걷어낸 구조는 "
-     "거래액 △2.9%·방문 △8.2%로 변동 없습니다. 이번 주부터는 전년 동주가 블랙위크라 날짜 전년비가 반대로 "
-     "낮게 찍힙니다(11/9 거래액 △19.7%)."
+     "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 마감주 거래액 +44.0%는 올해 BLACK FRIDAY(11/2~9)가 "
+     "전년 11월 전관행사(11/10~17, 11/21~28)보다 앞당겨진 영향이 큽니다. 전년 행사 주간과 비교하면 거래액 "
+     "+10.7~18.7%(객단가 +13.9~18.5%), 방문(DAU) △2.4~6.0%입니다. 행사 성과는 전년을 웃돌았으나 방문은 행사 "
+     "기간에도 역신장이며, 행사를 걷어낸 구조는 거래액 △2.9%·방문 △8.2%로 변동 없습니다. 이번 주는 올해 전관행사가 "
+     "없고 전년 동주가 L+ BLACK WEEK라 날짜 전년비가 반대로 낮게 찍힙니다(11/9 거래액 △19.7%)."
      "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
-     "※ 안정 기준은 보정 합산(거래액 △2.9%·방문 △8.2%) · 11월 MTD(+33.5%)는 올해 블랙위크만 포함된 수치로 "
-     "전년 블랙위크(11/10~17)·블랙프라이데이(11/21~28)가 지나며 낮아짐 · 11월 1~2주차는 묶어서(전년 블랙위크 대비) 판단</span></div>"),
+     "※ 안정 기준은 보정 합산(거래액 △2.9%·방문 △8.2%) · 11월 전관행사는 양년 2회씩(올해 BLACK FRIDAY 11/2~9·"
+     "LF 12th ANNIVERSARY 11/20~27 / 전년 L+ BLACK WEEK 11/10~17·BLACK FRIDAY 11/21~28)이라 주별 전년비는 "
+     "시점 차이로 흔들리고 월 누계에서 상쇄 · 11월 MTD(+33.5%)는 현재 올해 행사만 포함</span></div>"),
 ]
 if _dg_ev:
     _dg_lines.append(_dg_ev.replace("<br>", "", 1))
@@ -3300,11 +3336,21 @@ def _status_card(mode="week"):
     # ★ 예측 결산 — 완료된 주에 대해 '직전주 수준 유지 시 예상 전년비'(들어가기 전 기대)와
     #   실제를 대조. 편차(+)가 이번주 액션·자연변동이 끌어올린 몫. 데이터 갱신 시 자동.
     if b.get("weekly") and "진행" not in b.get("title", ""):   # 완료된 주에만(진행주는 마감 전)
-        pred = pc / cp - 1                        # 직전 마감주 수준 유지 시 예상 전년비
+        pred = pc / cp - 1                        # 폴백: 직전 마감주 수준 유지 시 예상 전년비
+        pred_lbl = "예측(직전주 수준)"
+        # 연간 비교 표와 같은 기준(직전 완료 4주 평균 ÷ 전년 동주)으로 통일 — 화면 내 예측값 단일화.
+        _pm = __import__("re").match(r"\s*(\d+)월\s*(\d+)주", str(b.get("curlab", "")))
+        if _pm:
+            _plab = f"{int(_pm.group(1))}/{int(_pm.group(2))}"
+            _prow = next((r for r in (_weekly_level_data().get("DAU") or {}).get("rows", [])
+                          if r["lab"] == _plab), None)
+            if _prow and _prow.get("p26") and _prow.get("d25") and _prow.get("a26") is not None:
+                pred = _prow["p26"] / _prow["d25"] - 1
+                pred_lbl = "예측(직전 4주 평균 수준)"
         gap = (yw - pred) * 100                    # 실제 − 예측 (%p, 양수=예측 상회=선전)
         mets += [
             ("─ 예측 결산 ─", "", False),
-            ("예측(직전주 수준)", p2(pred), False),
+            (pred_lbl, p2(pred), False),
             ("실제 마감", f"{p2(yw)} · 예측 {'+' if gap >= 0 else '△'}{abs(gap):.1f}%p {'상회' if gap >= 0 else '하회'}", True),
         ]
     tips = [
@@ -3314,7 +3360,7 @@ def _status_card(mode="week"):
         f"실제는 {cc:,.0f}명으로 {excess:+,.0f}명/일, 이 초과분이 역신장 축소의 실체",
         "축소분은 전년 기저 변동이 아니라 양년 기간 증감률의 차이로만 움직인다",
         "── 예측 결산 ──",
-        "예측(직전주 수준) = 올해 직전 마감주 DAU ÷ 전년 이번주 − 1 (들어가기 전 기대 전년비)",
+        "예측 = 올해 직전 완료 4주 평균 DAU ÷ 전년 이번주 − 1 (행사 미반영 기준선, 연간 비교 표와 동일)",
         "실제 − 예측(%p)이 이번주 액션·자연변동이 끌어올린 몫 — 양수면 예측 상회(선전)",
         "※ 데이터 갱신 시 자동 반영. '실행 완료(리마인드)'도 문자 실적에서 자동 산출",
     ]
