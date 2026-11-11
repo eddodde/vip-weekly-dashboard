@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1110j"
+SEED_CACHE_VER = "2026-11-11-upd1110k"
 
 
 @st.cache_data(show_spinner=False)
@@ -1075,19 +1075,20 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-yo.p{color:#1f5fbf;} .dt-yo.n{color:#c0392b;} .dt-yo.x{color:#9aa7bd;font-weight:400;}
 /* 실행 레버 — LEVEL-V 열에 모으고, 겨냥 지표는 그룹 헤더로 밝힌다 */
 /* LEVEL-V는 2열. 세로로만 쌓으면 트리 본체보다 두 배 길어져 한 화면에 안 들어온다. */
-.dt-levs{display:flex;flex-direction:column;gap:11px;margin-left:12px;}
+.dt-levs{display:flex;flex-direction:column;gap:11px;margin-left:12px;width:max-content;}
 .dt-levgrp{display:flex;flex-direction:column;gap:4px;}
 .dt-levrow{display:flex;flex-direction:row;gap:8px;align-items:stretch;}
 .dt-tgt{font-size:10px;font-weight:700;color:#1f5fbf;letter-spacing:.02em;}
 /* 그룹 통합 효과 — 액션 박스 위에 '이 액션들로 역신장 △X→△Y' 한 줄. 보고 두괄식. */
-.dt-levhead{font-size:11px;color:#14203a;background:#eaf1fb;border:1px solid #cfe0f6;
+/* width:0 + min-width:100% — 긴 문장이 폭을 밀어내지 않고 카드 줄 너비에 맞춰진다 */
+.dt-levhead{width:0;min-width:100%;box-sizing:border-box;word-break:keep-all;font-size:11px;color:#14203a;background:#eaf1fb;border:1px solid #cfe0f6;
   border-radius:5px;padding:6px 9px;margin:1px 0 3px;line-height:1.5;}
 .dt-levhead b{color:#1f5fbf;}
-.dt-lh-sub{display:block;margin-top:3px;font-size:10px;font-weight:400;color:#7a8aa3;}
-.dt-lev{width:250px;flex:none;border-left:2px solid #1f5fbf;background:#f5f8fd;
+.dt-lh-sub{display:block;margin-top:3px;font-size:10px;font-weight:400;color:#7a8aa3;line-height:1.6;}
+.dt-lev{width:272px;flex:none;box-sizing:border-box;border-left:2px solid #1f5fbf;background:#f5f8fd;
   border-radius:0 5px 5px 0;padding:6px 10px 7px;cursor:default;}
 .dt-lev b{font-size:11.5px;color:#14203a;display:block;}
-.dt-lev p{margin:1px 0 0;font-size:10.5px;color:#4b5872;line-height:1.4;}
+.dt-lev p{margin:1px 0 0;font-size:10.5px;color:#4b5872;line-height:1.5;word-break:keep-all;}
 /* 예상 견인 — 현황 카드와 같은 (항목 → 값) 행으로 싣는다. 줄글이면 눈이 안 걸린다. */
 .dt-imp{margin-top:5px;padding-top:4px;border-top:1px dashed #c3d4ea;}
 .dt-lev .dt-dmet span.hi{color:#1f5fbf;}   /* 레버는 파랑 — 실행 완료(초록)와 구분 */
@@ -1102,7 +1103,7 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   background:#dfeae1;border-radius:3px;padding:1px 5px;margin-bottom:3px;}
 .dt-done b{font-size:11.5px;color:#14203a;display:block;margin-bottom:3px;}
 /* LEVEL-V 머리말 — 지난주 결과에서 금주 목표까지 한 문단으로 잇는다 */
-.dt-sum{width:508px;flex:none;background:#eef3fa;border:1px solid #d3e0f0;border-radius:6px;
+.dt-sum{width:0;min-width:100%;box-sizing:border-box;flex:none;background:#eef3fa;border:1px solid #d3e0f0;border-radius:6px;
   padding:9px 12px 10px;margin-bottom:9px;cursor:default;}
 .dt-sr{display:flex;align-items:baseline;gap:10px;margin-top:4px;word-break:keep-all;}
 .dt-sr:nth-child(2){margin-top:0;}   /* 첫 지표 행 — 앞에 .dt-sbase가 있다 */
@@ -1121,7 +1122,7 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-dmet{display:flex;justify-content:space-between;gap:8px;font-size:10px;
   line-height:1.5;color:#8b97ad;word-break:keep-all;}
 .dt-dmet em{font-style:normal;flex:none;}
-.dt-dmet span{text-align:right;color:#4b5872;font-variant-numeric:tabular-nums;}
+.dt-dmet span{text-align:right;color:#4b5872;font-variant-numeric:tabular-nums;word-break:keep-all;}
 .dt-dmet span.hi{font-weight:700;font-size:11px;color:#2f6b45;}
 .dt-dmet.cont{margin-top:-2px;}   /* 앞 행의 보조 설명 — 항목명 없이 값만 이어 붙인다 */
 .dt-ch{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px;}
@@ -3247,11 +3248,11 @@ LEVERS = [
         #   금주 VIP 시크릿·기획전 편성 없음 → 유입 레버는 1건.
         #   준거는 9월 VIP 라이브(9.01%)에서 10월 '헤지스 계열 VIP 고관여 발송' 실측(4.16%)으로
         #   교체 — 같은 브랜드·같은 유형(라이브 연계 VIP 고관여 SMS)의 더 최근 실측이라서.
-        ("고관여 브랜드 라이브 모수 확대", "금주 편성 히스헤지스(11/12 본방) · 헤지스 VIP 고관여 발송 유입 4.16%",
+        ("고관여 브랜드 라이브 모수 확대", "금주 편성 히스헤지스(11/12 본방)\n헤지스 VIP 고관여 발송 유입 4.16%",
          _imp(("유입 기여(상한)", "0.28%p · +59명/일", True),
               ("순증(가정)", "0.14%p · 약 +30명/일", False),
               ("거래액(상한)", "+2,500,000원", False),
-              ("준거", "헤지스 VIP 고관여 발송 유입 4.16%", False)), [
+              ("준거", "헤지스 VIP 고관여 유입 4.16%", False)), [
             "── 금주 라이브 편성 (VIP 거래액 11/1~9) ──",
             "  11/12 목 히스헤지스(본방)  헤지스 1,193,240,672원 · 전년 동기간 +58.6%  ← VIP 거래액 1위 브랜드",
             "  11/10 화 TNGT(본방)  172,431,254원 — 작성일 당일 방송으로 제외",
@@ -3283,11 +3284,11 @@ LEVERS = [
         #   (10/1~11/9)에서 '매일 도는 자동화' 후보를 검토 — VIP 자동화는 최근본·미방문·승급유도
         #   3종뿐이고, 장바구니 보유 리마인드는 전체 대상 1회(10/31) 발송만 있었다. 유입율 4.75%로
         #   최근본(5.75%)에 근접해 VIP 일 단위 자동화 후보로 세운다. 일 대상 규모는 가정.
-        ("VIP 장바구니 담기 익일 혜택 안내 자동화 (제안)", "전일 장바구니에 담은 VIP에게 혜택 화면 안내 · 매일 · 일 5,000명 · 유입 5.74% 적용",
+        ("VIP 장바구니 담기 익일 혜택 안내 자동화 (제안)", "전일 장바구니에 담은 VIP에게 혜택 화면 안내\n매일 발송 · 일 5,000명 · 유입 5.74% 적용",
          _imp(("유입 기여(상한)", "1.36%p · +287명/일", True),
               ("순증(가정)", "0.68%p · 약 +144명/일", False),
-              ("모수", "전일 장바구니 담은 VIP 7,198명 중 5,000명 발송 가정", False),
-              ("준거", "최근 조회 상품 리마인드 유입 5.74% 적용", False)), [
+              ("모수", "전일 담은 VIP 7,198명 중 5,000명", False),
+              ("준거", "최근 조회 리마인드 유입 5.74%", False)), [
             "1회성 발송은 그 주에만 반영됨 — 방문(DAU)은 매일 도는 자동 발송이 누적 기여",
             "── 현재 VIP 자동 발송 (문자 실적 10/1~11/9, 일평균) ──",
             "  최근 조회 상품 리마인드  일 5,968명 · 유입 5.75% · 일 343건",
@@ -3315,11 +3316,11 @@ LEVERS = [
             "── 함께 검토한 후보 (참고) ──",
             "  핫딜 알림(매일 2회, 일 1,422명) 유입 10.6% — 반응율 최고이나 현재 발송 대상 기준 확인 필요",
             "  출석체크 쿠폰 알림(10/15 1회, 10,498명) 유입 7.51% — 매일 방문 습관과 직접 연결"]),
-        ("최근 조회 상품 리마인드 대상 확대 (제안)", "매일 발송 중인 자동 문자 · 일 대상 1,000명 추가 · 유입 5.74%",
+        ("최근 조회 상품 리마인드 대상 확대 (제안)", "매일 발송 중인 자동 문자\n일 대상 1,000명 추가 · 유입 5.74%",
          _imp(("유입 기여(상한)", "0.27%p · +57명/일", True),
               ("순증(가정)", "0.14%p · 약 +29명/일", False),
               ("현재 규모", "주 45,481명 · 유입 2,609건", False),
-              ("준거", "11월 1주 최근본 리마인드 유입 5.74%", False)), [
+              ("준거", "11월 1주 리마인드 유입 5.74%", False)), [
             "최근 조회 상품 리마인드는 매일 발송되는 자동 문자 — 주 1회성 발송과 달리 매일 방문에 기여",
             "── 근거: 대상을 늘려도 유입율이 유지됨 (문자 실측) ──",
             "  10월 5주 발송 41,909명 · 유입 2,277건(5.43%)",
@@ -3768,7 +3769,8 @@ def _dt_levers(focus, v, mode="wtd"):
                            f'<span class="{"hi" if hi else ""}">{b}</span></div>'
                            for a, b, hi in got) if got else ""
             box = f'<div class="dt-imp">{rows}</div>' if rows else ""
-            cards.append(f'<div class="dt-lev" title="{tip}"><b>{t}</b><p>{d}</p>{box}</div>')
+            _dh = d.replace("\n", "<br>")      # 설명은 의미 단위로 직접 줄을 나눈다
+            cards.append(f'<div class="dt-lev" title="{tip}"><b>{t}</b><p>{_dh}</p>{box}</div>')
         # 유입율(visit) 그룹 두괄식 헤더 — '이번주 날짜 전년비 예상 △X → 방어 목표 △Y'.
         # ★ 기준은 전년 '동주'(이번주 날짜 −364)와의 날짜 전년비다(사용자 지시). 전년이 행사주
         #   (예: 슈퍼위크)면 기저가 높아 숫자가 커진다 — 그게 주 마감에 실제로 찍힐 숫자다.
@@ -3789,10 +3791,10 @@ def _dt_levers(focus, v, mode="wtd"):
                 _st = f' · 구조(전년 평상 대비) {f(_bl*100)}' if _bl is not None else ''
                 _arrow = (f'→ <b>{_wl} 방문(DAU) 날짜 전년비 예상 {f(base)} '
                           f'→ 방어 목표 {f(new)}</b>')
-                _sub = (f'올해 주 예상({_n}일 실측 + 잔여일은 최근 같은 유형일 평균) {_cur:,.0f} ÷ 전년 동주 {_prev:,.0f} '
-                        f'(전년 동주가 전관행사 주간이면 기저가 높아 수치가 큼{_st}) · '
-                        f'순증률 {LEVER_INCREMENTALITY*100:.0f}%×중복 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
-                        f'주 마감 후 실제가 이 수준이면 예상·방어 성공')
+                _sub = (f'올해 주 예상 {_cur:,.0f}명({_n}일 실측 + 잔여일은 최근 같은 유형일 평균) ÷ 전년 동주 {_prev:,.0f}명<br>'
+                        f'전년 동주가 전관행사 주간이면 기저가 높아 수치가 큼{_st}<br>'
+                        f'순증률 {LEVER_INCREMENTALITY*100:.0f}% × 중복 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
+                        f'주 마감 실적이 이 수준이면 방어 성공')
             else:
                 cur = (_bl if _bl is not None else (dau[1] if dau else 0)) * 100
                 base_dau = _wf[2] if _wf else 19500   # _wf=(yoy, run-rate, 전년 동주) — 전년 동주를 %p 분모로
