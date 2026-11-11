@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1110e"
+SEED_CACHE_VER = "2026-11-11-upd1110g"
 
 
 @st.cache_data(show_spinner=False)
@@ -1106,8 +1106,8 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   padding:9px 12px 10px;margin-bottom:9px;cursor:default;}
 .dt-sr{display:flex;align-items:baseline;gap:10px;margin-top:4px;word-break:keep-all;}
 .dt-sr:nth-child(2){margin-top:0;}   /* 첫 지표 행 — 앞에 .dt-sbase가 있다 */
-.dt-sr em{flex:none;width:36px;font-style:normal;font-size:10px;font-weight:700;color:#8b97ad;}
-.dt-sr b{flex:none;width:58px;font-size:14px;font-weight:700;color:#14203a;
+.dt-sr em{flex:none;width:50px;font-style:normal;font-size:10px;font-weight:700;color:#8b97ad;}
+.dt-sr b{flex:none;width:84px;font-size:14px;font-weight:700;color:#14203a;
   font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
 .dt-sr span{font-size:10.5px;color:#4b5872;line-height:1.4;}
 .dt-sr:nth-child(2) b{color:#1f5fbf;font-size:16px;}   /* 목표 — 두괄식으로 맨 위 */
@@ -3274,6 +3274,48 @@ LEVERS = [
             "  정확한 순증은 라이브 기본발송 VIP 중복·대상 교집합 실측이 있어야 확정",
             "※ 금주 VIP 시크릿·기획전 편성은 없음 — 유입 액션은 본 1건",
             "※ 상설 아님 — 그 주 VIP 고관여 브랜드 라이브 편성이 있을 때만 세우는 상황성 레버"]),
+        # ★ 11월 2주차 추가 제안 2건(사용자 요청: 라이브 외 가능한 유입 액션).
+        #   ① 수입블랙위크 VIP 안내 — 전환 그룹에 있던 제안을 유입으로 옮김(유입·구매 모두 발생,
+        #      유입 그룹만 화면에 뜨므로). 준거 VIP_닥스위크_261015(같은 유형: BPU 주간행사 VIP 안내 LMS).
+        #   ② 최근 조회 상품 리마인드 대상 확대 — 이미 가동 중인 발송이라 '재실행'이 아니라
+        #      '대상 재정의(일 대상 추가)'로만 세운다. 근거: 11월 1주 대상을 8.5% 늘렸는데
+        #      유입율이 5.43%→5.74%로 유지(희석 없음). 추가 규모(일 1,000명)는 가정.
+        ("수입블랙위크 VIP 안내 (제안)", "11/13(금) 오픈 · BLACK FRIDAY 방문 후 미구매 VIP · VIP 행사 안내 유입 6.91%",
+         _imp(("유입 기여(상한)", "0.47%p · +99명/일", True),
+              ("순증(가정)", "0.23%p · 약 +49명/일", False),
+              ("구매고객(참고)", "발송 1회당 약 13명 · 6,012,427원", False),
+              ("준거", "VIP 닥스위크 안내(10/15) 유입 6.91% — 실측 1건", False)), [
+            "금주 행사 중 2BPU 수입블랙위크(11/13~16)를 VIP에 별도 안내하는 안 — 편성 확정 전 제안",
+            "── 대상 ──",
+            "  BLACK FRIDAY(11/2~8) 기간 방문 후 미구매 VIP — 행사 기간 방문(DAU 19,871명)이",
+            "  금주 평상 수준으로 내려가는 구간이라, 그 방문 고객의 재방문·구매를 유도",
+            "── 수요 근거: 2BPU 수입 브랜드 VIP 거래액 (11/1~9, 전년 동기간 대비) ──",
+            "  이자벨마랑 57,816,591원 +25.6% · 바버 49,551,182원 +52.5% · 빈스 47,386,591원 +22.0%",
+            "── 준거: VIP 주간행사 안내 LMS (10/15 VIP 닥스위크, 캠페인명 VIP 한정) ──",
+            "  발송 5,516명 · 유입 6.91% · 구매고객 7명(구매전환 1.84%) · 거래액 3,316,455원",
+            "  ※ 실측 1건이라 표본이 적음 — 실행 후 실측으로 교체",
+            "── 참고: 수입 행사 문자 (전체 대상 발송, VIP 준거 아님) ──",
+            "  10/16 수입메가세일 LMS 18,696명 유입 8.92% · 10/27 스피드딜 수입 SMS 6,316명 유입 10.10%",
+            "채널: LMS · 발송 시점 11/13(금) 오픈일(WEEKEND SALE 동일자 시작) · 모수 1만 가정",
+            "※ 견인 산출: 1만 × 유입 6.91% = 691명 ÷ 7일 = 99명/일, 전년 동주 DAU(21,147명) 대비 0.47%p",
+            "※ 순증(가정) = 유입 상한 × 순증률 50% → 약 49명/일·0.23%p",
+            "※ 히스헤지스 라이브 대상과 중복 제외 후 발송"]),
+        ("최근 조회 상품 리마인드 대상 확대 (제안)", "매일 발송 중인 자동 문자 · 일 대상 1,000명 추가 · 유입 5.74%",
+         _imp(("유입 기여(상한)", "0.27%p · +57명/일", True),
+              ("순증(가정)", "0.14%p · 약 +29명/일", False),
+              ("현재 규모", "주 45,481명 · 유입 2,609건", False),
+              ("준거", "11월 1주 최근본 리마인드 유입 5.74%", False)), [
+            "최근 조회 상품 리마인드는 매일 발송되는 자동 문자 — 주 1회성 발송과 달리 매일 방문에 기여",
+            "── 근거: 대상을 늘려도 유입율이 유지됨 (문자 실측) ──",
+            "  10월 5주 발송 41,909명 · 유입 2,277건(5.43%)",
+            "  11월 1주 발송 45,481명 · 유입 2,609건(5.74%)  ← 대상 8.5% 확대, 유입율 유지",
+            "── 제안 ──",
+            "  조회 기준(기간·횟수)을 완화해 일 대상 약 1,000명 추가(주 7,000명) — 추가 규모는 가정",
+            "  현재 일 대상 약 6,500명 → 약 7,500명",
+            "※ 견인 산출: 일 1,000명 × 유입 5.74% = 57명/일, 전년 동주 DAU(21,147명) 대비 0.27%p",
+            "※ 순증(가정) = 유입 상한 × 순증률 50% → 약 29명/일·0.14%p",
+            "※ 유입은 방문 건수 기준이라 동일인 중복 포함 — 상한값",
+            "※ 대상 조건 변경은 자동화 설정 수정이 필요 — 금주 내 반영 가능 여부 확인 필요"]),
         # 09월 '닥스 여성·뷰티 기획전' 레버는 10월엔 내렸다 — 금주 기획전 편성이 확인되지
         # 않았고, 아떼뷰티는 전년비 △67.7%(6,711,818원)로 09월(+67.6%)에서 반전했다.
         # 10월에 뷰티를 근거로 세우면 화면과 충돌한다. 닥스여성(+48.1%)은 라이브 모수
@@ -3291,30 +3333,9 @@ LEVERS = [
     #   없어, 금주 행사 중 2BPU 수입블랙위크(11/13~16) VIP 안내를 '제안'으로 세운다.
     #   준거는 같은 유형(BPU 주간행사 VIP 안내 LMS)인 VIP_닥스위크_261015 1건. 수입 행사 문자
     #   (수입메가세일·스피드딜)는 전체 대상 발송이라 참고로만 적는다.
-    ("cr", "전환 CR", [
-        ("수입블랙위크 VIP 안내 (제안)", "11/13(금) 오픈 · BLACK FRIDAY 방문 후 미구매 VIP 대상 LMS",
-         _imp(("구매고객 기여(참고)", "발송 1회당 +13명", True),
-              ("거래액", "+6,012,427원", False),
-              ("", "모수 1만 가정 · VIP 닥스위크 안내(10/15) 유입 6.91% · 구매전환 1.84% 적용", False),
-              ("준거", "VIP 주간행사 안내 LMS 실측 1건 — 표본 적음", False)), [
-            "금주는 전관행사가 없어 전관 쿠폰 미사용 유도는 해당 없음 · 확정된 전환 발송 없음",
-            "→ 금주 행사 중 2BPU 수입블랙위크(11/13~16)를 VIP에 별도 안내하는 안을 제안",
-            "── 대상 ──",
-            "  BLACK FRIDAY(11/2~8) 기간 방문 후 미구매 VIP — 행사 기간 방문(DAU 19,871명)이",
-            "  금주 평상 수준으로 내려가는 구간이라, 그 방문 고객을 금주 구매로 연결",
-            "── 수요 근거: 2BPU 수입 브랜드 VIP 거래액 (11/1~9, 전년 동기간 대비) ──",
-            "  이자벨마랑 57,816,591원 +25.6% · 바버 49,551,182원 +52.5% · 빈스 47,386,591원 +22.0%",
-            "── 준거: VIP 주간행사 안내 LMS (10/15 VIP 닥스위크, 캠페인명 VIP 한정) ──",
-            "  발송 5,516명 · 유입 6.91% · 구매고객 7명(구매전환 1.84%) · 거래액 3,316,455원",
-            "  → 1만 발송 환산 구매고객 13명 · 거래액 6,012,427원",
-            "  ※ 실측 1건(구매 7명)이라 표본이 적음 — 실행 후 실측으로 교체",
-            "── 참고: 수입 행사 문자 (전체 대상 발송, VIP 준거 아님) ──",
-            "  10/16 수입메가세일 LMS 18,696명 유입 8.92% · 10/27 스피드딜 수입 SMS 6,316명 유입 10.10%",
-            "  2건 합산 25,012명 · 유입 9.22% · 구매고객 32명",
-            "채널: LMS · 발송 시점 11/13(금) 오픈일(WEEKEND SALE 동일자 시작)",
-            "※ 유입율 레버(히스헤지스 라이브) 대상과 중복 제외 후 발송",
-            "※ 미확정 제안 — 편성 확정 시 모수·일정 반영"]),
-    ]),
+    # 11월 2주차: 전관행사가 없어 전관 쿠폰 미사용 유도는 해당 없고, 수입블랙위크 VIP 안내는
+    # 유입 그룹으로 옮겼다. 확정된 전환 발송이 없어 이 그룹은 비워 둔다(빈 그룹은 화면에 안 뜸).
+    ("cr", "전환 CR", []),
     ("aov", "객단가", [
         # ★ 여기에 '저가 구간 이탈'을 근거로 달지 말 것 — 그 이탈은 구색 공백에서 온 것이고
         #   대상도 '이미 나간 고객'이라 '지금 사고 있는 고객'을 움직이는 이 레버와 맞지 않는다
@@ -3360,7 +3381,9 @@ def focus_keys(v):
     쳐졌는데 레버가 안 뜨는 어긋남을 막는다."""
     path = alert_path(v)
     cand = []
-    for k, _, _ in LEVERS:
+    for k, _, _items in LEVERS:
+        if not _items:                       # 액션이 없는 그룹은 개선 대상으로 세우지 않는다
+            continue
         ys = [v[t][1] for t in LEVER_TRIGGER.get(k, (k,))
               if v.get(t) and v[t][1] is not None]
         if ys:
@@ -3574,8 +3597,53 @@ STATUS = []   # 상시 수동 카드 없음. 리마인드는 _reminder_card()로
 #   (+8.06%는 엘페스타가 걸린 09월 1주차). 재배분 기준으로 다시 산출했다.
 # ★ 세 줄. 라벨 / 숫자 / 한 구절만 둔다. 산출 근거는 카드 툴팁에 있으므로
 #   여기서 되풀이하지 않는다 — 문장을 길게 쓰면 정작 숫자가 안 읽힌다.
+def _visit_lever_gross():
+    """유입(visit) 레버 카드들의 '유입 상한 명/일' 합. 카드 첫 행 '…· +N명/일'에서 읽는다."""
+    tot = 0.0
+    for key, _, items in LEVERS:
+        if key != "visit":
+            continue
+        for _t, _d, imp, _tips in items:
+            got = imp({}) if imp else None
+            if got and "명/일" in str(got[0][1]):
+                try:
+                    tot += float(str(got[0][1]).split("명/일")[0].split("+")[-1].replace(",", "").strip())
+                except ValueError:
+                    pass
+    return tot
+
+
 def _summary_block(mode="week"):
-    """LEVEL-V 머리말. 시드에서 자동 산출(②번). 기간 옵션에 연동된다.
+    """LEVEL-V 머리말 — 이 트리는 '이번 주 액션 방향'을 정하는 용도라(사용자 지시), 지난주 대비
+    변화가 아니라 ① 이번 주 예상 마감 방문(DAU)과 전년비, ② 레버 적용 시 개선 목표를 싣는다.
+    진행주가 없으면(주 완결 데이터) 예전 형식(_summary_block_prev)으로 폴백."""
+    _wf, _ipw = week_dau_forecast_yoy(), _inprog_week()
+    if not (_wf and _ipw):
+        return _summary_block_prev(mode)
+    _n, _wl = _ipw
+    _y, _cur, _prev = _wf
+    gross = _visit_lever_gross()
+    net = gross * LEVER_INCREMENTALITY * (1 - LEVER_CROSS_OVERLAP)
+    new = (_cur + net) / _prev - 1
+
+    def p2(r):
+        return f"{'△' if r < 0 else '+'}{abs(r) * 100:.2f}%"
+    rows = [f'<div class="dt-sr"><em>예상 마감</em><b>{_cur:,.0f}명</b>'
+            f'<span>전년 동주 {_prev:,.0f}명 대비 {p2(_y)}</span></div>']
+    if gross > 0:
+        rows.append(f'<div class="dt-sr"><em>개선 목표</em><b>{p2(new)}</b>'
+                    f'<span>{p2(_y)} → {p2(new)}, {abs(new - _y) * 100:.2f}%p 개선 '
+                    f'(실질 +{net:,.0f}명/일)</span></div>')
+    note = (f"예상 마감 = {_n}일 실측 + 잔여일은 최근 같은 유형(행사일·평상일) 7일 평균. "
+            "&#10;개선 목표 = 아래 유입 액션의 유입 상한 합에 순증률 "
+            f"{LEVER_INCREMENTALITY*100:.0f}%·액션 간 중복 {LEVER_CROSS_OVERLAP*100:.0f}% 가정을 적용한 실질 증가분 반영")
+    return (f'<div class="dt-sum" title="{note}">'
+            f'<div class="dt-sbase">{_wl} 방문(DAU) · {_n}일 실측 기준 7일 예상</div>'
+            + "".join(rows) + '</div>')
+
+
+def _summary_block_prev(mode="week"):
+    """LEVEL-V 머리말(예전 형식). 시드에서 자동 산출(②번). 기간 옵션에 연동된다.
     · 금기: 선택 기간 DAU 전년비 + 역신장 축소폭
     · 유지 시(무대응): 진행주에 금기 실적 유지 시 전년비(전년 기저 반등 반영) — week 모드만
     목표(레버 적용 후 수치)는 외부 데이터가 필요해(③) 여기 자동으론 안 올린다."""
@@ -3641,9 +3709,9 @@ LEVER_CROSS_OVERLAP = 0.20    # 같은 상위등급 VIP를 공유하는 액션 �
 def _dt_done(focus, mode="wtd"):
     """LEVEL-V 상단 현황·실행 결과. 레버와 같은 행 구조로 가로로 나란히 둔다.
     현황·리마인드는 시드·문자 실적에서 기간 옵션에 맞춰 자동 산출."""
-    _sc = _status_card(mode)
-    _rc = _reminder_card(mode)
-    _rows = ([_sc] if _sc else []) + ([_rc] if _rc else []) + STATUS
+    # ★ '지난주 현황'·'최근 조회 상품 리마인드' 카드는 뺐다 — 이 트리는 이번 주 액션 방향을
+    #   정하는 용도라 지난 실적 카드가 초점을 흐린다(사용자 지시). 함수는 남겨 둔다.
+    _rows = list(STATUS)
     cards = [_dt_card(f"dt-done {cls}".strip(), when, title, mets, tips)
              for key, title, when, cls, mets, tips in _rows if key in focus]
     return (_summary_block(mode)
@@ -3657,7 +3725,7 @@ def _dt_levers(focus, v, mode="wtd"):
     imp(예상 견인)는 카드 하단에 금액 + 산출 근거 두 줄로 싣는다."""
     grps = []
     for key, target, items in LEVERS:
-        if key not in focus:
+        if key not in focus or not items:
             continue
         cards = []
         sum_pp = 0.0                       # 그룹 내 액션들의 '역신장 축소 %p' 합(참고용)
@@ -3772,7 +3840,7 @@ def _dt_levers(focus, v, mode="wtd"):
                         f'실측은 AF코드(세션) 집계라 세션 이탈 후 구매는 제외 — 실제 전환은 상회(하한치)</span></div>')
         grps.append(f'<div class="dt-levgrp"><div class="dt-tgt">▸ {target} 개선</div>{head}'
                     f'<div class="dt-levrow">{"".join(cards)}</div></div>')
-    lev = (LEVER_NOTE + "".join(grps)) if grps else ""
+    lev = "".join(grps) if grps else ""
     return f'<div class="dt-levs">{_dt_done(focus, mode)}{lev}</div>'
 
 
