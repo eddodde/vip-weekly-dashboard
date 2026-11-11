@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1109e"
+SEED_CACHE_VER = "2026-11-11-upd1109g"
 
 
 @st.cache_data(show_spinner=False)
@@ -1291,11 +1291,28 @@ def event_period_table(cs, ce, ps, pe, ms=None, me=None):
     return render_block_table([r for r, _ in PERF_ROWS], blocks)
 
 
+# 전년 비교 행사 수동 매칭 {(올해 연도, 올해 행사명): 전년 행사명}.
+# 2026년 11월: 올해 BLACK FRIDAY(11/2~9)·LF 12th ANNIVERSARY(11/20~27) ↔ 전년 L+ BLACK WEEK(11/10~17)·
+# BLACK FRIDAY(11/21~28). 이름으로 맞추면 올해 두 행사가 모두 전년 BLACK FRIDAY에 걸려, 11월 첫 전관행사끼리·
+# 둘째 전관행사끼리 순서대로 맞춘다.
+EVENT_PAIR_OVERRIDE = {
+    (2026, "BLACK FRIDAY"): "L+ BLACK WEEK",
+    (2026, "LF 12th ANNIVERSARY"): "BLACK FRIDAY",
+}
+
+
 def find_prior_event(name, cur_start):
     """전년 비교 대상 행사 (start, end, name).
     ① 동명(L+DAY 등 정기 시리즈) 우선 → ② 없으면 같은 시기(±약1주) 전관행사(이름 무관)."""
     target = cur_start - datetime.timedelta(days=364)
     majors = event_occurrences(PREV, only_major=True)
+    # ★ 수동 매칭 우선 — 같은 달에 전관행사가 2회씩이면 이름이 아니라 '순서'로 맞춘다(사용자 지시).
+    _ov = EVENT_PAIR_OVERRIDE.get((cur_start.year, name))
+    if _ov:
+        _hit = [o for o in majors if o[2] == _ov]
+        if _hit:
+            o = min(_hit, key=lambda o: abs((o[0] - target).days))
+            return o[0], o[1], o[2]
     same = [o for o in majors if o[2] == name]
     if same:
         o = min(same, key=lambda o: abs((o[0] - target).days))
@@ -2362,11 +2379,11 @@ def final_direction(wk_all, cur_mo, cutoff):
     evnm_t = ip[2] if ip else (ge[0] if ge else (ce[0] if ce else "차기 행사"))
     if ip and ip_yoy is not None:
         nxt.append(f"금주 <b>{cur_nm}</b> 진행 중 — {ip_elapsed}일차까지 거래액 전년비 <b>{_pct(ip_yoy)}</b>"
-                   f"(전년 동일 행사 대비). 잔여 {ip_rem}일 반등 없으면 행사주도 전년비 마이너스 마감")
+                   f"(전년 대응 행사 대비). 잔여 {ip_rem}일 반등 없으면 행사주도 전년비 마이너스 마감")
         nxt.append(f"→ {cur_nm} 잔여기간 <b>전환(CR)·타겟 리텐션으로 낙폭 축소</b>가 관건(행사 자체는 양년 공통이라 증분 액션이 격차 결정)")
     elif je and ip_yoy is not None:
         nxt.append(f"<b>{cur_nm} 종료</b>({_mdrange(je[0], _lsend)}) — 최종 거래액 전년비 <b>{_pct(ip_yoy)}</b>"
-                   f"(전년 동일 행사 대비). 행사 상세는 5)행사별 참고")
+                   f"(전년 대응 행사 대비). 행사 상세는 5)행사별 참고")
     elif geum:
         lp, lg, tp = _wk_sales(PREV, period), _wk_sales(PREV, geum), _wk_sales(CUR, period)
         if lp and lg and tp:
@@ -2664,12 +2681,12 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△4.3%</td></tr>"
      "<tr><td colspan='3' style='border:1px solid #e6d8b6;padding:4px 10px;font-weight:600;"
      "background:#faf5e6'>③ 전년 11월 전관행사 대비 — 올해 11/2~8</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 BLACK FRIDAY (11/21~27)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>+18.7%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△2.4%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 L+ BLACK WEEK (11/10~16)</td>"
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 L+ BLACK WEEK (11/10~16) — 11월 첫 전관행사끼리(기준)</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>+10.7%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△6.0%</td></tr>"
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 BLACK FRIDAY (11/21~27) — 참고</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#7a8f80'>+18.7%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#b08a84'>△2.4%</td></tr>"
      "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>④ 진행주 11월 2주차 "
      "<span style='color:#a99a7a'>(11/9 1일치, 전년 동주가 L+ BLACK WEEK)</span></td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△19.7%</td>"
@@ -2680,8 +2697,8 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>△4.4%</td></tr>"
      "</table>"
      "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 마감주 거래액 +44.0%는 올해 BLACK FRIDAY(11/2~9)가 "
-     "전년 11월 전관행사(11/10~17, 11/21~28)보다 앞당겨진 영향이 큽니다. 전년 행사 주간과 비교하면 거래액 "
-     "+10.7~18.7%(객단가 +13.9~18.5%), 방문(DAU) △2.4~6.0%입니다. 행사 성과는 전년을 웃돌았으나 방문은 행사 "
+     "전년 11월 전관행사(11/10~17, 11/21~28)보다 앞당겨진 영향이 큽니다. 전년 11월 첫 전관행사(L+ BLACK WEEK)와 비교하면 거래액 "
+     "+10.7%(객단가 +14.1%), 방문(DAU) △6.0%입니다. 행사 성과는 전년을 웃돌았으나 방문은 행사 "
      "기간에도 역신장이며, BLACK FRIDAY 이전 2개월 누계는 거래액 △2.9%·방문 △8.2%로, 행사를 빼면 역신장 흐름이 이어지고 있습니다. 이번 주는 올해 전관행사가 "
      "없고 전년 동주가 L+ BLACK WEEK라 날짜 전년비가 반대로 낮게 찍힙니다(11/9 거래액 △19.7%)."
      "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
