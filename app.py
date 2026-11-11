@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1110"
+SEED_CACHE_VER = "2026-11-11-upd1110b"
 
 
 @st.cache_data(show_spinner=False)
@@ -1609,6 +1609,12 @@ def _weekly_level_data(ver=SEED_CACHE_VER):
     return {"DAU": series("DAU"), "CR": series("CR"), "SALES": series("SALES")}
 
 
+def _wk_disp(lab):
+    """내부 주 라벨 'M/W' → 화면 표기 'M월 W주'(M/W는 날짜로 오독됨 — 사용자 지적)."""
+    m, w = lab.split("/")
+    return f"{m}월 {w}주"
+
+
 _YOY_META = {"방문(DAU)": ("DAU", 1.0, "명"), "전환(CR)": ("CR", 1.0, "%"), "거래액": ("SALES", 1e6, "백만")}
 
 
@@ -1627,7 +1633,7 @@ def chart_yoy_level(label):
     y25 = [sc(r["d25"]) for r in rows]
     y26a = [sc(r["a26"]) if (i <= now and r["a26"] is not None) else None for i, r in enumerate(rows)]
     y26p = [sc(rows[i]["a26"]) if i == now else (sc(rows[i]["p26"]) if i > now else None) for i in range(n)]
-    lab = [r["lab"] for r in rows]
+    lab = [_wk_disp(r["lab"]) for r in rows]
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=xi, y=y25, name=f"{PREV}", mode="lines", text=lab,
                              line=dict(color=GREY, width=2), connectgaps=True,
@@ -1684,8 +1690,14 @@ def yoy_level_table(label):
         return (f"<span style='color:#c0392b'>△{abs(r) * 100:.1f}%</span>" if r < 0
                 else f"<span style='color:#1f5fbf'>+{r * 100:.1f}%</span>")
     td = "padding:2px 8px;border-bottom:1px solid #f0e6c8;"
+    # ★ 보고 시 스크롤 없이 현재 주가 보이도록, 본표는 '직전 마감주'부터 연말까지만 싣고
+    #   그 이전 주차는 아래 접힌 영역(이전 주차 보기)으로 내린다(사용자 요청).
+    now = max([i for i, r in enumerate(rows) if r["a26"] is not None], default=-1)
+    _hi = last_daily_date()
+    _prog = (_hi.weekday() + 1) if (_hi is not None and _hi.weekday() < 6) else None   # 진행주 경과일
+    start = max(now - 1, 0) if _prog else max(now, 0)
     body = []
-    for r in rows:
+    for i, r in enumerate(rows):
         d25, a26, p26, ev, lc = r["d25"], r["a26"], r["p26"], r["ev"], r.get("lc")
         ay = (a26 / d25 - 1) if (a26 and d25) else None
         py = (p26 / d25 - 1) if (p26 and d25) else None
@@ -1697,7 +1709,9 @@ def yoy_level_table(label):
                       f"<td style='{td}text-align:right;color:#8a8a8a'>{pc(py)}</td>"
                       f"<td style='{td}text-align:right'>{devs}</td>") if pred_ok else ""
         body.append(
-            f"<tr style='{bg}'><td style='{td}'>{r['lab']}{' ●' if ev else ''}</td>"
+            f"<tr style='{bg}'><td style='{td}white-space:nowrap'>{_wk_disp(r['lab'])}{' ●' if ev else ''}"
+            + (f" <span style='color:#a08b5f;font-size:10px'>진행중({_prog}일치)</span>" if (_prog and i == now) else "")
+            + "</td>"
             f"<td style='{td}text-align:right;color:#8a8a8a'>{fl(d25)}</td>"
             f"<td style='{td}text-align:right;font-weight:600'>{fl(a26)}</td>"
             f"<td style='{td}text-align:right;font-weight:600'>{pc(ay)}</td>"
@@ -1716,8 +1730,13 @@ def yoy_level_table(label):
             f"결과 = 실측−예측(+면 그 주 액션·모멘텀이 끌어올림) · " if pred_ok else
             f"<b>예측 열은 방문(DAU)에서만 제공</b> — {label}은 행사·캠페인 타이밍이 지배해 "
             f"going-in 예측 신뢰도가 낮아 실측·전년비만 표시 · ")
+    _tbl = "<table style='width:100%;border-collapse:collapse;font-size:11px;color:#444'>"
+    _old = (f"<details style='margin-top:4px;font-size:11px;color:#7a6838'>"
+            f"<summary style='cursor:pointer'>이전 주차 보기 ({_wk_disp(rows[0]['lab'])} ~ {_wk_disp(rows[start - 1]['lab'])})</summary>"
+            f"<div style='max-height:220px;overflow-y:auto;border:1px solid #e6d8b6;border-radius:6px;margin-top:4px'>"
+            f"{_tbl}{hdr}{''.join(body[:start])}</table></div></details>") if start > 0 else ""
     return (f"<div style='max-height:132px;overflow-y:auto;border:1px solid #e6d8b6;border-radius:6px;margin-top:8px'>"
-            f"<table style='width:100%;border-collapse:collapse;font-size:11px;color:#444'>{hdr}{''.join(body)}</table></div>"
+            f"{_tbl}{hdr}{''.join(body[start:])}</table></div>{_old}"
             f"<div style='font-size:10.5px;color:#999;margin-top:4px;line-height:1.5'>"
             f"단위: {'명' if key == 'DAU' else ('%' if key == 'CR' else '백만원')} · "
             f"{note}"
