@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1110b"
+SEED_CACHE_VER = "2026-11-11-upd1110c"
 
 
 @st.cache_data(show_spinner=False)
@@ -672,6 +672,52 @@ def _days_mean(metric, days):
     return (sum(vals) / len(vals)) if vals else None
 
 
+_WKPROJ_CACHE = {}
+
+
+def week_projection(metric):
+    """진행 중인 주의 '7일 기준 주 예상 일평균' → (예상값, 경과일 n) 또는 None(주 완결·자료 없음).
+    경과일은 실측 그대로 두고, 잔여일만 채운다 — 잔여일 각각을 올해 행사 캘린더로 전관행사일/
+    평상일로 나눠, 같은 유형의 최근 7일(최근 42일 내) 평균을 넣는다.
+    ★ 과거 40주 백테스트(주 마감 대비 평균 절대오차): 방문(DAU) 경과 1일 2.7%·2일 2.4%·3일 1.9%·
+      5일 0.9% / 거래액 1일 11.6%·2일 9.5%·3일 7.4%·5일 4.0%. 전년 동주 요일패턴·직전 4주 요일패턴
+      방식보다 최대 오차가 작아 채택(방문 2일 기준 최대 8.6% vs 14~16%)."""
+    hi = last_daily_date()
+    if hi is None or hi.weekday() >= 6:
+        return None
+    key = (metric, hi, SEED_CACHE_VER)
+    if key in _WKPROJ_CACHE:
+        return _WKPROJ_CACHE[key]
+    n = hi.weekday() + 1
+    mon = hi - datetime.timedelta(days=n - 1)
+    obs = [dv(d.year, d.month, d.day, metric) for d in (mon + datetime.timedelta(days=i) for i in range(n))]
+    if any(x is None for x in obs):
+        return None
+    try:
+        occ = [(pd.Timestamp(s).date(), pd.Timestamp(e).date())
+               for s, e, _, maj in event_occurrences(CUR, only_major=True) if maj]
+    except Exception:
+        occ = []
+
+    def _is_ev(dt):
+        return any(s <= dt < e for s, e in occ)
+    back = [hi - datetime.timedelta(days=i) for i in range(42)]
+    back = [(d, dv(d.year, d.month, d.day, metric)) for d in back]
+    back = [(d, x) for d, x in back if x is not None]
+    fill = 0.0
+    for i in range(n, 7):
+        d = mon + datetime.timedelta(days=i)
+        same = [x for dd, x in back if _is_ev(dd) == _is_ev(d)][:7]
+        if len(same) < 3:
+            same = [x for _, x in back][:7]
+        if not same:
+            return None
+        fill += sum(same) / len(same)
+    out = ((sum(obs) + fill) / 7.0, n)
+    _WKPROJ_CACHE[key] = out
+    return out
+
+
 def week_dau_forecast_yoy():
     """진행 중인 주의 '날짜 전년비 예상' — 올해 run-rate(이번 주와 같은 유형의 최근 7일 일평균
     DAU, _runrate_days)를 전년 '동주'(이번주 날짜 −364)의 실제 일평균과 비교.
@@ -683,7 +729,8 @@ def week_dau_forecast_yoy():
         return None
     wk_lo = hi - datetime.timedelta(days=hi.weekday())
     wk_hi = wk_lo + datetime.timedelta(days=6)
-    cur = _days_mean("DAU", _runrate_days(hi)[0])
+    _wp = week_projection("DAU")
+    cur = _wp[0] if _wp else _days_mean("DAU", _runrate_days(hi)[0])
     prev = range_mean("DAU", PREV, wk_lo - datetime.timedelta(days=364), wk_hi - datetime.timedelta(days=364))
     if not cur or not prev:
         return None
@@ -699,8 +746,9 @@ def week_cr_forecast_yoy():
     wk_lo = hi - datetime.timedelta(days=hi.weekday())
     wk_hi = wk_lo + datetime.timedelta(days=6)
     _days = _runrate_days(hi)[0]
-    cc = _days_mean("일평균고객수", _days)
-    cd = _days_mean("DAU", _days)
+    _wc, _wd = week_projection("일평균고객수"), week_projection("DAU")
+    cc = _wc[0] if _wc else _days_mean("일평균고객수", _days)
+    cd = _wd[0] if _wd else _days_mean("DAU", _days)
     pc = range_mean("일평균고객수", PREV, wk_lo - datetime.timedelta(days=364), wk_hi - datetime.timedelta(days=364))
     pdd = range_mean("DAU", PREV, wk_lo - datetime.timedelta(days=364), wk_hi - datetime.timedelta(days=364))
     if not all((cc, cd, pc, pdd)):
@@ -1568,6 +1616,7 @@ def _weekly_level_data(ver=SEED_CACHE_VER):
 
     def series(kind):
         raw = []
+        parts = {}       # 진행주: mon → (경과일 평균, 경과일수)
         for mon in mons:
             mon26 = mon + pd.Timedelta(days=364)
             if kind == "CR":
@@ -1579,11 +1628,24 @@ def _weekly_level_data(ver=SEED_CACHE_VER):
                 g = dau if kind == "DAU" else sal
                 L25 = lv(g, mon)
                 A26 = lv(g, mon26) if mon26.date() <= hi else None
+            # ★ 진행주(7일 미완)는 경과일 평균을 그대로 두지 않고 '7일 기준 주 예상'으로 바꾼다
+            #   (사용자 지시). 경과일 평균은 raw_part로 따로 남겨 표에 병기한다.
+            part = None
+            if A26 is not None and hi < mon26.date() + datetime.timedelta(days=6):
+                if kind == "CR":
+                    _pc, _pd = week_projection("일평균고객수"), week_projection("DAU")
+                    _pj = (_pc[0] / _pd[0] * 100, _pd[1]) if (_pc and _pd) else None
+                else:
+                    _pj = week_projection("DAU" if kind == "DAU" else SALES)
+                if _pj:
+                    part = (A26, _pj[1])          # (경과일 평균, 경과일수)
+                    A26 = _pj[0]
+            parts[mon] = part
             raw.append((mon, L25, A26))
         # 구조비율 = 전 실측주 (올해÷전년) 중앙값. 행사는 연중 상시라 제외하지 않고 중앙값으로 흡수.
-        ratios = [A / L for (_, L, A) in raw if A and L]
+        ratios = [A / L for (mo_, L, A) in raw if A and L and not parts.get(mo_)]
         ratio = float(np.median(ratios)) if ratios else 0.91
-        devs = [abs(A / L / ratio - 1) for (_, L, A) in raw if A and L]
+        devs = [abs(A / L / ratio - 1) for (mo_, L, A) in raw if A and L and not parts.get(mo_)]
         thr = max(0.04, float(np.quantile(devs, 0.85))) if devs else 0.04   # 지표별 상위 ~15% 이탈주만
         # ★ 예측(p26) = '직전 완료 4주 평균 올해 실측 수준 ÷ 전년 동주'의 going-in 전망(B안).
         #   완료주·미완주 공통 단일 규칙 — 예측 레벨 = 직전 완료 4주 실측 평균(baseline 정의와 일치).
@@ -1601,9 +1663,10 @@ def _weekly_level_data(ver=SEED_CACHE_VER):
             pred = (sum(hist[-4:]) / len(hist[-4:])) if hist else ((L25 * ratio) if L25 else None)
             rows.append({"lab": f"{thu.month}/{(thu.day - 1) // 7 + 1}", "d25": L25, "a26": A26,
                          "p26": pred,
-                         "ev": bool(dev is not None and abs(dev) >= thr),
+                         "ev": bool(dev is not None and abs(dev) >= thr and not parts.get(mon)),
+                         "part": parts.get(mon),
                          "lc": mon.date() >= datetime.date(2025, 12, 8)})
-            if A26 is not None:
+            if A26 is not None and not parts.get(mon):   # 예측 기준은 '완료주'만(진행주 예상치 제외)
                 hist.append(A26)
         return {"ratio": round((ratio - 1) * 100, 1), "rows": rows}
     return {"DAU": series("DAU"), "CR": series("CR"), "SALES": series("SALES")}
@@ -1631,8 +1694,12 @@ def chart_yoy_level(label):
     sc = lambda v: (v / scale) if v is not None else None   # noqa: E731
     now = max([i for i, r in enumerate(rows) if r["a26"] is not None], default=-1)
     y25 = [sc(r["d25"]) for r in rows]
-    y26a = [sc(r["a26"]) if (i <= now and r["a26"] is not None) else None for i, r in enumerate(rows)]
-    y26p = [sc(rows[i]["a26"]) if i == now else (sc(rows[i]["p26"]) if i > now else None) for i in range(n)]
+    prog = now if (now >= 0 and rows[now].get("part")) else None       # 진행주(7일 기준 예상치) 위치
+    done = (now - 1) if prog is not None else now                     # 마지막 완료주
+    y26a = [sc(r["a26"]) if (i <= done and r["a26"] is not None) else None for i, r in enumerate(rows)]
+    # 점선: 마지막 완료주 → 진행주 예상 → (DAU만) 이후 주 예측
+    y26p = [sc(rows[i]["a26"]) if (done <= i <= now) else
+            (sc(rows[i]["p26"]) if (i > now and pred_ok) else None) for i in range(n)]
     lab = [_wk_disp(r["lab"]) for r in rows]
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=xi, y=y25, name=f"{PREV}", mode="lines", text=lab,
@@ -1641,12 +1708,13 @@ def chart_yoy_level(label):
     fig.add_trace(go.Scatter(x=xi, y=y26a, name=f"{CUR} 실측", mode="lines", text=lab,
                              line=dict(color=BLUE_CUR, width=2.5), connectgaps=False,
                              hovertemplate="%{text} · " + f"{CUR} 실측 " + "%{y:,.0f}" + unit + "<extra></extra>"))
-    if pred_ok:
-        fig.add_trace(go.Scatter(x=xi, y=y26p, name=f"{CUR} 예측", mode="lines", text=lab,
+    if pred_ok or prog is not None:
+        _pn = f"{CUR} 예측" if pred_ok else f"{CUR} 진행주 예상"
+        fig.add_trace(go.Scatter(x=xi, y=y26p, name=_pn, mode="lines", text=lab,
                                  line=dict(color=BLUE_CUR, width=2, dash="dot"), connectgaps=True,
-                                 hovertemplate="%{text} · " + f"{CUR} 예측 " + "%{y:,.0f}" + unit + "<extra></extra>"))
+                                 hovertemplate="%{text} · " + _pn + " %{y:,.0f}" + unit + "<extra></extra>"))
     ex = [i for i, r in enumerate(rows) if r["ev"]]
-    fig.add_trace(go.Scatter(x=ex, y=[y26a[i] if y26a[i] is not None else y25[i] for i in ex],
+    fig.add_trace(go.Scatter(x=ex, y=[sc(rows[i]["a26"]) if rows[i]["a26"] is not None else y25[i] for i in ex],
                              name="행사 영향주(±4%p 이탈)", mode="markers",
                              marker=dict(symbol="circle", size=7, color="#eda100"), hoverinfo="skip"))
     lc = [i for i, r in enumerate(rows) if r["lc"]]
@@ -1661,6 +1729,13 @@ def chart_yoy_level(label):
                      ticktext=[rows[i]["lab"].split("/")[0] + "월" for i in tv], tickfont=dict(size=9))
     fig.update_yaxes(showgrid=True, gridcolor="#eee", tickfont=dict(size=9))
     return fig
+
+
+# 진행주 7일 예상(week_projection)의 백테스트 평균 절대오차(과거 40주, 경과일수별).
+# CR은 고객수·DAU 예상의 비라 고객수 오차를 표기.
+_PROJ_MAE = {"DAU": {1: "2.7%", 2: "2.4%", 3: "1.9%", 4: "1.4%", 5: "0.9%"},
+             "SALES": {1: "11.6%", 2: "9.5%", 3: "7.4%", 4: "5.5%", 5: "4.0%"},
+             "CR": {1: "8.1%", 2: "6.8%", 3: "5.1%", 4: "3.8%", 5: "3.1%"}}
 
 
 def yoy_level_table(label):
@@ -1693,8 +1768,8 @@ def yoy_level_table(label):
     # ★ 보고 시 스크롤 없이 현재 주가 보이도록, 본표는 '직전 마감주'부터 연말까지만 싣고
     #   그 이전 주차는 아래 접힌 영역(이전 주차 보기)으로 내린다(사용자 요청).
     now = max([i for i, r in enumerate(rows) if r["a26"] is not None], default=-1)
-    _hi = last_daily_date()
-    _prog = (_hi.weekday() + 1) if (_hi is not None and _hi.weekday() < 6) else None   # 진행주 경과일
+    _part = rows[now].get("part") if now >= 0 else None      # 진행주: (경과일 평균, 경과일수)
+    _prog = _part[1] if _part else None
     start = max(now - 1, 0) if _prog else max(now, 0)
     body = []
     for i, r in enumerate(rows):
@@ -1710,7 +1785,8 @@ def yoy_level_table(label):
                       f"<td style='{td}text-align:right'>{devs}</td>") if pred_ok else ""
         body.append(
             f"<tr style='{bg}'><td style='{td}white-space:nowrap'>{_wk_disp(r['lab'])}{' ●' if ev else ''}"
-            + (f" <span style='color:#a08b5f;font-size:10px'>진행중({_prog}일치)</span>" if (_prog and i == now) else "")
+            + (f" <span style='color:#a08b5f;font-size:10px'>진행중 · 7일 기준 예상({_prog}일 실측 {fl(_part[0])} 반영)</span>"
+               if (_prog and i == now) else "")
             + "</td>"
             f"<td style='{td}text-align:right;color:#8a8a8a'>{fl(d25)}</td>"
             f"<td style='{td}text-align:right;font-weight:600'>{fl(a26)}</td>"
@@ -1740,6 +1816,8 @@ def yoy_level_table(label):
             f"<div style='font-size:10.5px;color:#999;margin-top:4px;line-height:1.5'>"
             f"단위: {'명' if key == 'DAU' else ('%' if key == 'CR' else '백만원')} · "
             f"{note}"
+            + (f"<b>진행주는 7일 기준 예상치</b>(경과 {_prog}일 실측 + 잔여일은 최근 같은 유형(행사/평상)일 평균 · "
+               f"과거 40주 검증 시 경과 {_prog}일 기준 평균 오차 {_PROJ_MAE[key][min(_prog, 5)]}) · " if _prog else "") +
             f"참고: 구조 전년비(연중 중앙값) {'+' if rt > 0 else ''}{rt}% · "
             f"● 행사 영향주(구조 대비 큰 이탈) · 분홍 = 12월 후반 저신뢰</div>")
 
@@ -3636,8 +3714,7 @@ def _dt_levers(focus, v, mode="wtd"):
                 _st = f' · 구조(전년 평상 대비) {f(_bl*100)}' if _bl is not None else ''
                 _arrow = (f'→ <b>{_wl} 방문(DAU) 날짜 전년비 예상 {f(base)} '
                           f'→ 방어 목표 {f(new)}</b>')
-                _rl = _runrate_days(last_daily_date())[1]
-                _sub = (f'올해 run-rate({_rl}) {_cur:,.0f} ÷ 전년 동주 {_prev:,.0f} '
+                _sub = (f'올해 주 예상({_n}일 실측 + 잔여일은 최근 같은 유형일 평균) {_cur:,.0f} ÷ 전년 동주 {_prev:,.0f} '
                         f'(전년 동주가 전관행사 주간이면 기저가 높아 수치가 큼{_st}) · '
                         f'순증률 {LEVER_INCREMENTALITY*100:.0f}%×중복 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · '
                         f'주 마감 후 실제가 이 수준이면 예상·방어 성공')
@@ -3673,8 +3750,7 @@ def _dt_levers(focus, v, mode="wtd"):
                 _st = f" · 구조(전년 평상 대비) {f((_bcr[0]/_bcr[1]-1)*100)}" if _bcr else ""
                 _arrow = (f'→ <b>{_wl} 전환(CR) 날짜 전년비 예상 {f(cur)} '
                           f'→ 방어 목표 {f(new_yoy)}</b>')
-                _rl = _runrate_days(last_daily_date())[1]
-                _csub = (f"올해 run-rate({_rl}) CR {cc_rr/cd_rr*100:.1f}% ÷ 전년 동주 CR {prev_cr*100:.1f}% "
+                _csub = (f"올해 주 예상({_n}일 실측 + 잔여일은 최근 같은 유형일 평균) CR {cc_rr/cd_rr*100:.1f}% ÷ 전년 동주 CR {prev_cr*100:.1f}% "
                          f"(전년 동주가 전관행사 주간이면 기저가 높아 수치가 큼{_st}) · 발송 1회/주 · "
                          f"순증률 {LEVER_INCREMENTALITY*100:.0f}%×중복 {LEVER_CROSS_OVERLAP*100:.0f}% 가정 · "
                          "주 마감 후 실제가 이 수준이면 예상·방어 성공 · 실측은 AF코드(세션) 집계라 하한치")
