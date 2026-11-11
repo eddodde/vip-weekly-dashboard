@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1109d"
+SEED_CACHE_VER = "2026-11-11-upd1109e"
 
 
 @st.cache_data(show_spinner=False)
@@ -1281,8 +1281,10 @@ def event_period_table(cs, ce, ps, pe, ms=None, me=None):
     clab, plab = _mdrange(cs, ce), _mdrange(ps, pe)
     blocks = [(f"{CUR}년", "grp2026", [(clab, b26)])]
     if ms:
-        blocks.append(("전월비", "grpmom", [(clab, bmr)]))
-    blocks.append(("전년비", "grpyoy", [(clab, byoy)]))
+        blocks.append(("전월비", "grpmom", [(f"{_mdrange(ms, me)} 대비", bmr)]))
+    # ★ 전년비 열 머리글은 비교 대상(전년 행사 기간)을 적는다 — 올해 날짜를 적으면
+    #   전년 동일 일자와 비교한 것처럼 읽힌다(사용자 지적).
+    blocks.append(("전년비", "grpyoy", [(f"전년 {plab} 대비", byoy)]))
     if ms:
         blocks.append(("전월", "grp2025", [(_mdrange(ms, me), bmv)]))
     blocks.append((f"{PREV}년", "grp2025", [(plab, b25)]))
