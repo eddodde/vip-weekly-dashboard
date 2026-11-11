@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1110o"
+SEED_CACHE_VER = "2026-11-11-upd1110p"
 
 
 @st.cache_data(show_spinner=False)
@@ -3090,6 +3090,31 @@ def tree_values(mode, wk):
         lbl = f"{week_pretty(cw)} 진행중 ({lo.month}/{lo.day}~{hi.month}/{hi.day}, {days}일)"
         # ★ 진행주가 3일 미만이면 전년 동주 같은 경과일이라도 1~2일 편차·전년 행사 타이밍
         #   (예: 전년 동기가 슈퍼위크면)에 심하게 흔들려 노드가 착시 수치로 뜬다 → 직전 마감주로.
+        # ★ 진행주가 7일 미만이면 '7일 기준 주 예상'(week_projection)을 전년 동주 전체와 비교한다.
+        #   이 트리는 이번 주 액션 방향을 정하는 용도라, 위 박스·아래 레버(이번 주 예상 기준)와
+        #   같은 기준이어야 한다 — 직전 마감주 수치를 띄우면 설명이 어긋난다(사용자 지적).
+        _ps, _pc, _pd = week_projection(SALES), week_projection("일평균고객수"), week_projection("DAU")
+        if days < 7 and _ps and _pc and _pd:
+            plo = lo - datetime.timedelta(days=364)
+            phi = plo + datetime.timedelta(days=6)
+            ps, pc, pd_ = _ps[0], _pc[0], _pd[0]
+            o_mem = range_metric("유효회원수", CUR, lo, hi)          # 회원수는 거의 일정 → 경과일 평균
+            o_dau = range_metric("DAU", CUR, lo, hi)
+            o_vis = range_metric("유입율", CUR, lo, hi)
+            o_cr = range_metric("CR", CUR, lo, hi)
+            o_cu = range_metric("일평균고객수", CUR, lo, hi)
+            # 비율 지표는 시드의 표기 단위(소수/퍼센트)를 경과일 실측에서 읽어 그대로 맞춘다
+            f_vis = (o_vis / (o_dau / o_mem)) if (o_vis and o_dau and o_mem) else 1.0
+            f_cr = (o_cr / (o_cu / o_dau)) if (o_cr and o_cu and o_dau) else 1.0
+            proj = {"sales": ps, "cust": pc, "dau": pd_, "aov": (ps / pc if pc else None),
+                    "cr": (pc / pd_ * f_cr if pd_ else None), "members": o_mem,
+                    "visit": (pd_ / o_mem * f_vis if o_mem else None)}
+            for k, met in TREE_MET.items():
+                c = proj.get(k)
+                out[k] = (c, yoy(c, range_metric(met, PREV, plo, phi)))
+            return (out, f"{week_pretty(cw)} 7일 기준 예상 ({lo.month}/{lo.day}~{hi.month}/{hi.day} "
+                    f"{days}일 실측 + 잔여일 추정)", "전년 동주 대비", None,
+                    "채널별 비교는 주 마감 후 표시 — 진행 중에는 주 전체 예상치만 제시")
         if days < MIN_WTD_DAYS and wk_all_closed:
             lw = wk_all_closed[-1]
             for k, met in TREE_MET.items():
