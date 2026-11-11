@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1109g"
+SEED_CACHE_VER = "2026-11-11-upd1110"
 
 
 @st.cache_data(show_spinner=False)
@@ -2661,7 +2661,7 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
     # ★ 기저(추석·슈퍼위크) 보정 진단 — 전년비는 추석·슈퍼위크 이동으로 왜곡된다. 양년의
     #   추석·슈퍼위크를 모두 창 안에 넣어 상쇄한 8/29~10/11(41일) 기준. 외부 창 계산이라
     #   정적이며 창 라벨로 기준을 밝힌다(데이터가 넓어지면 창을 늘려 재산출).
-    # ★ 다각도 실적 비교 표(정적 — 명절·행사 보정은 외부 창 계산, 작성 기준 11/9).
+    # ★ 다각도 실적 비교 표(정적 — 외부 창 계산, 작성 기준 11/10).
     #   전년비 하나로 판단하지 않도록 ①보정 합산(안정) ②마감주 ③전년 동일 행사 대비 ④진행주를 한 표에.
     #   11월 전관: 올해 BLACK FRIDAY 11/2~9·LF 12th ANNIVERSARY 11/20~27 / 전년 L+ BLACK WEEK 11/10~17·
     #   BLACK FRIDAY 11/21~28 — 시점이 어긋나 주별 날짜 전년비가 양방향 왜곡(가변탭 (2) 기준 행사명 확정).
@@ -2688,23 +2688,23 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#7a8f80'>+18.7%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#b08a84'>△2.4%</td></tr>"
      "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>④ 진행주 11월 2주차 "
-     "<span style='color:#a99a7a'>(11/9 1일치, 전년 동주가 L+ BLACK WEEK)</span></td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△19.7%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△8.8%</td></tr>"
+     "<span style='color:#a99a7a'>(11/9~10 2일치, 전년 동주가 L+ BLACK WEEK)</span></td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△26.2%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△11.2%</td></tr>"
      "<tr style='color:#a79a7a'><td style='border:1px solid #e6d8b6;padding:4px 10px'>"
-     "(참고) 표면 11월 MTD (11/1~9)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>+33.5%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>△4.4%</td></tr>"
+     "(참고) 표면 11월 MTD (11/1~10)</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>+24.0%</td>"
+     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>△5.1%</td></tr>"
      "</table>"
      "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 마감주 거래액 +44.0%는 올해 BLACK FRIDAY(11/2~9)가 "
      "전년 11월 전관행사(11/10~17, 11/21~28)보다 앞당겨진 영향이 큽니다. 전년 11월 첫 전관행사(L+ BLACK WEEK)와 비교하면 거래액 "
      "+10.7%(객단가 +14.1%), 방문(DAU) △6.0%입니다. 행사 성과는 전년을 웃돌았으나 방문은 행사 "
      "기간에도 역신장이며, BLACK FRIDAY 이전 2개월 누계는 거래액 △2.9%·방문 △8.2%로, 행사를 빼면 역신장 흐름이 이어지고 있습니다. 이번 주는 올해 전관행사가 "
-     "없고 전년 동주가 L+ BLACK WEEK라 날짜 전년비가 반대로 낮게 찍힙니다(11/9 거래액 △19.7%)."
+     "없고 전년 동주가 L+ BLACK WEEK라 날짜 전년비가 반대로 낮게 찍힙니다(11/9~10 거래액 △26.2%, 방문 △11.2%)."
      "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
      "※ 기준선은 행사 이전 2개월 누계(거래액 △2.9%·방문 △8.2%) · 11월 전관행사는 양년 2회씩(올해 BLACK FRIDAY 11/2~9·"
      "LF 12th ANNIVERSARY 11/20~27 / 전년 L+ BLACK WEEK 11/10~17·BLACK FRIDAY 11/21~28)이라 주별 전년비는 "
-     "시점 차이로 흔들리고 월 누계에서 상쇄 · 11월 MTD(+33.5%)는 현재 올해 행사만 포함</span></div>"),
+     "시점 차이로 흔들리고 월 누계에서 상쇄 · 11월 MTD(+24.0%)는 현재 올해 행사만 포함</span></div>"),
 ]
 if _dg_ev:
     _dg_lines.append(_dg_ev.replace("<br>", "", 1))
