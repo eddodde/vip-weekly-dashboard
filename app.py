@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1110d"
+SEED_CACHE_VER = "2026-11-11-upd1110e"
 
 
 @st.cache_data(show_spinner=False)
@@ -2171,7 +2171,7 @@ def insight_month(mo, cutoff, is_cur, unit_label):
                 dseq.append((m2, d))
         if b and len(dseq) >= 2:
             trend = " → ".join(f"{m}월 {_pct(d)}" for m, d in dseq)
-            tail = ("최근 월 반등은 전관행사 시점 차이에 따른 착시 — 추세로 보지 말 것(행사 이전 2개월 누계는 역신장)"
+            tail = ("최근 월 반등은 전관행사 시점 차이에 따른 착시 — 추세로 보지 말 것"
                     if _distort else
                     ("역신장폭 축소 흐름" if dseq[-1][1] > dseq[0][1] else "역신장폭 확대 흐름"))
             b.insert(max(len(b) - 1, 0), f"<b>DAU 추세</b>({trend}) — {tail}")
@@ -2229,7 +2229,7 @@ def insight_dau(period, distort=False):
         # ★ 착시 구간이면 '최근 낙폭 축소'를 회복으로 읽지 않는다 — 추석·슈퍼위크 배치 효과다.
         if distort and _delta is not None and _delta >= 1.0:
             b = [f"DAU {_pct(_cur)} — <b>{cons}주 연속 전년 하회</b>. 최근 낙폭 축소(직전 4주 대비 "
-                 f"{_delta:+.1f}%p)는 <b>전관행사 시점 차이에 따른 착시</b>(행사 이전 2개월 누계는 역신장) — "
+                 f"{_delta:+.1f}%p)는 <b>전관행사 시점 차이에 따른 착시</b> — "
                  f"특히 <b>{worst[0]} 채널</b>({_pct(worst[2])})"]
         else:
             b = [f"DAU가 <b>{cons}주 연속</b> 전년보다 낮음(잠깐이 아니라 계속되는 하락) — "
@@ -2768,23 +2768,15 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<th style='border:1px solid #d8c398;padding:4px 10px;text-align:left;font-weight:600'>구분</th>"
      "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>거래액</th>"
      "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>방문(DAU)</th></tr>"
-     "<tr style='background:#faf5e6'><td style='border:1px solid #e6d8b6;padding:4px 10px;font-weight:600'>"
-     "① 행사 이전 2개월 누계 <span style='color:#a99a7a;font-weight:400'>(9/1~11/1, BLACK FRIDAY 이전 · 기준선)</span></td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b;font-weight:600'>△2.9%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b;font-weight:600'>△8.2%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>② 마감주 11월 1주차 "
-     "<span style='color:#a99a7a'>(11/2~8 BLACK FRIDAY, 전년 동주는 평상)</span></td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>+44.0%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△4.3%</td></tr>"
      "<tr><td colspan='3' style='border:1px solid #e6d8b6;padding:4px 10px;font-weight:600;"
-     "background:#faf5e6'>③ 전년 11월 전관행사 대비 — 올해 11/2~8</td></tr>"
+     "background:#faf5e6'>① 전년 11월 전관행사 대비 — 올해 BLACK FRIDAY 11/2~8</td></tr>"
      "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 L+ BLACK WEEK (11/10~16) — 11월 첫 전관행사끼리(기준)</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>+10.7%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△6.0%</td></tr>"
      "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px 4px 22px'>· 전년 BLACK FRIDAY (11/21~27) — 참고</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#7a8f80'>+18.7%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#b08a84'>△2.4%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>④ 진행주 11월 2주차 "
+     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>② 진행주 11월 2주차 "
      "<span style='color:#a99a7a'>(11/9~10 2일치, 전년 동주가 L+ BLACK WEEK)</span></td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△26.2%</td>"
      "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△11.2%</td></tr>"
@@ -2796,10 +2788,10 @@ _dg_lines += [                                  # ── 구조 결론(기저 �
      "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 마감주 거래액 +44.0%는 올해 BLACK FRIDAY(11/2~9)가 "
      "전년 11월 전관행사(11/10~17, 11/21~28)보다 앞당겨진 영향이 큽니다. 전년 11월 첫 전관행사(L+ BLACK WEEK)와 비교하면 거래액 "
      "+10.7%(객단가 +14.1%), 방문(DAU) △6.0%입니다. 행사 성과는 전년을 웃돌았으나 방문은 행사 "
-     "기간에도 역신장이며, BLACK FRIDAY 이전 2개월 누계는 거래액 △2.9%·방문 △8.2%로, 행사를 빼면 역신장 흐름이 이어지고 있습니다. 이번 주는 올해 전관행사가 "
+     "기간에도 역신장입니다. 이번 주는 올해 전관행사가 "
      "없고 전년 동주가 L+ BLACK WEEK라 날짜 전년비가 반대로 낮게 찍힙니다(11/9~10 거래액 △26.2%, 방문 △11.2%)."
      "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
-     "※ 기준선은 행사 이전 2개월 누계(거래액 △2.9%·방문 △8.2%) · 11월 전관행사는 양년 2회씩(올해 BLACK FRIDAY 11/2~9·"
+     "※ 11월 전관행사는 양년 2회씩(올해 BLACK FRIDAY 11/2~9·"
      "LF 12th ANNIVERSARY 11/20~27 / 전년 L+ BLACK WEEK 11/10~17·BLACK FRIDAY 11/21~28)이라 주별 전년비는 "
      "시점 차이로 흔들리고 월 누계에서 상쇄 · 11월 MTD(+24.0%)는 현재 올해 행사만 포함</span></div>"),
 ]
@@ -2813,7 +2805,7 @@ if _dg_s is not None and _dg_s < 0:
 else:
     _dg_lines.append(
         f"· <b>표면 거래액 플러스({_pct(_dg_s)})는 객단가({_pct(_dg_a)}) 의존</b> — "
-        f"단 전년비는 전관행사 시점 차이로 왜곡되니 흐름 판단은 위 표 <b>① 기준선</b>으로")
+        f"단 전년비는 전관행사 시점 차이로 왜곡되니 흐름 판단은 위 표의 <b>전년 행사 대비</b> 기준으로")
 _dg_head = (f"🔍 <b>참고 · 구조 진단</b> <span style='color:#a08b5f'>— 지표 자동 갱신(~{cur_mo}/{cutoff})"
             + (f" · 브랜드·등급 교차분석(~{BRAND_ASOF.month}/{BRAND_ASOF.day} 기준) 포함" if _brand_ok else
                f"</span><span style='color:#c0a875'> · 브랜드 분석(~{BRAND_ASOF.month}/{BRAND_ASOF.day})은 "
