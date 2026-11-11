@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-11-upd1110n"
+SEED_CACHE_VER = "2026-11-11-upd1110o"
 
 
 @st.cache_data(show_spinner=False)
@@ -1111,7 +1111,7 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .dt-sr b{flex:none;width:84px;font-size:14px;font-weight:700;color:#14203a;
   font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
 .dt-sr span{font-size:10.5px;color:#4b5872;line-height:1.4;}
-.dt-sr:nth-child(2) b{color:#1f5fbf;font-size:16px;}   /* 목표 — 두괄식으로 맨 위 */
+.dt-sr.dt-goal b{color:#1f5fbf;font-size:16px;}   /* 목표 — 두괄식으로 맨 위 */
 .dt-sbase{font-size:9px;font-weight:700;color:#8b97ad;letter-spacing:.04em;margin-bottom:5px;}
 /* 기간을 진행주 밖으로 돌렸을 때만 뜨는 고정 안내 */
 .dt-fix{width:508px;flex:none;background:#fdf6e8;border:1px solid #ecdcb8;border-radius:6px;
@@ -3638,13 +3638,23 @@ def _summary_block(mode="week"):
 
     def p2(r):
         return f"{'△' if r < 0 else '+'}{abs(r) * 100:.2f}%"
-    rows = [f'<div class="dt-sr"><em>예상 마감</em><b>{_cur:,.0f}명</b>'
-            f'<span>전년 동주 {_prev:,.0f}명 대비 {p2(_y)}</span></div>']
+    # 현재(경과일) 실적 → 예상 마감 → 개선 목표 순으로 읽히게 한다(사용자 지시).
+    _hi = last_daily_date()
+    _obs = [_hi - datetime.timedelta(days=i) for i in range(_n)]
+    _oc = _days_mean("DAU", _obs)
+    _op = _days_mean("DAU", [d - datetime.timedelta(days=364) for d in _obs])
+    rows = []
+    if _oc and _op:
+        rows.append(f'<div class="dt-sr"><em>현재 {_n}일</em><b>{_oc:,.0f}명</b>'
+                    f'<span>전년 같은 요일 {_op:,.0f}명 대비 {p2(_oc / _op - 1)}</span></div>')
+    rows.append(f'<div class="dt-sr"><em>예상 마감</em><b>{_cur:,.0f}명</b>'
+                f'<span>전년 동주 {_prev:,.0f}명 대비 {p2(_y)}</span></div>')
     if gross > 0:
-        rows.append(f'<div class="dt-sr"><em>개선 목표</em><b>{p2(new)}</b>'
+        rows.append(f'<div class="dt-sr dt-goal"><em>개선 목표</em><b>{p2(new)}</b>'
                     f'<span>{p2(_y)} → {p2(new)}, {abs(new - _y) * 100:.2f}%p 개선 '
                     f'(유입 기여 상한 +{net:,.0f}명/일)</span></div>')
-    note = (f"예상 마감 = {_n}일 실측 + 잔여일은 최근 같은 유형(행사일·평상일) 7일 평균. "
+    note = (f"현재 {_n}일 = 이번 주 경과일 평균을 전년 같은 요일(364일 전)과 비교. "
+            f"&#10;예상 마감 = {_n}일 실측 + 잔여일은 최근 같은 유형(행사일·평상일) 7일 평균. "
             "&#10;개선 목표 = 아래 유입 액션의 유입 기여(상한) 합계를 예상 마감에 더한 값")
     return (f'<div class="dt-sum" title="{note}">'
             f'<div class="dt-sbase">{_wl} 방문(DAU) · {_n}일 실측 기준 7일 예상</div>'
