@@ -3819,7 +3819,8 @@ def _dt_done(focus, mode="wtd"):
         _head = ('<div class="dtw">'
                  f'<input type="radio" name="dtw" id="dtw-p" class="dtw-r"{"" if _cur_on else " checked"}>'
                  f'<input type="radio" name="dtw" id="dtw-c" class="dtw-r"{" checked" if _cur_on else ""}>'
-                 f'<div class="dtw-bar"><label for="dtw-p">{_pw}</label><label for="dtw-c">{_cw}</label></div>'
+                 # 수요일 회의는 진행주(집계일까지) 기준 보고 → 현재주차 탭을 앞에 둔다(사용자 지시)
+                 f'<div class="dtw-bar"><label for="dtw-c">{_cw}</label><label for="dtw-p">{_pw}</label></div>'
                  f'<div class="dtw-pane dtw-pp">{_rc}</div><div class="dtw-pane dtw-pc">{_sb}</div></div>')
     else:
         _head = _rc + _sb
