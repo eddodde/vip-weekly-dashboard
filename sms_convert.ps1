@@ -13,14 +13,15 @@ try {
   $ur = $ws.UsedRange
   $vals = $ur.Value2
   $rows = $ur.Rows.Count; $cols = $ur.Columns.Count
-  # 헤더 인덱스
-  $hdr=@{}; for($c=1;$c -le $cols;$c++){ $h=[string]$vals.GetValue(1,$c); if($h){ $hdr[$h.Trim()]=$c } }
+  # 헤더 인덱스 — 11/16 export부터 헤더 위에 합계 요약 4행이 붙는다. '발송일'이 있는 행을 찾아 헤더로 쓴다.
+  $hr=1; for($r=1;$r -le [math]::Min(10,$rows);$r++){ $hit=$false; for($c=1;$c -le $cols;$c++){ if(([string]$vals.GetValue($r,$c)).Trim() -eq '발송일'){ $hit=$true; break } }; if($hit){ $hr=$r; break } }
+  $hdr=@{}; for($c=1;$c -le $cols;$c++){ $h=[string]$vals.GetValue($hr,$c); if($h){ $hdr[$h.Trim()]=$c } }
   function Col($n){ $hdr[$n] }
   $iDate=Col '발송일'; $iAF=Col 'AF코드'; $iNm=Col '캠페인명'
   $iT=Col '타겟'; $iU=Col 'UV'; $iB=Col '구매고객'; $iS=Col '거래액'
   $agg=@{}   # key "wk|group|metric" -> sum
   $curd=''
-  for($r=2;$r -le $rows;$r++){
+  for($r=$hr+1;$r -le $rows;$r++){
     $dv=$vals.GetValue($r,$iDate); if($dv){ $curd=[string]$dv }
     if(-not $curd){ continue }
     $p=$curd -split '/'; if($p.Count -lt 2){ continue }
@@ -51,8 +52,16 @@ try {
       }
     }
   }
+  # 기존 파일의 다른 주차는 보존하고, 이번 export에 든 주차만 교체한다(export가 1주 단위로 와도 누적 유지).
+  $newWk=@{}; foreach($k in $agg.Keys){ $newWk[($k -split '\|')[0]]=1 }
   $sb=New-Object System.Text.StringBuilder
   [void]$sb.AppendLine("week,group,metric,value")
+  if(Test-Path $Out){
+    foreach($ln in (Get-Content $Out -Encoding UTF8 | Select-Object -Skip 1)){
+      if(-not $ln){ continue }
+      if(-not $newWk.ContainsKey(($ln -split ',')[0])){ [void]$sb.AppendLine($ln) }
+    }
+  }
   foreach($k in ($agg.Keys|Sort-Object)){
     $parts=$k -split '\|'
     [void]$sb.AppendLine("$($parts[0]),$($parts[1]),$($parts[2]),$($agg[$k])")
