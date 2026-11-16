@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-16-upd1116a"
+SEED_CACHE_VER = "2026-11-16-upd1116b"
 
 
 @st.cache_data(show_spinner=False)
@@ -1107,7 +1107,7 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   padding:9px 12px 10px;margin-bottom:9px;cursor:default;}
 .dt-sr{display:flex;align-items:baseline;gap:10px;margin-top:4px;word-break:keep-all;}
 .dt-sr:nth-child(2){margin-top:0;}   /* 첫 지표 행 — 앞에 .dt-sbase가 있다 */
-.dt-sr em{flex:none;width:50px;font-style:normal;font-size:10px;font-weight:700;color:#8b97ad;}
+.dt-sr em{flex:none;width:58px;font-style:normal;font-size:10px;font-weight:700;color:#8b97ad;}
 .dt-sr b{flex:none;width:84px;font-size:14px;font-weight:700;color:#14203a;
   font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
 .dt-sr span{font-size:10.5px;color:#4b5872;line-height:1.4;}
@@ -3646,6 +3646,67 @@ def _summary_block(mode="week"):
             + "".join(rows) + '</div>')
 
 
+# ★ 지난주 결산 — 주간회의에서 보고한 '예상 마감·개선 목표'를 마감 실적과 맞대고, 액션이 갭을 얼마나
+#   메웠는지 함께 싣는다(사용자 지시). 예상·목표는 보고 당시 값이라 시드에서 재계산되지 않으므로 여기 기록한다.
+#   매주 보고 후 한 줄씩 추가: 주차 → proj(예상 마감 DAU), proj_y, goal_y(목표 전년비), goal_add(목표 가산 명/일),
+#   basis(예상 산출 시점), sms_base(문자 거래액 증가분 비교 주차 — 액션 전 평상주).
+PRED_LOG = {
+    "11월 2주차": dict(proj=18968, proj_y=-0.1031, goal_y=-0.0898, goal_add=280,
+                       basis="11/9~10 2일 실측", sms_base="10월 5주차"),
+}
+
+
+def _recap_block():
+    """직전 마감주가 PRED_LOG에 있으면 '예상 → 목표 → 실제 → 액션 커버' 결산 블록을 만든다."""
+    if not wk_all_closed:
+        return ""
+    wk = wk_all_closed[-1]
+    r = PRED_LOG.get(wk)
+    if not r:
+        return ""
+    ac, ap = (V("week", "overall", "DAU", "TOTAL", "", y, wk) for y in (CUR, PREV))
+    sc, sp = (V("week", "overall", SALES, "TOTAL", "", y, wk) for y in (CUR, PREV))
+    if not (ac and ap):
+        return ""
+
+    def p2(x):
+        return f"{'△' if x < 0 else '+'}{abs(x) * 100:.2f}%"
+
+    def n0(x):
+        return f"{'△' if x < 0 else '+'}{abs(x):,.0f}"
+    goal = ap * (1 + r["goal_y"])
+    ay = ac / ap - 1
+    d_proj, d_goal = ac - r["proj"], ac - goal
+    rows = [
+        f'<div class="dt-sr"><em>예상 마감</em><b>{r["proj"]:,.0f}명</b>'
+        f'<span>전년 동주 {ap:,.0f}명 대비 {p2(r["proj_y"])} ({r["basis"]} 기준 보고값)</span></div>',
+        f'<div class="dt-sr"><em>개선 목표</em><b>{p2(r["goal_y"])}</b>'
+        f'<span>{goal:,.0f}명 · 액션 가산 +{r["goal_add"]:,.0f}명/일 (문자 유입 상한 기준)</span></div>',
+        f'<div class="dt-sr dt-goal"><em>실제</em><b>{ac:,.0f}명</b>'
+        f'<span>{p2(ay)} · 예상 대비 {n0(d_proj)}명/일 · 목표 대비 {n0(d_goal)}명/일</span></div>',
+    ]
+    # 액션 커버 — 방문: 문자 유입 증가가 예상 대비 방문 증가로 이어졌는지 / 거래액: 문자 귀속 증가분의 갭 비중
+    b = r.get("sms_base")
+    uc, ub = SMS.get((wk, "캠페인전체", "UV")), SMS.get((b, "캠페인전체", "UV")) if b else None
+    gc, gb = SMS.get((wk, "캠페인전체", "거래액")), SMS.get((b, "캠페인전체", "거래액")) if b else None
+    if uc is not None and ub is not None:
+        cov = max(0.0, min(1.0, d_proj / r["goal_add"])) if r["goal_add"] else 0.0
+        rows.append(f'<div class="dt-sr"><em>커버·방문</em><b>{"미확인" if d_proj <= 0 else f"{cov * 100:.0f}%"}</b>'
+                    f'<span>문자 유입 일 {ub / 7:,.0f} → {uc / 7:,.0f}건(+{(uc - ub) / 7:,.0f}건)이나 방문은 예상 대비 '
+                    f'{n0(d_proj)}명 — 유입 대부분이 원래 방문할 고객, 순증은 미발송 그룹 실측으로 확인</span></div>')
+    if gc is not None and gb is not None and sc and sp and sp > sc:
+        inc, gap = (gc - gb) / 7, sp - sc
+        rows.append(f'<div class="dt-sr"><em>커버·거래액</em><b>{inc / gap * 100:.1f}%</b>'
+                    f'<span>문자 귀속 거래액 일 {gb / 7:,.0f} → {gc / 7:,.0f}원(+{inc:,.0f}원) ÷ '
+                    f'전년 대비 부족분 {gap:,.0f}원/일</span></div>')
+    note = ("예상 마감·개선 목표 = 주간회의 보고 당시 값(PRED_LOG). 실제 = 주 마감 실적. "
+            f"&#10;커버·방문 = (실제 − 예상) ÷ 목표 가산분. 실제가 예상보다 낮으면 '미확인'. "
+            f"&#10;커버·거래액 = 문자 귀속 거래액 증가분({b} 대비, 마지막 클릭 AF코드 기준) ÷ 전년 동주 대비 일 거래액 부족분")
+    return (f'<div class="dt-sum" title="{note}">'
+            f'<div class="dt-sbase">지난주 결산 · {week_pretty(wk)} 예상·목표 vs 실제</div>'
+            + "".join(rows) + '</div>')
+
+
 def _summary_block_prev(mode="week"):
     """LEVEL-V 머리말(예전 형식). 시드에서 자동 산출(②번). 기간 옵션에 연동된다.
     · 금기: 선택 기간 DAU 전년비 + 역신장 축소폭
@@ -3718,7 +3779,11 @@ def _dt_done(focus, mode="wtd"):
     _rows = list(STATUS)
     cards = [_dt_card(f"dt-done {cls}".strip(), when, title, mets, tips)
              for key, title, when, cls, mets, tips in _rows if key in focus]
-    return (_summary_block(mode)
+    _rc = _recap_block()
+    _sb = _summary_block(mode)
+    if _rc and "자동 산출" in _sb:      # 진행주가 없을 때의 예전 형식(전주→금주 전년비)은 결산과 겹쳐 생략
+        _sb = ""
+    return (_rc + _sb
             + (f'<div class="dt-donegrp"><div class="dt-levrow">{"".join(cards)}</div></div>'
                if cards else ""))
 
