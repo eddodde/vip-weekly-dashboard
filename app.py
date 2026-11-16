@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-16-upd1116b"
+SEED_CACHE_VER = "2026-11-16-upd1116c"
 
 
 @st.cache_data(show_spinner=False)
@@ -1112,6 +1112,16 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
   font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
 .dt-sr span{font-size:10.5px;color:#4b5872;line-height:1.4;}
 .dt-sr.dt-goal b{color:#1f5fbf;font-size:16px;}   /* 목표 — 두괄식으로 맨 위 */
+.dtw{width:0;min-width:100%;}
+.dtw-r{display:none;}
+.dtw-bar{display:flex;gap:2px;margin-bottom:-1px;}
+.dtw-bar label{font-size:10.5px;font-weight:700;color:#8b97ad;background:#f4f6fa;border:1px solid #d3e0f0;
+  border-bottom:none;border-radius:5px 5px 0 0;padding:3px 12px;cursor:pointer;}
+.dtw-pane{display:none;}
+.dtw-pane .dt-sum{border-top-left-radius:0;}
+#dtw-p:checked ~ .dtw-pp, #dtw-c:checked ~ .dtw-pc{display:block;}
+#dtw-p:checked ~ .dtw-bar label[for="dtw-p"], #dtw-c:checked ~ .dtw-bar label[for="dtw-c"]{
+  color:#1f5fbf;background:#eef3fa;}
 .dt-sbase{font-size:9px;font-weight:700;color:#8b97ad;letter-spacing:.04em;margin-bottom:5px;}
 /* 기간을 진행주 밖으로 돌렸을 때만 뜨는 고정 안내 */
 .dt-fix{width:508px;flex:none;background:#fdf6e8;border:1px solid #ecdcb8;border-radius:6px;
@@ -3638,6 +3648,11 @@ def _summary_block(mode="week"):
         rows.append(f'<div class="dt-sr dt-goal"><em>개선 목표</em><b>{p2(new)}</b>'
                     f'<span>{p2(_y)} → {p2(new)}, {abs(new - _y) * 100:.2f}%p 개선 '
                     f'(유입 기여 상한 +{net:,.0f}명/일)</span></div>')
+    else:
+        # ★ 가동 중 액션은 예상 마감(최근 같은 유형 7일 평균)에 이미 들어 있어 다시 더하지 않는다.
+        #   순증 실측(미발송 그룹) 전까지는 예상 마감 자체가 목표다(보수 기준, 11/16 결산 교훈).
+        rows.append(f'<div class="dt-sr dt-goal"><em>개선 목표</em><b>{p2(_y)}</b>'
+                    f'<span>예상 마감 유지 — 가동 중 액션은 예상에 반영, 순증 실측 전 추가 가산 없음</span></div>')
     note = (f"현재 {_n}일 = 이번 주 경과일 평균을 전년 같은 요일(364일 전)과 비교. "
             f"&#10;예상 마감 = {_n}일 실측 + 잔여일은 최근 같은 유형(행사일·평상일) 7일 평균. "
             "&#10;개선 목표 = 아래 유입 액션의 유입 기여(상한) 합계를 예상 마감에 더한 값")
@@ -3779,11 +3794,36 @@ def _dt_done(focus, mode="wtd"):
     _rows = list(STATUS)
     cards = [_dt_card(f"dt-done {cls}".strip(), when, title, mets, tips)
              for key, title, when, cls, mets, tips in _rows if key in focus]
+    # ★ 머리말은 '전주차 | 현재주차' 탭 2개(사용자 지시). 전주차 = 보고한 예상·목표 vs 실제·액션 커버,
+    #   현재주차 = 진행주(집계일까지) 현재 → 예상 마감 → 목표. 탭은 CSS 라디오로만 전환(스크립트 없음).
     _rc = _recap_block()
-    _sb = _summary_block(mode)
-    if _rc and "자동 산출" in _sb:      # 진행주가 없을 때의 예전 형식(전주→금주 전년비)은 결산과 겹쳐 생략
+    _hi = last_daily_date()
+    _ip = _inprog_week()
+    _sb = _summary_block(mode) if _ip else ""
+    if "자동 산출" in _sb:             # 진행주가 없을 때의 예전 형식은 쓰지 않는다
         _sb = ""
-    return (_rc + _sb
+    _pw = wk_all_closed[-1] if wk_all_closed else None
+    _cw = (week_label_of(_hi) if _ip else
+           (week_label_of(_hi + datetime.timedelta(days=1)) if _hi else None))
+    if not _sb and _cw:
+        _sb = (f'<div class="dt-sum"><div class="dt-sbase">{_cw} 방문(DAU)</div>'
+               f'<div class="dt-sr"><em>집계 전</em><b>—</b><span>이번 주 일자별 실적이 아직 없음 — '
+               f'데이터 반영 시 현재 → 예상 마감 → 목표가 표시됩니다</span></div></div>')
+    if not _rc and _pw:
+        _rc = (f'<div class="dt-sum"><div class="dt-sbase">{_pw} 결산</div>'
+               f'<div class="dt-sr"><em>기록 없음</em><b>—</b><span>이 주차의 보고 예상·목표가 '
+               f'PRED_LOG에 없음</span></div></div>')
+    _head = ""
+    if _pw and _cw:
+        _cur_on = bool(_ip)            # 진행주 데이터가 있으면 현재주차, 없으면 전주차를 먼저 연다
+        _head = ('<div class="dtw">'
+                 f'<input type="radio" name="dtw" id="dtw-p" class="dtw-r"{"" if _cur_on else " checked"}>'
+                 f'<input type="radio" name="dtw" id="dtw-c" class="dtw-r"{" checked" if _cur_on else ""}>'
+                 f'<div class="dtw-bar"><label for="dtw-p">{_pw}</label><label for="dtw-c">{_cw}</label></div>'
+                 f'<div class="dtw-pane dtw-pp">{_rc}</div><div class="dtw-pane dtw-pc">{_sb}</div></div>')
+    else:
+        _head = _rc + _sb
+    return (_head
             + (f'<div class="dt-donegrp"><div class="dt-levrow">{"".join(cards)}</div></div>'
                if cards else ""))
 
