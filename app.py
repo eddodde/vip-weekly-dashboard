@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-16-upd1116d"
+SEED_CACHE_VER = "2026-11-16-upd1116e"
 
 
 @st.cache_data(show_spinner=False)
@@ -3667,7 +3667,9 @@ def _summary_block(mode="week"):
 #   basis(예상 산출 시점), sms_base(문자 거래액 증가분 비교 주차 — 액션 전 평상주).
 PRED_LOG = {
     "11월 2주차": dict(proj=18968, proj_y=-0.1031, goal_y=-0.0898, goal_add=280,
-                       basis="11/9~10 2일 실측", sms_base="10월 5주차"),
+                       basis="11/9~10 2일 실측", sms_base="10월 5주차",
+                       # 목표 가산(+280)을 잡은 액션별 실측 AF 유입(주 합계, 문자 11/9~15). 최근본 확대는 전주 대비 증가분.
+                       act_uv=[("장바구니 자동화", 2756), ("최근본 확대", 2880 - 2609), ("히스헤지스 라이브", 453)]),
 }
 
 
@@ -3704,31 +3706,21 @@ def _recap_block():
     b = r.get("sms_base")
     uc, ub = SMS.get((wk, "캠페인전체", "UV")), SMS.get((b, "캠페인전체", "UV")) if b else None
     gc, gb = SMS.get((wk, "캠페인전체", "거래액")), SMS.get((b, "캠페인전체", "거래액")) if b else None
-    # ★ 방문 기여도(추정) — 미발송 그룹 실측 전까지는 '액션 전 평상주 대비 전년비 갭 축소분'으로 추정한다
-    #   (사용자 지시: 미확인으로 두지 말고 예상을 낼 것). 2일 기반 예상 마감 대비 차이는 예상 오차(하루 약
-    #   450명)가 효과보다 커서 쓰지 않는다. 추정 = 실제 − 기준주 DAU × (전년 동주 ÷ 전년 기준주) — 전년의
-    #   같은 두 주 흐름만큼 기준주를 옮긴 뒤의 차이. 전년 동주가 행사(L+ BLACK WEEK)라 전년 흐름이 높게
-    #   잡혀 추정은 보수 쪽이다.
-    bc, bp = ((V("week", "overall", "DAU", "TOTAL", "", y, b) for y in (CUR, PREV)) if b else (None, None))
-    if bc and bp:
-        est = ac - bc * (ap / bp)
-        cut = (ac / ap - 1) - (bc / bp - 1)
-        tail = []
-        if r["goal_add"]:
-            tail.append(f'목표 가산 +{r["goal_add"]:,.0f}명의 {est / r["goal_add"] * 100:.0f}%')
-        if uc is not None and ub is not None and uc > ub:
-            tail.append(f'문자 유입 증가 +{(uc - ub) / 7:,.0f}건 중 {est / ((uc - ub) / 7) * 100:.0f}%')
-        rows.append(f'<div class="dt-sr"><em>방문 기여도</em><b>{n0(est)}명/일</b>'
-                    f'<span>추정 · 액션 전 평상주({b}) 대비 역신장 {p2(bc / bp - 1)} → {p2(ac / ap - 1)}, '
-                    f'{cut * 100:.2f}%p 축소' + (" · " + " · ".join(tail) if tail else "") + '</span></div>')
+    # ★ 방문 기여도 = 목표 가산(+280, AF 유입 기준)을 잡은 액션들의 실측 AF 유입(UV)을 같은 기준으로 합산.
+    #   목표와 같은 잣대로 달성을 본다(사용자 지시: 순증 추정 말고 유입 건으로).
+    if r.get("act_uv"):
+        tot = sum(v for _, v in r["act_uv"]) / 7
+        parts = " · ".join(f"{k} +{v / 7:,.0f}" for k, v in r["act_uv"])
+        ach = f'목표 가산 +{r["goal_add"]:,.0f}명의 {tot / r["goal_add"] * 100:.0f}% · ' if r["goal_add"] else ""
+        rows.append(f'<div class="dt-sr"><em>방문 기여도</em><b>+{tot:,.0f}명/일</b>'
+                    f'<span>AF 유입 기준 · {ach}{parts}</span></div>')
     if gc is not None and gb is not None and sc and sp and sp > sc:
         inc, gap = (gc - gb) / 7, sp - sc
         rows.append(f'<div class="dt-sr"><em>거래액 기여도</em><b>{inc / gap * 100:.1f}%</b>'
                     f'<span>AF 귀속 기준 · 문자 거래액 일 {gb / 7:,.0f} → {gc / 7:,.0f}원(+{inc:,.0f}원) ÷ '
                     f'전년 대비 부족분 {gap:,.0f}원/일</span></div>')
     note = ("예상 마감·개선 목표 = 주간회의 보고 당시 값(PRED_LOG). 실제 = 주 마감 실적. "
-            f"&#10;방문 기여도(추정) = 실제 DAU − {b} DAU × (전년 동주 ÷ 전년 {b}) — 액션 전 평상주 대비 전년비 갭 축소분. "
-            "미발송 그룹 실측이 나오면 그 값으로 교체. "
+            "&#10;방문 기여도 = 목표에 넣은 액션별 실측 AF 유입(UV) 주 합계 ÷ 7 (최근본 확대는 전주 대비 증가분). "
             f"&#10;거래액 기여도 = 문자 귀속 거래액 증가분({b} 대비, 마지막 클릭 AF코드 기준) ÷ 전년 동주 대비 일 거래액 부족분")
     return (f'<div class="dt-sum" title="{note}">'
             f'<div class="dt-sbase">지난주 결산 · {week_pretty(wk)} 예상·목표 vs 실제</div>'
