@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-17-upd1116f"
+SEED_CACHE_VER = "2026-11-17-upd1116g"
 
 
 @st.cache_data(show_spinner=False)
@@ -640,6 +640,17 @@ def _inprog_week():
     return (n, week_pretty(week_label_of(hi)))
 
 
+# ★ 전관행사 종료 직후 이틀은 '행사 여운'(방문이 평상보다 높음)이라 평상일 표본에서 뺀다.
+#   11월 2주차 예상 마감(18,968명, △10.31%)이 BLACK FRIDAY 직후 11/9~10(19,550·19,072명)을 평상일로
+#   넣어 높게 나왔다 — 제외 시 18,681명(△11.66%), 실제 18,788명(△11.16%). 40주 백테스트: 방문 평균오차
+#   동일(2일 2.4%)·최대오차 8.6→8.1%, 거래액 2일 9.6→9.1%·3일 7.5→7.0%.
+POST_EVENT_EXCL = 2
+
+
+def _post_event(dt, occ):
+    return any(e <= dt < e + datetime.timedelta(days=POST_EVENT_EXCL) for _s, e in occ)
+
+
 def _runrate_days(hi, n=7, lookback=42):
     """진행주 run-rate 표본일 → (날짜 리스트, 라벨).
     기본은 최근 7일이지만, 직전 주가 전관행사 주간이고 이번 주가 평상 주간이면(또는 그 반대)
@@ -660,7 +671,8 @@ def _runrate_days(hi, n=7, lookback=42):
     wk_lo = hi - datetime.timedelta(days=hi.weekday())
     wk_ev = sum(_is_ev(wk_lo + datetime.timedelta(days=i)) for i in range(7)) >= 4
     same = [d for d in (hi - datetime.timedelta(days=i) for i in range(lookback))
-            if _is_ev(d) == wk_ev and dv(d.year, d.month, d.day, "DAU") is not None][:n]
+            if _is_ev(d) == wk_ev and (wk_ev or not _post_event(d, occ))
+            and dv(d.year, d.month, d.day, "DAU") is not None][:n]
     if len(same) < n or same == last:
         return last, "최근 7일"
     return same, ("최근 전관행사일 7일" if wk_ev else "최근 평상일 7일")
@@ -707,7 +719,8 @@ def week_projection(metric):
     fill = 0.0
     for i in range(n, 7):
         d = mon + datetime.timedelta(days=i)
-        same = [x for dd, x in back if _is_ev(dd) == _is_ev(d)][:7]
+        same = [x for dd, x in back if _is_ev(dd) == _is_ev(d)
+                and (_is_ev(d) or not _post_event(dd, occ))][:7]
         if len(same) < 3:
             same = [x for _, x in back][:7]
         if not same:
@@ -1744,8 +1757,8 @@ def chart_yoy_level(label):
 
 # 진행주 7일 예상(week_projection)의 백테스트 평균 절대오차(과거 40주, 경과일수별).
 # CR은 고객수·DAU 예상의 비라 고객수 오차를 표기.
-_PROJ_MAE = {"DAU": {1: "2.7%", 2: "2.4%", 3: "1.9%", 4: "1.4%", 5: "0.9%"},
-             "SALES": {1: "11.6%", 2: "9.5%", 3: "7.4%", 4: "5.5%", 5: "4.0%"},
+_PROJ_MAE = {"DAU": {1: "2.7%", 2: "2.4%", 3: "1.9%", 4: "1.4%", 5: "1.0%"},
+             "SALES": {1: "11.3%", 2: "9.1%", 3: "7.0%", 4: "5.5%", 5: "3.8%"},
              "CR": {1: "8.1%", 2: "6.8%", 3: "5.1%", 4: "3.8%", 5: "3.1%"}}
 
 
