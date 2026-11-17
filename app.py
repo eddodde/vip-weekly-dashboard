@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-17-upd1117d"
+SEED_CACHE_VER = "2026-11-17-upd1117e"
 
 
 @st.cache_data(show_spinner=False)
@@ -1068,9 +1068,8 @@ section[data-testid="stSidebar"] [data-testid="stSelectbox"] *{font-size:11.5px 
 .sumtbl .grpyoy{background:#fff4ec;}
 .sumtbl .grp2025{background:#f4f4f4;}
 .sumtbl .grpmom{background:#eef7f1;}
-.sumtbl .curcol{font-weight:700;border-left:2px solid #1f5fbf;border-right:2px solid #1f5fbf;}
-.sumtbl th.curcol{border-top:2px solid #1f5fbf;}
-.sumtbl .curbot{border-bottom:2px solid #1f5fbf;}
+.sumtbl .curcol{font-weight:700;}
+.sumtbl th.curcol{color:#1f5fbf;box-shadow:inset 0 -2px 0 #1f5fbf;}
 .sumwrap{overflow-x:auto;border:1px solid #e6e6e6;border-radius:6px;}
 .insight{background:#f0f6ff;border-left:4px solid #1f5fbf;border-radius:4px;
   padding:8px 14px 8px 16px;margin:2px 0 12px;font-size:13.5px;line-height:1.7;}
