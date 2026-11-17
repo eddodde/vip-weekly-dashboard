@@ -2910,7 +2910,9 @@ def _angle_table():
     inprog = hi.weekday() < 6
     obs = [mon + i * one for i in range(hi.weekday() + 1)] if inprog else []
     last = wk(mon - 7 * one) if inprog else wk(mon)
-    if not (any(flags(last)) or (inprog and any(flags(wk(mon))))):
+    # ★ 노출 기준은 '주차'가 아니라 '집계일'이다 — 집계일에 올해 전관행사가 진행 중일 때만 싣는다(사용자 지시).
+    #   주차 기준으로 잡으면 행사가 끝난 뒤나 시작 전(같은 주 금요일 시작 등)에도 평시에 상자가 뜬다.
+    if hi not in cur_ev:
         return None                       # 평시 — 표·상자 모두 생략
 
     def tagtxt(f):
@@ -2998,8 +3000,7 @@ if _brand_ok:                                   # ── 브랜드(8월 마감)
         "구매고객도 5,264명이 이 브랜드에서 이탈",
     ]
 # ★ 다각도 실적 비교 표 — 일자 실적·행사 캘린더에서 자동 산출(11/17, 예전엔 수기 입력).
-#   전관행사 시점이 양년 어긋나는 주에만 의미가 있으므로, 평시(직전 마감주·진행주 모두 양년 평상)에는
-#   구조 진단 상자 전체를 싣지 않는다(사용자 지시).
+#   집계일에 올해 전관행사가 진행 중일 때만 싣고, 평시에는 구조 진단 상자 전체를 싣지 않는다(사용자 지시).
 _angle_html = _angle_table()
 if _angle_html:
     _dg_lines.append(_angle_html)
