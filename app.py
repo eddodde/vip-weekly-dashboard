@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-16-upd1116e"
+SEED_CACHE_VER = "2026-11-17-upd1116f"
 
 
 @st.cache_data(show_spinner=False)
@@ -3640,19 +3640,20 @@ def _summary_block(mode="week"):
     _op = _days_mean("DAU", [d - datetime.timedelta(days=364) for d in _obs])
     rows = []
     if _oc and _op:
-        rows.append(f'<div class="dt-sr"><em>현재 {_n}일</em><b>{_oc:,.0f}명</b>'
-                    f'<span>전년 같은 요일 {_op:,.0f}명 대비 {p2(_oc / _op - 1)}</span></div>')
-    rows.append(f'<div class="dt-sr"><em>예상 마감</em><b>{_cur:,.0f}명</b>'
-                f'<span>전년 동주 {_prev:,.0f}명 대비 {p2(_y)}</span></div>')
+        # ★ 굵은 값은 전부 '전년비'로 통일(사용자 지시) — DAU 명수는 설명으로 내린다.
+        rows.append(f'<div class="dt-sr"><em>현재 {_n}일</em><b>{p2(_oc / _op - 1)}</b>'
+                    f'<span>{_oc:,.0f}명 · 전년 같은 요일 {_op:,.0f}명 대비</span></div>')
+    rows.append(f'<div class="dt-sr"><em>예상 마감</em><b>{p2(_y)}</b>'
+                f'<span>{_cur:,.0f}명 · 전년 동주 {_prev:,.0f}명 대비</span></div>')
     if gross > 0:
         rows.append(f'<div class="dt-sr dt-goal"><em>개선 목표</em><b>{p2(new)}</b>'
-                    f'<span>{p2(_y)} → {p2(new)}, {abs(new - _y) * 100:.2f}%p 개선 '
+                    f'<span>{_prev * (1 + new):,.0f}명 · 예상 마감 대비 {abs(new - _y) * 100:.2f}%p 개선 '
                     f'(유입 기여 상한 +{net:,.0f}명/일)</span></div>')
     else:
         # ★ 가동 중 액션은 예상 마감(최근 같은 유형 7일 평균)에 이미 들어 있어 다시 더하지 않는다.
         #   순증 실측(미발송 그룹) 전까지는 예상 마감 자체가 목표다(보수 기준, 11/16 결산 교훈).
         rows.append(f'<div class="dt-sr dt-goal"><em>개선 목표</em><b>{p2(_y)}</b>'
-                    f'<span>예상 마감 유지 — 가동 중 액션은 예상에 반영, 순증 실측 전 추가 가산 없음</span></div>')
+                    f'<span>{_cur:,.0f}명 · 예상 마감 유지 — 가동 중 액션은 예상에 반영, 순증 실측 전 추가 가산 없음</span></div>')
     note = (f"현재 {_n}일 = 이번 주 경과일 평균을 전년 같은 요일(364일 전)과 비교. "
             f"&#10;예상 마감 = {_n}일 실측 + 잔여일은 최근 같은 유형(행사일·평상일) 7일 평균. "
             "&#10;개선 목표 = 아래 유입 액션의 유입 기여(상한) 합계를 예상 마감에 더한 값")
@@ -3694,13 +3695,16 @@ def _recap_block():
     goal = ap * (1 + r["goal_y"])
     ay = ac / ap - 1
     d_proj, d_goal = ac - r["proj"], ac - goal
+    def pp(x):
+        return f"{'△' if x < 0 else '+'}{abs(x) * 100:.2f}%p"
+    # ★ 굵은 값은 전부 '전년비'(기여도는 전년비 %p)로 통일(사용자 지시) — 명수·금액은 설명으로 내린다.
     rows = [
-        f'<div class="dt-sr"><em>예상 마감</em><b>{r["proj"]:,.0f}명</b>'
-        f'<span>전년 동주 {ap:,.0f}명 대비 {p2(r["proj_y"])} ({r["basis"]} 기준 보고값)</span></div>',
+        f'<div class="dt-sr"><em>예상 마감</em><b>{p2(r["proj_y"])}</b>'
+        f'<span>{r["proj"]:,.0f}명 · 전년 동주 {ap:,.0f}명 대비 ({r["basis"]} 기준 보고값)</span></div>',
         f'<div class="dt-sr"><em>개선 목표</em><b>{p2(r["goal_y"])}</b>'
         f'<span>{goal:,.0f}명 · 액션 가산 +{r["goal_add"]:,.0f}명/일 (문자 유입 상한 기준)</span></div>',
-        f'<div class="dt-sr dt-goal"><em>실제</em><b>{ac:,.0f}명</b>'
-        f'<span>{p2(ay)} · 예상 대비 {n0(d_proj)}명/일 · 목표 대비 {n0(d_goal)}명/일</span></div>',
+        f'<div class="dt-sr dt-goal"><em>실제</em><b>{p2(ay)}</b>'
+        f'<span>{ac:,.0f}명 · 예상 대비 {pp(ay - r["proj_y"])} · 목표 대비 {pp(ay - r["goal_y"])}</span></div>',
     ]
     # 액션 기여도 — 방문: 문자 유입 증가가 예상 대비 방문 증가로 이어졌는지 / 거래액: 문자 귀속 증가분의 갭 비중
     b = r.get("sms_base")
@@ -3711,17 +3715,18 @@ def _recap_block():
     if r.get("act_uv"):
         tot = sum(v for _, v in r["act_uv"]) / 7
         parts = " · ".join(f"{k} +{v / 7:,.0f}" for k, v in r["act_uv"])
-        ach = f'목표 가산 +{r["goal_add"]:,.0f}명의 {tot / r["goal_add"] * 100:.0f}% · ' if r["goal_add"] else ""
-        rows.append(f'<div class="dt-sr"><em>방문 기여도</em><b>+{tot:,.0f}명/일</b>'
-                    f'<span>AF 유입 기준 · {ach}{parts}</span></div>')
+        ach = (f'목표 가산 {pp(r["goal_y"] - r["proj_y"])}의 {tot / r["goal_add"] * 100:.0f}% · '
+               if r["goal_add"] else "")
+        rows.append(f'<div class="dt-sr"><em>방문 기여도</em><b>{pp(tot / ap)}</b>'
+                    f'<span>+{tot:,.0f}명/일 · AF 유입 기준 · {ach}{parts}</span></div>')
     if gc is not None and gb is not None and sc and sp and sp > sc:
         inc, gap = (gc - gb) / 7, sp - sc
-        rows.append(f'<div class="dt-sr"><em>거래액 기여도</em><b>{inc / gap * 100:.1f}%</b>'
-                    f'<span>AF 귀속 기준 · 문자 거래액 일 {gb / 7:,.0f} → {gc / 7:,.0f}원(+{inc:,.0f}원) ÷ '
-                    f'전년 대비 부족분 {gap:,.0f}원/일</span></div>')
+        rows.append(f'<div class="dt-sr"><em>거래액 기여도</em><b>{pp(inc / sp)}</b>'
+                    f'<span>+{inc:,.0f}원/일 · AF 귀속 기준 · 문자 거래액 일 {gb / 7:,.0f} → {gc / 7:,.0f}원 · '
+                    f'전년 대비 부족분 {gap:,.0f}원/일의 {inc / gap * 100:.1f}%</span></div>')
     note = ("예상 마감·개선 목표 = 주간회의 보고 당시 값(PRED_LOG). 실제 = 주 마감 실적. "
-            "&#10;방문 기여도 = 목표에 넣은 액션별 실측 AF 유입(UV) 주 합계 ÷ 7 (최근본 확대는 전주 대비 증가분). "
-            f"&#10;거래액 기여도 = 문자 귀속 거래액 증가분({b} 대비, 마지막 클릭 AF코드 기준) ÷ 전년 동주 대비 일 거래액 부족분")
+            "&#10;방문 기여도 = 목표에 넣은 액션별 실측 AF 유입(UV) 일평균 ÷ 전년 동주 DAU (최근본 확대는 전주 대비 증가분). "
+            f"&#10;거래액 기여도 = 문자 귀속 거래액 일 증가분({b} 대비, 마지막 클릭 AF코드 기준) ÷ 전년 동주 일 거래액")
     return (f'<div class="dt-sum" title="{note}">'
             f'<div class="dt-sbase">지난주 결산 · {week_pretty(wk)} 예상·목표 vs 실제</div>'
             + "".join(rows) + '</div>')
