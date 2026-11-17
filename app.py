@@ -349,7 +349,7 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-17-upd1117c"
+SEED_CACHE_VER = "2026-11-17-upd1117d"
 
 
 @st.cache_data(show_spinner=False)
@@ -3685,10 +3685,11 @@ def _summary_block(mode="week"):
     # ★ 보고용 예상 마감은 '보수 기준'으로 낸다(사용자 지시: 낙관 예상은 다음 주 해명 거리가 된다).
     #   중심 예상(week_projection)에서 과거 33주 백테스트의 하위 20% 편차만큼 낮춘 값 — 5주 중 4주는
     #   실제가 이 값 이상으로 마감했다. 경과일이 늘수록 차감 폭이 줄어든다.
-    _mid, _mid_y = _cur, _y
+    #   (11/17 정정) 예상 마감 굵은 값은 중심 예상 하나로 고정하고, 보수 기준은 '하단'으로 옆에 병기한다 —
+    #   굵은 값을 중심↔보수로 바꾸면 같은 날 숫자가 2%p씩 달라져 무엇이 맞는지 알 수 없다(사용자 지적).
     _cut = PROJ_CONS_CUT.get(_n, 0.0)
-    _cur = _mid * (1 - _cut)
-    _y = _cur / _prev - 1
+    _low = _cur * (1 - _cut)
+    _low_y = _low / _prev - 1
     gross = _visit_lever_gross()
     net = gross          # ★ 개선 목표는 순증 할인 없이 '유입 기여(상한)' 합계 기준(사용자 지시)
     new = (_cur + net) / _prev - 1
@@ -3706,8 +3707,8 @@ def _summary_block(mode="week"):
         rows.append(f'<div class="dt-sr"><em>현재 {_n}일</em><b>{p2(_oc / _op - 1)}</b>'
                     f'<span>{_oc:,.0f}명 · 전년 같은 요일 {_op:,.0f}명 대비</span></div>')
     rows.append(f'<div class="dt-sr"><em>예상 마감</em><b>{p2(_y)}</b>'
-                f'<span>{_cur:,.0f}명 · 전년 동주 {_prev:,.0f}명 대비 · 보수 기준'
-                f'(중심 예상 {_mid:,.0f}명 {p2(_mid_y)}에서 {_cut * 100:.1f}% 차감)</span></div>')
+                f'<span>{_cur:,.0f}명 · 전년 동주 {_prev:,.0f}명 대비 · 하단 {p2(_low_y)}({_low:,.0f}명) — '
+                f'과거 5주 중 4주는 하단 이상으로 마감</span></div>')
     if gross > 0:
         rows.append(f'<div class="dt-sr dt-goal"><em>개선 목표</em><b>{p2(new)}</b>'
                     f'<span>{_prev * (1 + new):,.0f}명 · 예상 마감 대비 {abs(new - _y) * 100:.2f}%p 개선 '
@@ -3715,11 +3716,11 @@ def _summary_block(mode="week"):
     else:
         # ★ 가동 중 액션은 예상 마감(최근 같은 유형 7일 평균)에 이미 들어 있어 다시 더하지 않는다.
         #   순증 실측(미발송 그룹) 전까지는 예상 마감 자체가 목표다(보수 기준, 11/16 결산 교훈).
-        rows.append(f'<div class="dt-sr dt-goal"><em>개선 목표</em><b>{p2(_y)}</b>'
-                    f'<span>{_cur:,.0f}명 · 예상 마감 유지 — 가동 중 액션은 예상에 반영, 순증 실측 전 추가 가산 없음</span></div>')
+        rows.append(f'<div class="dt-sr dt-goal"><em>개선 목표</em><b>—</b>'
+                    f'<span>금주 신규 유입 액션 확정 시 산정 — 가동 중 자동화(장바구니·최근 조회)는 예상 마감에 이미 반영</span></div>')
     note = (f"현재 {_n}일 = 이번 주 경과일 평균을 전년 같은 요일(364일 전)과 비교. "
             f"&#10;예상 마감 = {_n}일 실측 + 잔여 평상일은 최근 평상일 평균, 잔여 행사일은 평상 수준 × 행사 상승률(최근 전관행사 중앙값). "
-            "&#10;보수 기준 = 중심 예상에서 과거 33주 검증의 하위 20% 편차만큼 차감 — 5주 중 4주는 실제가 이 값 이상으로 마감. "
+            "&#10;하단 = 예상 마감에서 과거 33주 검증의 하위 20% 편차만큼 차감 — 5주 중 4주는 실제가 이 값 이상으로 마감. "
             "&#10;개선 목표 = 아래 유입 액션의 유입 기여(상한) 합계를 예상 마감에 더한 값")
     return (f'<div class="dt-sum" title="{note}">'
             f'<div class="dt-sbase">{_wl} 방문(DAU) · {_n}일 실측 기준 7일 예상</div>'
