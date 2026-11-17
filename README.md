@@ -43,3 +43,14 @@ GitHub push → Streamlit Cloud (`app.py`). 파서는 `convert.ps1`(로컬 시�
 - **R1** = 연도 마커(값 열 시작 위치마다), 열 방향 forward-fill → 각 값 열의 연도 확정
 - **R3** = 기간 라벨(월/주차/일자), **라벨 열 수**로 관점 판별(전체=6, 상품=7)
 - 전년비 = 동일 기간 라벨을 올해 vs 전년으로 매칭
+
+## 주간 갱신 절차 (파일만 바꾸면 화면이 따라 바뀌는 범위)
+1. **실적 5종**(전체관점 일자별·주별 2종·월별, 상품관점 주별) → `convert.ps1`로 각각 CSV 변환 → `python tools/merge_seed.py <CSV 폴더> --write`
+2. **표(문자)** → `sms_convert.ps1 -Src <파일>` → `data/sms_long.csv`(주차 집계) + `data/sms_daily.csv`(일자·캠페인 원장)
+3. **팝업 실적(Overall.xlsx)** → `popup_convert.ps1 -Src <파일>` → `data/popup.csv`
+4. `git add data && git commit && git push` → Streamlit Cloud Reboot
+
+- 캐시는 데이터 파일 크기·수정시각으로 자동 무효화된다(버전 문자열 수정 불필요).
+- 유입 액션 카드(장바구니 자동화·최근 조회 리마인드)는 문자 원장 최근 7일, 전환 카드(장바구니 팝업)는 팝업 누적에서 자동 산출된다.
+- 구조 진단(다각도 전년비 표)은 직전 마감주 또는 진행주에 전관행사가 낀 경우(올해·전년 어느 쪽이든)에만 표시된다.
+- 수기로 남는 것: 개선 목표(이번 주 신규 액션 대상 수), `PRED_LOG`(보고한 예상·목표), `data/comment.md`, `data/events.csv`.

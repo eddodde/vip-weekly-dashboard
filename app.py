@@ -7,6 +7,7 @@ VIP 주간 실적 대시보드 (LF CRM/VIP)
 - 사이드바에서 원본(또는 update.ps1이 만든 CSV) 업로드 시 즉시 재계산
 """
 import io
+import os
 import re
 import calendar
 import datetime
@@ -349,7 +350,20 @@ def parse_uploads(files):
 # ★ 캐시 버스터. finalize/_drop_corrupt(보정 로직)를 바꿔도 load_seed 자체 코드가 안 바뀌면
 #   st.cache_data가 옛 결과를 재사용한다(전이 의존성을 해시 안 함). 보정 로직을 고칠 때마다
 #   이 버전을 올리면 캐시가 무효화된다.
-SEED_CACHE_VER = "2026-11-17-upd1117e"
+def _data_sig():
+    """데이터 파일(시드·문자·팝업·행사)의 크기·수정시각 서명 — 파일만 바꿔 올려도 캐시가 무효화된다."""
+    sig = []
+    for f in ("data/perf_long.csv", "data/sms_long.csv", "data/sms_daily.csv", "data/popup.csv", "data/events.csv"):
+        try:
+            _st = os.stat(f)
+            sig.append(f"{_st.st_size}-{int(_st.st_mtime)}")
+        except OSError:
+            sig.append("x")
+    return "|".join(sig)
+
+
+# 앞부분(코드 버전)은 보정·집계 로직을 바꿀 때만 올린다. 데이터 갱신은 뒤 서명이 자동으로 바꾼다.
+SEED_CACHE_VER = "2026-11-17-auto1|" + _data_sig()
 
 
 @st.cache_data(show_spinner=False)
@@ -848,6 +862,58 @@ def load_sms(ver=SEED_CACHE_VER):   # 캐시 버스터 공유 — 집계 CSV 갱
 
 
 SMS = load_sms()
+
+SMS_DAILY_CSV = "data/sms_daily.csv"   # sms_convert.ps1 산출 — VIP 캠페인 일자·캠페인 단위
+POPUP_CSV = "data/popup.csv"           # popup_convert.ps1 산출 — 온사이트 팝업 누적
+
+
+@st.cache_data(show_spinner=False)
+def load_sms_daily(ver=SEED_CACHE_VER):
+    try:
+        d = pd.read_csv(SMS_DAILY_CSV, encoding="utf-8-sig")
+        d["date"] = pd.to_datetime(d["date"], errors="coerce").dt.date
+        d["name"] = d["name"].astype(str)
+        return d[d["date"].notna()].reset_index(drop=True)
+    except Exception:
+        return pd.DataFrame(columns=["date", "camp_no", "af", "target", "uv", "buyers", "sales", "name"])
+
+
+@st.cache_data(show_spinner=False)
+def load_popup(ver=SEED_CACHE_VER):
+    try:
+        d = pd.read_csv(POPUP_CSV, encoding="utf-8-sig")
+        for c in ("asof", "start"):
+            d[c] = pd.to_datetime(d[c], errors="coerce").dt.date
+        return d
+    except Exception:
+        return pd.DataFrame(columns=["asof", "start", "etag", "landing", "impr", "click_uv", "click_sv",
+                                     "orders", "ord_amt", "cust", "sale_amt"])
+
+
+SMS_DAILY = load_sms_daily()
+POPUP = load_popup()
+
+
+def _md(d):
+    return f"{d.month}/{d.day}"
+
+
+def sms_recent(pat, days=7):
+    """캠페인명에 pat이 든 VIP 발송의 최근 days일(문자 원장 마지막 날짜 기준) 일자별 집계. 없으면 None."""
+    if SMS_DAILY.empty:
+        return None
+    cap = SMS_DAILY["date"].max()
+    lo = cap - datetime.timedelta(days=days - 1)
+    d = SMS_DAILY[SMS_DAILY["name"].str.contains(pat, regex=False).to_numpy(dtype=bool)
+                  & (SMS_DAILY["date"] >= lo).to_numpy(dtype=bool)]
+    if d.empty:
+        return None
+    g = d.groupby("date")[["target", "uv", "buyers", "sales"]].sum().sort_index()
+    t, u = float(g["target"].sum()), float(g["uv"].sum())
+    if t <= 0:
+        return None
+    return dict(g=g, lo=g.index.min(), hi=g.index.max(), n=len(g), t=t, u=u,
+                b=float(g["buyers"].sum()), s=float(g["sales"].sum()), rate=u / t)
 
 
 def SV(week, group, metric):
@@ -2802,6 +2868,122 @@ if _ipo:
                 _dg_ev = (f"<br>· <b>{_ipo[2]} {_stt}: " + " → ".join(_days)
                           + f"</b> (누적 {_pct(_cum)}, 전년 동일 행사 경과일 정렬) — "
                           "1일차 부진은 행사탭(EP) 정상·직접 채널 부진 구도로 상시 트래픽 구조 문제의 반복")
+def _major_days(year):
+    """그 해 전관행사일 집합(종료일은 10시 종료라 평상일로 본다 — _post_event와 같은 기준)."""
+    out = set()
+    for _s, _e, _n, _maj in event_occurrences(year, only_major=True):
+        if not _maj:
+            continue
+        _d = _s
+        while _d < _e:
+            out.add(_d)
+            _d += datetime.timedelta(days=1)
+    return out
+
+
+def _angle_table():
+    """행사 시점이 어긋난 주의 전년비를 여러 구간으로 맞대는 표(HTML). 평시면 None.
+    구간: ① 행사 주 연속 합산(양년 행사 모두 포함) ② 직전 마감주 ③ 최근 양년 평상주 ④ 진행주 (참고) 당월 MTD."""
+    hi = last_daily_date()
+    if hi is None:
+        return None
+    one = datetime.timedelta(days=1)
+    cur_ev, prev_ev = _major_days(CUR), _major_days(PREV)
+
+    def flags(days):
+        return (any(d in cur_ev for d in days), any((d - 364 * one) in prev_ev for d in days))
+
+    def yy(days, m):
+        a, b = _days_mean(m, days), _days_mean(m, [d - 364 * one for d in days])
+        return (a / b - 1) if (a and b) else None
+
+    def wk(m0):
+        return [m0 + i * one for i in range(7)]
+
+    def lab(days):
+        return week_pretty(week_label_of(days[0])) + "차"
+
+    def rng(days):
+        return _md(days[0]) if len(days) == 1 else f"{_md(days[0])}~{_md(days[-1])}"
+
+    mon = hi - hi.weekday() * one
+    inprog = hi.weekday() < 6
+    obs = [mon + i * one for i in range(hi.weekday() + 1)] if inprog else []
+    last = wk(mon - 7 * one) if inprog else wk(mon)
+    if not (any(flags(last)) or (inprog and any(flags(wk(mon))))):
+        return None                       # 평시 — 표·상자 모두 생략
+
+    def tagtxt(f):
+        return {(True, True): "양년 모두 전관행사", (True, False): "올해만 전관행사",
+                (False, True): "전년 동주만 전관행사", (False, False): "양년 평상"}[f]
+
+    rows = []   # (구분, 거래액 전년비, 방문 전년비, 강조)
+    # ① 직전 마감주부터 거슬러 '행사가 낀 주'를 이어 붙인 합산 — 양년 행사가 모두 들어와야 시점 차이가 상쇄된다
+    blk, m0 = [], last[0]
+    for _ in range(6):
+        w = wk(m0)
+        if not any(flags(w)):
+            break
+        blk = w + blk
+        m0 -= 7 * one
+    comb = None
+    if len(blk) >= 14 and all(flags(blk)):
+        comb = (f"{lab(blk)}~{lab(blk[-7:])} 합산 ({rng(blk)}) — 양년 전관행사를 모두 포함해 시점 차이 상쇄(기준)",
+                yy(blk, SALES), yy(blk, "DAU"))
+        rows.append(comb + (True,))
+    rows.append((f"마감주 {lab(last)} ({rng(last)}) <span style='color:#a99a7a'>— {tagtxt(flags(last))}</span>",
+                 yy(last, SALES), yy(last, "DAU"), False))
+    # ③ 최근 양년 평상주 — 행사 영향이 없는 수준
+    calm, m0 = None, last[0]
+    for _ in range(12):
+        w = wk(m0)
+        if not any(flags(w)):
+            calm = (f"행사 전 평상주 {lab(w)} ({rng(w)}) — 양년 모두 전관행사 없음", yy(w, SALES), yy(w, "DAU"))
+            rows.append(calm + (False,))
+            break
+        m0 -= 7 * one
+    if obs:
+        rows.append((f"진행주 {lab(obs)} ({rng(obs)}, {len(obs)}일) <span style='color:#a99a7a'>— {tagtxt(flags(obs))}</span>",
+                     yy(obs, SALES), yy(obs, "DAU"), False))
+    if cur_mo:
+        rows.append((f"(참고) 표면 {cur_mo}월 MTD ({cur_mo}/1~{cutoff})",
+                     yoy(month_value("일평균거래액", CUR, cur_mo, cutoff), month_value("일평균거래액", PREV, cur_mo, cutoff)),
+                     yoy(dmean("DAU", CUR, cur_mo, cutoff), dmean("DAU", PREV, cur_mo, cutoff)), None))
+
+    def cell(v):
+        if v is None:
+            return "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>-</td>"
+        col = "#1f7a3f" if v >= 0 else "#c0392b"
+        return (f"<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:{col}'>"
+                f"{'+' if v >= 0 else '△'}{abs(v) * 100:.1f}%</td>")
+
+    h = ("<table style='display:inline-table;width:auto;border-collapse:collapse;font-size:11.5px;"
+         "color:#5b4a32;margin:3px 0 6px;border:1px solid #d8c398'>"
+         "<tr style='background:#f3e9cf;color:#7a6838'>"
+         "<th style='border:1px solid #d8c398;padding:4px 10px;text-align:left;font-weight:600'>구분</th>"
+         "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>거래액</th>"
+         "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>방문(DAU)</th></tr>")
+    num = iter("①②③④⑤")
+    for name, a, b, strong in rows:
+        pre = "" if strong is None else next(num) + " "
+        sty = "color:#93876c" if strong is None else ("font-weight:600" if strong else "")
+        h += (f"<tr><td style='border:1px solid #e6d8b6;padding:4px 10px;{sty}'>{pre}{name}</td>"
+              + cell(a) + cell(b) + "</tr>")
+    h += "</table>"
+
+    def p1(v):
+        return "-" if v is None else f"{'+' if v >= 0 else '△'}{abs(v) * 100:.1f}%"
+    msg = []
+    if comb:
+        msg.append(f"양년 행사를 함께 넣은 합산 기준 거래액 {p1(comb[1])}, 방문(DAU) {p1(comb[2])}입니다")
+    if calm:
+        msg.append(f"행사 영향이 없는 평상주의 방문(DAU)은 {p1(calm[2])}입니다")
+    if msg:
+        h += ("<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 전관행사 시점이 양년 어긋난 주는 날짜 전년비가 "
+              "왜곡되므로 주별 전년비 하나로 판단하지 않습니다. " + ". ".join(msg) + ".</div>")
+    return h
+
+
 # ★ 브랜드/코호트 줄은 별도 심층분석 산출물 → 기준일을 명시하고, 집계일과 크게 벌어지면(8일+) 숨김.
 #   (예전엔 '집계일과 정확히 일치'만 통과시켜 데이터를 하루만 갱신해도 전부 사라졌음)
 BRAND_ASOF = datetime.date(2026, 8, 31)          # 8월 마감 브랜드 데이터 기준
@@ -2815,42 +2997,12 @@ if _brand_ok:                                   # ── 브랜드(8월 마감)
         "전년 8월 핏플랍 631,246,391원(전사의 4.7%)이 올해 405,727원으로 소멸한 영향을 제외하면 <b>+4.7%</b>. "
         "구매고객도 5,264명이 이 브랜드에서 이탈",
     ]
-_dg_lines += [                                  # ── 구조 결론(기저 보정) + 자동 갱신 지표
-    # ★ 기저(추석·슈퍼위크) 보정 진단 — 전년비는 추석·슈퍼위크 이동으로 왜곡된다. 양년의
-    #   추석·슈퍼위크를 모두 창 안에 넣어 상쇄한 8/29~10/11(41일) 기준. 외부 창 계산이라
-    #   정적이며 창 라벨로 기준을 밝힌다(데이터가 넓어지면 창을 늘려 재산출).
-    # ★ 다각도 실적 비교 표(정적 — 외부 창 계산, 작성 기준 11/15 · 11월 2주차 마감).
-    #   전년비 하나로 판단하지 않도록 ①보정 합산(안정) ②마감주 ③전년 동일 행사 대비 ④진행주를 한 표에.
-    #   11월 전관: 올해 BLACK FRIDAY 11/2~9·LF 12th ANNIVERSARY 11/20~27 / 전년 L+ BLACK WEEK 11/10~17·
-    #   BLACK FRIDAY 11/21~28 — 시점이 어긋나 주별 날짜 전년비가 양방향 왜곡(가변탭 (2) 기준 행사명 확정).
-    ("<table style='display:inline-table;width:auto;border-collapse:collapse;font-size:11.5px;"
-     "color:#5b4a32;margin:3px 0 6px;border:1px solid #d8c398'>"
-     "<tr style='background:#f3e9cf;color:#7a6838'>"
-     "<th style='border:1px solid #d8c398;padding:4px 10px;text-align:left;font-weight:600'>구분</th>"
-     "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>거래액</th>"
-     "<th style='border:1px solid #d8c398;padding:4px 14px;text-align:right;font-weight:600'>방문(DAU)</th></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>① 11월 1~2주차 합산 (11/2~15) — 양년 첫 전관행사를 모두 포함해 시점 차이 상쇄(기준)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#1f7a3f'>+2.7%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△7.8%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>② 마감주 11월 2주차 (11/9~15) <span style='color:#a99a7a'>— 전년 동주가 L+ BLACK WEEK</span></td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△29.1%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△11.2%</td></tr>"
-     "<tr><td style='border:1px solid #e6d8b6;padding:4px 10px'>③ 행사 전 평상주 10월 5주차 (10/26~11/1) — 행사 영향 없는 실력치</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△5.2%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right;color:#c0392b'>△12.1%</td></tr>"
-     "<tr style='color:#a79a7a'><td style='border:1px solid #e6d8b6;padding:4px 10px'>"
-     "(참고) 표면 11월 MTD (11/1~15)</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>+3.9%</td>"
-     "<td style='border:1px solid #e6d8b6;padding:4px 14px;text-align:right'>△7.5%</td></tr>"
-     "</table>"
-     "<div style='margin-top:5px;line-height:1.5'><b>판단</b> — 11월 1~2주차를 묶으면 거래액 +2.7%, 방문(DAU) △7.8%입니다. "
-     "마감주 방문 △11.2%에는 전년 L+ BLACK WEEK 기저가 섞여 있으나, 행사 영향이 없는 10월 5주차(△12.1%)와 "
-     "같은 수준입니다 — 방문 역신장은 행사 시점과 무관한 구조 문제입니다. 마감주 방문 18,788명은 10월 5주차 "
-     "18,547명보다 하루 241명(+1.3%) 많습니다. 거래액 △29.1%는 전환(CR 8.88%, △16.4%)이 전년 행사 기저에 못 미친 영향입니다."
-     "<span style='display:block;margin-top:3px;color:#a08b5f;font-size:10.5px'>"
-     "※ 이번 주(11/16~22)는 올해 LF 12th ANNIVERSARY(11/20~)와 전년 BLACK FRIDAY(11/21~)가 함께 들어 기저가 상쇄됩니다 "
-     "(전년 동주 DAU 20,505명) — 날짜 전년비가 좋아져도 행사 시점 효과이므로 액션 성과로 보지 않습니다</span></div>"),
-]
+# ★ 다각도 실적 비교 표 — 일자 실적·행사 캘린더에서 자동 산출(11/17, 예전엔 수기 입력).
+#   전관행사 시점이 양년 어긋나는 주에만 의미가 있으므로, 평시(직전 마감주·진행주 모두 양년 평상)에는
+#   구조 진단 상자 전체를 싣지 않는다(사용자 지시).
+_angle_html = _angle_table()
+if _angle_html:
+    _dg_lines.append(_angle_html)
 if _dg_ev:
     _dg_lines.append(_dg_ev.replace("<br>", "", 1))
 _dg_dau = yoy(dmean("DAU", CUR, cur_mo, cutoff), dmean("DAU", PREV, cur_mo, cutoff)) if cur_mo else None
@@ -2866,9 +3018,10 @@ _dg_head = (f"🔍 <b>참고 · 구조 진단</b> <span style='color:#a08b5f'>�
             + (f" · 브랜드·등급 교차분석(~{BRAND_ASOF.month}/{BRAND_ASOF.day} 기준) 포함" if _brand_ok else
                f"</span><span style='color:#c0a875'> · 브랜드 분석(~{BRAND_ASOF.month}/{BRAND_ASOF.day})은 "
                f"집계일과 {_brand_gap}일 차이로 숨김 — 최신 브랜드 파일 반영 시 표시") + "</span>")
-st.markdown("<div style='font-size:12px;line-height:1.7;color:#5b4a32;background:#fdf9f1;"
-            "border-left:3px solid #d9b45c;padding:8px 12px;border-radius:4px;margin-top:6px'>"
-            + _dg_head + "<br>" + "<br>".join(_dg_lines) + "</div>", unsafe_allow_html=True)
+if _angle_html:
+    st.markdown("<div style='font-size:12px;line-height:1.7;color:#5b4a32;background:#fdf9f1;"
+                "border-left:3px solid #d9b45c;padding:8px 12px;border-radius:4px;margin-top:6px'>"
+                + _dg_head + "<br>" + "<br>".join(_dg_lines) + "</div>", unsafe_allow_html=True)
 
 # ---- 3) 주차별 ----
 st.header("3) 주차별", anchor="s3")
@@ -3291,6 +3444,90 @@ def _imp_aov_1pct(v):
             ("", f"주간 거래액 {s[0] * 7:,.0f}원 기준 민감도", False)]
 
 
+def _sms_card(pat):
+    """문자 원장 최근 7일 → (카드 지표행, 툴팁 일자행, 집계). 원장이 없으면 (None, None, None)."""
+    r = sms_recent(pat)
+    if not r:
+        return None, None, None
+    mets = (("유입율(실측)", f"{r['rate'] * 100:.2f}% · 일평균 {r['u'] / r['n']:,.0f}건", True),
+            ("구매·거래액", f"구매 {r['b']:,.0f}명 · {r['s']:,.0f}원", False),
+            ("발송", f"{_md(r['lo'])}~{_md(r['hi'])} {r['n']}회 · {r['t']:,.0f}명", False))
+    tips = [f"── 실측 (문자 {_md(r['lo'])}~{_md(r['hi'])}, 마지막 클릭 AF코드 귀속) ──"]
+    for _d, _w in r["g"].iterrows():
+        if _w["target"] > 0:
+            tips.append(f"  {_md(_d)} {_w['target']:,.0f}명 · 유입 {_w['uv'] / _w['target'] * 100:.2f}% · "
+                        f"구매 {_w['buyers']:,.0f}명 · {_w['sales']:,.0f}원")
+    tips.append(f"  합계 {r['t']:,.0f}명 · 유입 {r['u']:,.0f}건({r['rate'] * 100:.2f}%) · 구매 {r['b']:,.0f}명"
+                + (f"(유입 대비 {r['b'] / r['u'] * 100:.2f}%)" if r["u"] else "")
+                + f" · 발송 1명당 {r['s'] / r['t']:,.0f}원")
+    return mets, tips, r
+
+
+def _lever_cards_sms():
+    """유입 액션 카드(장바구니 자동화·최근 조회 리마인드) — data/sms_daily.csv에서 자동 산출."""
+    cm, ct, cr_ = _sms_card("장바구니")
+    rm, rt, rr = _sms_card("최근본")
+    cart, recent = [], []
+    if cm:
+        if rr and rr["rate"] > 0:
+            ct.append(f"  → 최근 조회 리마인드 유입율 {rr['rate'] * 100:.2f}%의 {cr_['rate'] / rr['rate']:.1f}배")
+        ct += ["── 판단 ──",
+               "  거래액 기여는 확인됨. 방문(DAU) 순증은 미발송 그룹 실측 전까지 미확정",
+               "※ 이미 가동 중이라 이번 주 예상 마감에 반영돼 있음 — 개선 목표에 별도 가산하지 않음",
+               "── 다음 단계 ──",
+               "  미발송 그룹(고객번호 끝자리 1개 제외) 설정 → 발송/미발송 방문율 차이로 순증 산정"]
+        cart = [("VIP 장바구니 담기 익일 혜택 안내 자동화 (가동 중)", "11/11 가동 · 매일 발송\n전일 장바구니에 담은 VIP 대상",
+                 _imp(*cm), ct)]
+    if rm:
+        # 주차 비교 — 문자 주차 집계(EV01) 중 마감된 최근 3개 주
+        _ip = _inprog_week()
+        _skip = week_label_of(last_daily_date()) if (_ip and last_daily_date()) else None
+        _wks = sorted({k[0] for k in SMS if k[1] == "EV01" and k[0] != _skip})[-3:]
+        _cmp = [f"{week_pretty(w)} {SV(w, 'EV01', '타겟'):,.0f}명 · {SV(w, 'EV01', 'UV') / SV(w, 'EV01', '타겟') * 100:.2f}%"
+                for w in _wks if SV(w, "EV01", "타겟")]
+        if _cmp:
+            rt += ["── 주차 비교 ──", "  " + " → ".join(_cmp)]
+        rt += ["※ 장바구니 자동화와 같은 날 겹치면 장바구니 안내 우선(1인 1일 1통)",
+               "※ 이미 가동 중이라 이번 주 예상 마감에 반영돼 있음 — 개선 목표에 별도 가산하지 않음"]
+        recent = [("최근 조회 상품 리마인드 대상 확대 (가동 중)", "매일 발송 중인 자동 문자\n조회 기준 완화로 대상 확대",
+                   _imp(*rm), rt)]
+    return cart, recent
+
+
+def _lever_card_popup():
+    """전환 액션 카드(장바구니 쿠폰 안내 팝업) — data/popup.csv(누적)에서 자동 산출."""
+    if POPUP.empty:
+        return []
+
+    def _row(key):
+        x = POPUP[POPUP["etag"].astype(str).str.contains(key, regex=False).to_numpy(dtype=bool)]
+        return x.iloc[0] if len(x) else None
+    b, c = _row("shoppingbag"), _row("recentITEM")
+    if b is None or not b["impr"]:
+        return []
+    per = f"{_md(b['start'])}~ 누적, {_md(b['asof'])} 추출"
+    ctr = b["click_uv"] / b["impr"]
+    mets = [("클릭율(실측)", f"{ctr * 100:.1f}% ({per})", True),
+            ("거래액", f"{b['sale_amt']:,.0f}원 · 구매 {b['cust']:,.0f}명", False)]
+    tips = ["문구: 쿠폰 받아두셨나요? 담아두신 상품이 대기중이에요 / 쇼핑백 열어보기",
+            f"── 실측 ({per}) ──",
+            f"  장바구니 팝업: 노출 {b['impr']:,.0f}회 · 클릭 {b['click_uv']:,.0f}명({ctr * 100:.1f}%) · "
+            f"구매 {b['cust']:,.0f}명" + (f"(클릭 대비 {b['cust'] / b['click_uv'] * 100:.1f}%)" if b["click_uv"] else "")
+            + f" · {b['sale_amt']:,.0f}원"]
+    if c is not None and c["impr"]:
+        cc = c["click_uv"] / c["impr"]
+        mets.append(("비교", f"최근 조회 팝업 {cc * 100:.1f}%", False))
+        tips.append(f"  최근 조회 팝업: 노출 {c['impr']:,.0f}회 · 클릭 {c['click_uv']:,.0f}명({cc * 100:.1f}%) · "
+                    f"구매 {c['cust']:,.0f}명" + (f"(클릭 대비 {c['cust'] / c['click_uv'] * 100:.1f}%)" if c["click_uv"] else "")
+                    + f" · {c['sale_amt']:,.0f}원")
+        if ctr > cc:
+            tips.append("→ 장바구니 보유 고객은 문자·팝업 모두 반응이 가장 높음 — 쇼핑백 랜딩 유지")
+    return [("장바구니 쿠폰 안내 팝업 (가동 중)", "11/12 가동 · 앱 진입 시 노출\n랜딩: 쇼핑백", _imp(*mets), tips)]
+
+
+_LV_CART, _LV_RECENT = _lever_cards_sms()
+_LV_POPUP = _lever_card_popup()
+
 LEVERS = [
     ("visit", "유입율", [
         # ★ 근거를 브랜드 파일(전사·총결제·브랜드 단위 중복집계)에 걸지 말 것 —
@@ -3329,36 +3566,8 @@ LEVERS = [
         #   그래서 아래 카드는 '실측' 행만 싣고 '명/일' 견인치를 쓰지 않는다 → 개선 목표 행이 자동으로 빠진다.
         # ★ 라이브 모수 발송(히스헤지스·바버·TNGT)은 1회성이라 레버에서 뺐다(사용자 판단: 스팟은 DAU 기여 작음).
         # ★ 30일 미방문 자동화 대상 확대(11/14~)는 MAU 레버라 여기 두지 않는다(위 원칙) — 보고 코멘트에 별도 기재.
-        ("VIP 장바구니 담기 익일 혜택 안내 자동화 (가동 중)", "11/11 가동 · 매일 발송\n전일 장바구니에 담은 VIP 대상",
-         _imp(("유입율(실측)", "10.45% · 일평균 551건", True),
-              ("구매·거래액", "구매 94명 · 27,518,401원", False),
-              ("발송", "11/11~15 5회 · 26,375명", False)), [
-            "── 실측 (문자 11/11~15, 마지막 클릭 AF코드 귀속) ──",
-            "  11/11 8,377명 · 유입 9.62% · 구매 26명 · 8,411,573원 (세팅 당일 즉시 발송)",
-            "  11/12 2,905명 · 9.60% · 구매 6명 · 1,028,155원",
-            "  11/13 5,236명 · 10.47% · 구매 22명 · 6,726,927원",
-            "  11/14 4,326명 · 11.28% · 구매 21명 · 5,973,209원",
-            "  11/15 5,531명 · 11.48% · 구매 19명 · 5,378,537원",
-            "  합계 26,375명 · 유입 2,756건(10.45%) · 구매 94명(유입 대비 3.41%) · 발송 1명당 1,043원",
-            "  → VIP 자동 발송 중 유입율 최고(최근 조회 리마인드 5.69%의 1.8배)",
-            "── 판단 ──",
-            "  거래액 기여는 확인됨. 방문(DAU) 순증은 미확인 — 대상이 전일 방문 고객이라 유입 상당수가 원래 올 방문",
-            "※ 이미 가동 중이라 이번 주 예상 마감에 반영돼 있음 — 개선 목표에 별도 가산하지 않음",
-            "── 다음 단계 ──",
-            "  미발송 그룹(고객번호 끝자리 1개 제외) 설정 → 발송/미발송 방문율 차이로 순증 산정"]),
-        ("최근 조회 상품 리마인드 대상 확대 (가동 중)", "매일 발송 중인 자동 문자\n조회 기준 완화로 대상 확대",
-         _imp(("유입율(실측)", "5.69% · 일평균 411건", True),
-              ("구매·거래액", "구매 62명 · 20,763,962원", False),
-              ("발송", "11/9~15 · 50,627명", False)), [
-            "── 실측 (문자 11/9~15) ──",
-            "  일 발송 6,334~8,700명 · 유입 4.72~7.64%",
-            "  11/14 7,727명 · 6.26% / 11/15 7,499명 · 7.64% — 주말 유입율 상승",
-            "  합계 50,627명 · 유입 2,880건(5.69%) · 구매 62명 · 발송 1명당 410원",
-            "── 비교 ──",
-            "  10월 5주 41,909명 · 5.43% → 11월 1주 45,481명 · 5.74% → 11월 2주 50,627명 · 5.69%",
-            "  대상 21% 늘어나는 동안 유입율 유지(희석 없음)",
-            "※ 장바구니 자동화와 같은 날 겹치면 장바구니 안내 우선(1인 1일 1통)",
-            "※ 이미 가동 중이라 이번 주 예상 마감에 반영돼 있음 — 개선 목표에 별도 가산하지 않음"]),
+        *_LV_CART,
+        *_LV_RECENT,
         # 09월 '닥스 여성·뷰티 기획전' 레버는 10월엔 내렸다 — 금주 기획전 편성이 확인되지
         # 않았고, 아떼뷰티는 전년비 △67.7%(6,711,818원)로 09월(+67.6%)에서 반전했다.
         # 10월에 뷰티를 근거로 세우면 화면과 충돌한다. 닥스여성(+48.1%)은 라이브 모수
@@ -3380,16 +3589,7 @@ LEVERS = [
     # 유입 그룹으로 옮겼다. 확정된 전환 발송이 없어 이 그룹은 비워 둔다(빈 그룹은 화면에 안 뜸).
     # ★ 11월 3주차: 온사이트 장바구니 쿠폰 팝업(11/12~)을 '이미 들어온 고객을 전환시키는' 실행으로 싣는다.
     ("cr", "전환 CR", [
-        ("장바구니 쿠폰 안내 팝업 (가동 중)", "11/12 가동 · 앱 진입 시 노출\n랜딩: 쇼핑백",
-         _imp(("클릭율(실측)", "8.9% (11/13~15)", True),
-              ("거래액", "2,840,000원 (11/12~15)", False),
-              ("비교", "최근 조회 팝업 6.3%", False)), [
-            "문구: 쿠폰 받아두셨나요? 담아두신 상품이 대기중이에요 / 쇼핑백 열어보기",
-            "── 실측 ──",
-            "  장바구니 팝업 클릭율 8.9% vs 최근 조회 상품 팝업 6.3% (11/13~15)",
-            "  ※ 11/12(첫날)은 최근 조회 팝업 노출 오류로 비교에서 제외",
-            "  거래액(11/12~15): 장바구니 팝업 2,840,000원 · 최근 조회 팝업 1,075,000원",
-            "→ 장바구니 보유 고객은 문자·팝업 모두 반응이 가장 높음 — 쇼핑백 랜딩 유지"]),
+        *_LV_POPUP,
     ]),
     ("aov", "객단가", [
         # ★ 여기에 '저가 구간 이탈'을 근거로 달지 말 것 — 그 이탈은 구색 공백에서 온 것이고
@@ -3849,7 +4049,10 @@ def _dt_card(cls, chip, title, mets, tips):
 #   짠 '작성 기준(11월 2주차 편성 11/9~15, 브랜드 거래액 11/1~9, 문자 10/1~11/9)' 실측이라
 #   기간을 돌려도 그 값은 상수다 — 레버가 뜰 때만 띠로 밝힌다.
 LEVER_NOTE = ('<div class="dt-fix">현황·요약 카드는 <b>선택 기간 기준</b>입니다. '
-              '단 아래 <b>레버 카드의 실측</b>은 작성 기준(문자 11/9~15 · 팝업 11/12~15) 값입니다</div>')
+              '단 아래 <b>액션 카드의 실측</b>은 '
+              + (f'문자 최근 7일(~{_md(SMS_DAILY["date"].max())})' if not SMS_DAILY.empty else '문자 실적')
+              + (f' · 팝업 누적({_md(POPUP["asof"].max())} 추출)' if not POPUP.empty else '')
+              + ' 기준입니다</div>')
 
 # ★ 레버 기여는 '도달 유입(gross)'이지 순증이 아니다 — VIP는 활성층이라 상당수가 문자
 #   없이도 방문하고(자연 방문), 라이브 기본 발송·타 액션과 대상이 겹친다. 그래서 그대로
@@ -3976,11 +4179,11 @@ def _dt_levers(focus, v, mode="wtd"):
         # 각 액션의 발송 1회당 구매고객(sum_cust)을 일평균(÷7, 발송 1회/주)으로 바꿔 상한을
         # 내고, 유입율과 같은 순증·중복 할인을 적용해 실질 구매고객/일을 구한다.
         # 이를 현재 구매고객에 얹어 CR을 올리고, 전년비 △X% → △Y%로 환산한다.
-        elif key == "cr":
+        elif key == "cr" and sum_cust:
             cr = v.get("cr")
             _bcr = baseline_cr()
             f = lambda x: (f"△{abs(x):.2f}%" if x < 0 else f"+{x:.2f}%")       # noqa: E731
-            gross = (sum_cust / 7.0) if sum_cust else (43 + 36) / 7.0          # 발송 1회/주(레버 합산)
+            gross = sum_cust / 7.0                                             # 발송 1회/주(레버 합산)
             net = gross * LEVER_INCREMENTALITY * (1 - LEVER_CROSS_OVERLAP)      # 순증·중복 반영
             _wcf = week_cr_forecast_yoy()
             _ipw = _inprog_week()
