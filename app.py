@@ -3032,137 +3032,142 @@ render_insight(_b3 + [_p3] if _p3 else _b3)
 st.markdown(perf_table("week", wk_periods, wk_periods, wk_label, bold_period=latest_wk,
                        wtd_period=(latest_wk if wk_partial else None)), unsafe_allow_html=True)
 
+# ★ 4)~6)은 기본 접힘(사용자 지시) — 보고에서 다루지 않는 주가 더 많다. 제목 줄을 누르면 펼쳐진다.
+#   st.header를 없앴으므로 사이드바 바로가기용 앵커는 빈 div로 남긴다.
 # ---- 4) 주차별·채널별 ----
-st.header("4) 주차별·채널별", anchor="s4")
-_b4 = insight_channel(snap_wk)
-_p4 = partial_line("channel")
-render_insight(_b4 + [_p4] if _p4 else _b4)
-for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("③ CR", "CR")]:
-    st.subheader(tag)
-    st.markdown(channel_table(met, wk_periods, bold_period=latest_wk, pretty=wk_label), unsafe_allow_html=True)
+st.markdown('<div id="s4"></div>', unsafe_allow_html=True)
+with st.expander("4) 주차별·채널별", expanded=False):
+    _b4 = insight_channel(snap_wk)
+    _p4 = partial_line("channel")
+    render_insight(_b4 + [_p4] if _p4 else _b4)
+    for tag, met in [("① 거래액", "일평균거래액"), ("② DAU", "DAU"), ("③ CR", "CR")]:
+        st.subheader(tag)
+        st.markdown(channel_table(met, wk_periods, bold_period=latest_wk, pretty=wk_label), unsafe_allow_html=True)
 
 # ---- 5) 행사별 (전년 동일 행사 비교) ----
-st.header("5) 행사별 (전년·전월 비교)", anchor="s_ev")
-_ld = last_daily_date()
-# 시작된 전관행사(진행중 포함): 시작일 ≤ 집계일
-_started = sorted([o for o in event_occurrences(CUR, only_major=True) if _ld and o[0] <= _ld],
-                  key=lambda o: o[0])
+st.markdown('<div id="s_ev"></div>', unsafe_allow_html=True)
+with st.expander("5) 행사별 (전년·전월 비교)", expanded=False):
+    _ld = last_daily_date()
+    # 시작된 전관행사(진행중 포함): 시작일 ≤ 집계일
+    _started = sorted([o for o in event_occurrences(CUR, only_major=True) if _ld and o[0] <= _ld],
+                      key=lambda o: o[0])
 
 
-def _evsel_label(o):
-    _s = sell_end(o[0], o[1])                        # 실질 마지막 판매일('M/D 10시' 마감 관례)
-    if _s > _ld:                                     # 진행중
-        return f"{o[2]} · 진행중 {(_ld - o[0]).days + 1}일차 ({_mdrange(o[0], _ld)})"
-    return f"{o[2]} · 종료 ({_mdrange(o[0], _s)})"
+    def _evsel_label(o):
+        _s = sell_end(o[0], o[1])                        # 실질 마지막 판매일('M/D 10시' 마감 관례)
+        if _s > _ld:                                     # 진행중
+            return f"{o[2]} · 진행중 {(_ld - o[0]).days + 1}일차 ({_mdrange(o[0], _ld)})"
+        return f"{o[2]} · 종료 ({_mdrange(o[0], _s)})"
 
 
-if _started:
-    sel_ev = st.selectbox("전관행사 선택", _started[::-1], index=0, key="ev_week", format_func=_evsel_label)
-    cs, ce, nm = sel_ev[0], sel_ev[1], sel_ev[2]
-    _se = sell_end(cs, ce)                           # 실질 마지막 판매일(종료 표기 'M/D 10시' 관례)
-    inprog = _se > _ld
-    ce_eff = min(_se, _ld)                           # 올해 유효 종료일(진행중이면 집계일)
-    elapsed = (ce_eff - cs).days + 1
-    prev = find_prior_event(nm, cs)
-    if prev:
-        ps, pe, pn = prev
-        # 전년도 같은 규칙(실질 판매일)으로 정렬: 진행중=같은 경과일, 종료=전년 실질 판매기간 전체
-        pe_eff = (ps + datetime.timedelta(days=elapsed - 1)) if inprog else sell_end(ps, pe)
-        unit = f"{nm} {elapsed}일차까지" if inprog else f"{nm} 기간"
-        pm = find_prev_month_event(nm, cs)          # 직전월 동종 행사(L+DAY 등)
-        ms = me = None
-        if pm:
-            ms = pm[0]
-            me = ms + datetime.timedelta(days=(ce_eff - cs).days)   # 같은 경과일수로 정렬
-        render_insight(insight_event(cs, ce_eff, ps, pe_eff, unit, ms, me))
-        _c, _p = _mdrange(cs, ce_eff).replace("~", "\\~"), _mdrange(ps, pe_eff).replace("~", "\\~")
-        _stat = f"진행중 {elapsed}일차까지 · 행사 경과일 정렬" if inprog else "행사 종료 · 전체 기간"
-        if pn == nm:
-            st.caption(f"올해 **{nm}** {_c} ↔ 전년 **{nm}** {_p} · {_stat}")
+    if _started:
+        sel_ev = st.selectbox("전관행사 선택", _started[::-1], index=0, key="ev_week", format_func=_evsel_label)
+        cs, ce, nm = sel_ev[0], sel_ev[1], sel_ev[2]
+        _se = sell_end(cs, ce)                           # 실질 마지막 판매일(종료 표기 'M/D 10시' 관례)
+        inprog = _se > _ld
+        ce_eff = min(_se, _ld)                           # 올해 유효 종료일(진행중이면 집계일)
+        elapsed = (ce_eff - cs).days + 1
+        prev = find_prior_event(nm, cs)
+        if prev:
+            ps, pe, pn = prev
+            # 전년도 같은 규칙(실질 판매일)으로 정렬: 진행중=같은 경과일, 종료=전년 실질 판매기간 전체
+            pe_eff = (ps + datetime.timedelta(days=elapsed - 1)) if inprog else sell_end(ps, pe)
+            unit = f"{nm} {elapsed}일차까지" if inprog else f"{nm} 기간"
+            pm = find_prev_month_event(nm, cs)          # 직전월 동종 행사(L+DAY 등)
+            ms = me = None
+            if pm:
+                ms = pm[0]
+                me = ms + datetime.timedelta(days=(ce_eff - cs).days)   # 같은 경과일수로 정렬
+            render_insight(insight_event(cs, ce_eff, ps, pe_eff, unit, ms, me))
+            _c, _p = _mdrange(cs, ce_eff).replace("~", "\\~"), _mdrange(ps, pe_eff).replace("~", "\\~")
+            _stat = f"진행중 {elapsed}일차까지 · 행사 경과일 정렬" if inprog else "행사 종료 · 전체 기간"
+            if pn == nm:
+                st.caption(f"올해 **{nm}** {_c} ↔ 전년 **{nm}** {_p} · {_stat}")
+            else:
+                st.caption(f"올해 **{nm}** {_c} ↔ 전년 동기 전관행사 **{pn}** {_p} · {_stat}(행사명 다름)")
+            if pm:
+                _mm = _mdrange(ms, me).replace("~", "\\~")
+                st.caption(f"↕ **전월비**: 직전월 **{nm}** {_mm} 대비 (매월 정기 행사)")
+            st.markdown(event_period_table(cs, ce_eff, ps, pe_eff, ms, me), unsafe_allow_html=True)
         else:
-            st.caption(f"올해 **{nm}** {_c} ↔ 전년 동기 전관행사 **{pn}** {_p} · {_stat}(행사명 다름)")
-        if pm:
-            _mm = _mdrange(ms, me).replace("~", "\\~")
-            st.caption(f"↕ **전월비**: 직전월 **{nm}** {_mm} 대비 (매월 정기 행사)")
-        st.markdown(event_period_table(cs, ce_eff, ps, pe_eff, ms, me), unsafe_allow_html=True)
+            st.caption("⚠️ 전년 같은 시기에 전관행사가 없어 비교 불가")
     else:
-        st.caption("⚠️ 전년 같은 시기에 전관행사가 없어 비교 불가")
-else:
-    st.caption("아직 시작된 전관행사가 없습니다.")
+        st.caption("아직 시작된 전관행사가 없습니다.")
 
 # ---- 6) 상품별 ----
 if not df[df.perspective == "product"].empty:
-    st.header("6) 상품별 (e-영업 × 카테고리)", anchor="s5")
-    pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
-    sel = pwk_all[-1] if pwk_all else None            # 최신 주(진행중이면 라벨에 '(~m/d)')
-    # 진행중 주가 1~2일치뿐이면 전년 동주 전체와 비교되어 왜곡 → 직전 마감주 기준으로 표시
-    _p6_short = bool(wk_partial and sel == latest_wk and wk_elapsed and wk_elapsed < WK_MIN_DAYS)
-    _sel6 = sel
-    if _p6_short and len(pwk_all) >= 2:
-        _sel6 = pwk_all[-2]
-    if sel:
-        # ★ 상품관점은 전체관점과 별도 파일이라 재적재가 늦으면 이 섹션만 뒤처진다
-        #   (2026-10: 전체관점 10월 2주차인데 상품관점은 09월 2주차가 마지막). 가용 최신 주를
-        #   자동으로 쓰되, 전체관점 최신 완료주보다 뒤면 눈에 띄게 경고를 단다.
-        #   비교 기준은 '전체관점의 최신 주'(진행주 포함)여야 한다 — 마감주(wk_all_closed[-1])와
-        #   비교하면 상품관점이 진행주까지 있을 때 거꾸로 오탐한다. 상품관점 최신 주가 전체관점
-        #   주 목록 안에서 '마지막이 아닐 때'(= 뒤처질 때)만 경고.
-        _ov_weeks = periods("week", "overall", SALES, "TOTAL", "", CUR)
-        _behind = bool(_ov_weeks and sel in _ov_weeks and _ov_weeks.index(sel) < len(_ov_weeks) - 1)
-        if _behind:
+    st.markdown('<div id="s5"></div>', unsafe_allow_html=True)
+    with st.expander("6) 상품별 (e-영업 × 카테고리)", expanded=False):
+        pwk_all = periods("week", "product", "일평균거래액", "e-영업1", "TOTAL", CUR)
+        sel = pwk_all[-1] if pwk_all else None            # 최신 주(진행중이면 라벨에 '(~m/d)')
+        # 진행중 주가 1~2일치뿐이면 전년 동주 전체와 비교되어 왜곡 → 직전 마감주 기준으로 표시
+        _p6_short = bool(wk_partial and sel == latest_wk and wk_elapsed and wk_elapsed < WK_MIN_DAYS)
+        _sel6 = sel
+        if _p6_short and len(pwk_all) >= 2:
+            _sel6 = pwk_all[-2]
+        if sel:
+            # ★ 상품관점은 전체관점과 별도 파일이라 재적재가 늦으면 이 섹션만 뒤처진다
+            #   (2026-10: 전체관점 10월 2주차인데 상품관점은 09월 2주차가 마지막). 가용 최신 주를
+            #   자동으로 쓰되, 전체관점 최신 완료주보다 뒤면 눈에 띄게 경고를 단다.
+            #   비교 기준은 '전체관점의 최신 주'(진행주 포함)여야 한다 — 마감주(wk_all_closed[-1])와
+            #   비교하면 상품관점이 진행주까지 있을 때 거꾸로 오탐한다. 상품관점 최신 주가 전체관점
+            #   주 목록 안에서 '마지막이 아닐 때'(= 뒤처질 때)만 경고.
+            _ov_weeks = periods("week", "overall", SALES, "TOTAL", "", CUR)
+            _behind = bool(_ov_weeks and sel in _ov_weeks and _ov_weeks.index(sel) < len(_ov_weeks) - 1)
+            if _behind:
+                st.markdown(
+                    "<div style='font-size:12px;color:#8a6d3b;background:#fdf3e3;border-left:3px solid "
+                    "#e0b84c;padding:6px 12px;border-radius:4px;margin:2px 0 6px'>⚠️ <b>상품관점(상품별) "
+                    "데이터 미갱신</b> — 전체관점은 <b>" + week_pretty(_ov_weeks[-1]) + "</b>까지인데 상품관점은 "
+                    "<b>" + week_pretty(sel) + "</b>가 마지막입니다. ‘상품관점 - 주별 실적’ 최신 파일 반영 시 "
+                    "갱신됩니다(이 섹션만 뒤처짐)</div>", unsafe_allow_html=True)
+            _b6 = insight_product(_sel6)           # 상단 전체 요약(파란 박스)
+            if _p6_short and _sel6 != sel and _b6:
+                # ★ 이번주(진행주, 2일치) 자사 카테고리 움직임을 '일마감(week_wtd, 양년 같은 경과일)'으로
+                #   한 줄 넣는다 — 마감(직전주)만 보면 금주 상품 트렌드가 비어, 금주 상품 액션 근거가 없다.
+                _p6r = []
+                for _ye in OWN:
+                    for _ca in CATS_ORDER:
+                        _cc = V("week_wtd", "product", SALES, _ye, _ca, CUR, sel)
+                        _pp = V("week_wtd", "product", SALES, _ye, _ca, PREV, sel)
+                        if _cc is not None and _pp is not None:
+                            _p6r.append((f"영업{_ye[-1]} {_ca}", _cc - _pp, yoy(_cc, _pp)))
+                _thisln = None
+                if _p6r:
+                    _p6r.sort(key=lambda r: r[1])
+                    _w6, _best6 = _p6r[0], max(_p6r, key=lambda r: r[1])
+                    _thisln = (f'<b>이번주({wk_label(sel)}, {wk_elapsed}일치 진행)</b>: 자사 '
+                               f'<b>{_w6[0]} {_pct(_w6[2])}</b>({_w6[1]/1e6:+,.0f}백만) 하락 주도'
+                               + (f' / <b>{_best6[0]} {_pct(_best6[2])}</b> 선전' if _best6[1] > 0 else '')
+                               + ' <span style="color:#93a0b3">— 2일치 일마감(전년 동기간) 참고용</span>')
+                _b6 = _b6 + ([_thisln] if _thisln else []) + ['<span style="color:#93a0b3">'
+                             f'{wk_label(sel)}는 {wk_elapsed}일치라 전년 동주(7일) 대비 왜곡이 커, '
+                             f'아래 인사이트·표는 <b>마감 기준({week_pretty(_sel6)})</b>입니다</span>']
+            elif wk_partial and sel == latest_wk and _b6:
+                _b6 = ['<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
+                       'font-weight:600;margin-right:6px">진행중</span>'
+                       f'<b>{wk_label(sel)}</b>({wk_elapsed}일치) 기준 '
+                       '<span style="color:#93a0b3">— 부분 집계(전년 동주 전체 대비)라 참고용</span>'] + _b6
+            render_insight(_b6)
+            # 영업별 소계 요약(회색 줄) — 인사이트와 동일 기준(_sel6) 사용
+            _subs = []
+            for _ye in YEONG:
+                _c = V("week", "product", "일평균거래액", _ye, "TOTAL", CUR, _sel6)
+                _p = V("week", "product", "일평균거래액", _ye, "TOTAL", PREV, _sel6)
+                if _c is not None:
+                    _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f}백만 {_pct(yoy(_c, _p))}")
+            _base_lbl = (f"{week_pretty(_sel6)} 마감" if _sel6 != sel else wk_label(sel))
             st.markdown(
-                "<div style='font-size:12px;color:#8a6d3b;background:#fdf3e3;border-left:3px solid "
-                "#e0b84c;padding:6px 12px;border-radius:4px;margin:2px 0 6px'>⚠️ <b>상품관점(상품별) "
-                "데이터 미갱신</b> — 전체관점은 <b>" + week_pretty(_ov_weeks[-1]) + "</b>까지인데 상품관점은 "
-                "<b>" + week_pretty(sel) + "</b>가 마지막입니다. ‘상품관점 - 주별 실적’ 최신 파일 반영 시 "
-                "갱신됩니다(이 섹션만 뒤처짐)</div>", unsafe_allow_html=True)
-        _b6 = insight_product(_sel6)           # 상단 전체 요약(파란 박스)
-        if _p6_short and _sel6 != sel and _b6:
-            # ★ 이번주(진행주, 2일치) 자사 카테고리 움직임을 '일마감(week_wtd, 양년 같은 경과일)'으로
-            #   한 줄 넣는다 — 마감(직전주)만 보면 금주 상품 트렌드가 비어, 금주 상품 액션 근거가 없다.
-            _p6r = []
-            for _ye in OWN:
-                for _ca in CATS_ORDER:
-                    _cc = V("week_wtd", "product", SALES, _ye, _ca, CUR, sel)
-                    _pp = V("week_wtd", "product", SALES, _ye, _ca, PREV, sel)
-                    if _cc is not None and _pp is not None:
-                        _p6r.append((f"영업{_ye[-1]} {_ca}", _cc - _pp, yoy(_cc, _pp)))
-            _thisln = None
-            if _p6r:
-                _p6r.sort(key=lambda r: r[1])
-                _w6, _best6 = _p6r[0], max(_p6r, key=lambda r: r[1])
-                _thisln = (f'<b>이번주({wk_label(sel)}, {wk_elapsed}일치 진행)</b>: 자사 '
-                           f'<b>{_w6[0]} {_pct(_w6[2])}</b>({_w6[1]/1e6:+,.0f}백만) 하락 주도'
-                           + (f' / <b>{_best6[0]} {_pct(_best6[2])}</b> 선전' if _best6[1] > 0 else '')
-                           + ' <span style="color:#93a0b3">— 2일치 일마감(전년 동기간) 참고용</span>')
-            _b6 = _b6 + ([_thisln] if _thisln else []) + ['<span style="color:#93a0b3">'
-                         f'{wk_label(sel)}는 {wk_elapsed}일치라 전년 동주(7일) 대비 왜곡이 커, '
-                         f'아래 인사이트·표는 <b>마감 기준({week_pretty(_sel6)})</b>입니다</span>']
-        elif wk_partial and sel == latest_wk and _b6:
-            _b6 = ['<span style="background:#fdf3e3;color:#8a6d3b;border-radius:3px;padding:1px 6px;'
-                   'font-weight:600;margin-right:6px">진행중</span>'
-                   f'<b>{wk_label(sel)}</b>({wk_elapsed}일치) 기준 '
-                   '<span style="color:#93a0b3">— 부분 집계(전년 동주 전체 대비)라 참고용</span>'] + _b6
-        render_insight(_b6)
-        # 영업별 소계 요약(회색 줄) — 인사이트와 동일 기준(_sel6) 사용
-        _subs = []
-        for _ye in YEONG:
-            _c = V("week", "product", "일평균거래액", _ye, "TOTAL", CUR, _sel6)
-            _p = V("week", "product", "일평균거래액", _ye, "TOTAL", PREV, _sel6)
-            if _c is not None:
-                _subs.append(f"<b>{_ye}</b> {_c/1e6:,.0f}백만 {_pct(yoy(_c, _p))}")
-        _base_lbl = (f"{week_pretty(_sel6)} 마감" if _sel6 != sel else wk_label(sel))
-        st.markdown(
-            f"<div style='font-size:12px;color:#5b6472;background:#f7f9fc;border-left:3px solid #c5d3e8;"
-            f"padding:6px 12px;border-radius:4px;margin:2px 0 8px'>기준: {_base_lbl} · 거래액 일평균(백만) · "
-            + _redneg("  |  ".join(_subs)) + "</div>", unsafe_allow_html=True)
-        _tabs = st.tabs(YEONG)
-        for _tab, _ye in zip(_tabs, YEONG):
-            with _tab:
-                render_gray_insight(insight_yeong(_ye, _sel6))  # 탭 인사이트는 회색 박스
-                # ★ 표도 인사이트와 같은 기준주(_sel6)여야 한다. sel(진행중 1~2일치)을 쓰면
-                #   전년 동주 7일과 비교돼 표만 딴 숫자가 나오고, 위 회색 인사이트와 어긋난다.
-                st.markdown(product_table_one(_sel6, _ye), unsafe_allow_html=True)
+                f"<div style='font-size:12px;color:#5b6472;background:#f7f9fc;border-left:3px solid #c5d3e8;"
+                f"padding:6px 12px;border-radius:4px;margin:2px 0 8px'>기준: {_base_lbl} · 거래액 일평균(백만) · "
+                + _redneg("  |  ".join(_subs)) + "</div>", unsafe_allow_html=True)
+            _tabs = st.tabs(YEONG)
+            for _tab, _ye in zip(_tabs, YEONG):
+                with _tab:
+                    render_gray_insight(insight_yeong(_ye, _sel6))  # 탭 인사이트는 회색 박스
+                    # ★ 표도 인사이트와 같은 기준주(_sel6)여야 한다. sel(진행중 1~2일치)을 쓰면
+                    #   전년 동주 7일과 비교돼 표만 딴 숫자가 나오고, 위 회색 인사이트와 어긋난다.
+                    st.markdown(product_table_one(_sel6, _ye), unsafe_allow_html=True)
 
 # ---- 🧭 성과 동인 트리 ----
 # 좌(결과지표)→우(동인) 로직 트리. 부모 옆에 자식 묶음을 세로선으로 걸어 '오른쪽이 왼쪽을
