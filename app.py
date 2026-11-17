@@ -3046,8 +3046,12 @@ with st.expander("4) 주차별·채널별", expanded=False):
 
 # ---- 5) 행사별 (전년 동일 행사 비교) ----
 st.markdown('<div id="s_ev"></div>', unsafe_allow_html=True)
-with st.expander("5) 행사별 (전년·전월 비교)", expanded=False):
-    _ld = last_daily_date()
+# 집계일에 올해 전관행사가 진행 중일 때만 펼쳐 둔다(사용자 지시). 구조 진단 상자와 같은 기준:
+# 시작일 ≤ 집계일 ≤ 실질 마지막 판매일(종료 표기일은 10시 마감이라 제외).
+_ld = last_daily_date()
+_ev_live = bool(_ld and any(o[0] <= _ld <= sell_end(o[0], o[1])
+                            for o in event_occurrences(CUR, only_major=True)))
+with st.expander("5) 행사별 (전년·전월 비교)", expanded=_ev_live):
     # 시작된 전관행사(진행중 포함): 시작일 ≤ 집계일
     _started = sorted([o for o in event_occurrences(CUR, only_major=True) if _ld and o[0] <= _ld],
                       key=lambda o: o[0])
