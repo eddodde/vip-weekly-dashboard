@@ -2866,8 +2866,9 @@ if _ipo:
             _stt = "진행 중" if _inp else f"종료({_mdrange(_ipo[0], _se_)})"
             if _days:
                 _dg_ev = (f"<br>· <b>{_ipo[2]} {_stt}: " + " → ".join(_days)
-                          + f"</b> (누적 {_pct(_cum)}, 전년 동일 행사 경과일 정렬) — "
-                          "1일차 부진은 행사탭(EP) 정상·직접 채널 부진 구도로 상시 트래픽 구조 문제의 반복")
+                          + f"</b> (누적 {_pct(_cum)}, 전년 동일 행사 경과일 정렬)")
+                # ★ 예전엔 FW NOW 때 확인한 원인 문장('1일차 부진은 행사탭 정상·직접 채널 부진…')이 고정돼
+                #   다른 행사에도 그대로 붙었다. 원인은 행사마다 데이터로 확인한 뒤 코멘트에 쓴다.
 def _major_days(year):
     """그 해 전관행사일 집합(종료일은 10시 종료라 평상일로 본다 — _post_event와 같은 기준)."""
     out = set()
@@ -3945,6 +3946,9 @@ PRED_LOG = {
                        basis="11/9~10 2일 실측", sms_base="10월 5주차",
                        # 목표 가산(+280)을 잡은 액션별 실측 AF 유입(주 합계, 문자 11/9~15). 최근본 확대는 전주 대비 증가분.
                        act_uv=[("장바구니 자동화", 2756), ("최근본 확대", 2880 - 2609), ("히스헤지스 라이브", 453)]),
+    # 11/18 보고. 개선 목표는 신규 액션 대상 수 미확정으로 설정하지 않음(goal_y=None).
+    "11월 3주차": dict(proj=18857, proj_y=-0.0804, goal_y=None, goal_add=0,
+                       basis="11/16~17 2일 실측", sms_base="10월 5주차"),
 }
 
 
@@ -3966,19 +3970,23 @@ def _recap_block():
 
     def n0(x):
         return f"{'△' if x < 0 else '+'}{abs(x):,.0f}"
-    goal = ap * (1 + r["goal_y"])
+    has_goal = r.get("goal_y") is not None          # 목표를 정하지 않은 주는 '—'로 둔다
+    goal = ap * (1 + r["goal_y"]) if has_goal else None
     ay = ac / ap - 1
-    d_proj, d_goal = ac - r["proj"], ac - goal
     def pp(x):
         return f"{'△' if x < 0 else '+'}{abs(x) * 100:.2f}%p"
     # ★ 굵은 값은 전부 '전년비'(기여도는 전년비 %p)로 통일(사용자 지시) — 명수·금액은 설명으로 내린다.
     rows = [
         f'<div class="dt-sr"><em>예상 마감</em><b>{p2(r["proj_y"])}</b>'
         f'<span>{r["proj"]:,.0f}명 · 전년 동주 {ap:,.0f}명 대비 ({r["basis"]} 기준 보고값)</span></div>',
-        f'<div class="dt-sr"><em>개선 목표</em><b>{p2(r["goal_y"])}</b>'
-        f'<span>{goal:,.0f}명 · 액션 가산 +{r["goal_add"]:,.0f}명/일 (문자 유입 상한 기준)</span></div>',
+        (f'<div class="dt-sr"><em>개선 목표</em><b>{p2(r["goal_y"])}</b>'
+         f'<span>{goal:,.0f}명 · 액션 가산 +{r["goal_add"]:,.0f}명/일 (문자 유입 상한 기준)</span></div>')
+        if has_goal else
+        ('<div class="dt-sr"><em>개선 목표</em><b>—</b>'
+         '<span>미설정 (신규 유입 액션 대상 수 미확정)</span></div>'),
         f'<div class="dt-sr dt-goal"><em>실제</em><b>{p2(ay)}</b>'
-        f'<span>{ac:,.0f}명 · 예상 대비 {pp(ay - r["proj_y"])} · 목표 대비 {pp(ay - r["goal_y"])}</span></div>',
+        f'<span>{ac:,.0f}명 · 예상 대비 {pp(ay - r["proj_y"])}'
+        + (f' · 목표 대비 {pp(ay - r["goal_y"])}' if has_goal else '') + '</span></div>',
     ]
     # 액션 기여도 — 방문: 문자 유입 증가가 예상 대비 방문 증가로 이어졌는지 / 거래액: 문자 귀속 증가분의 갭 비중
     b = r.get("sms_base")
@@ -3990,7 +3998,7 @@ def _recap_block():
         tot = sum(v for _, v in r["act_uv"]) / 7
         parts = " · ".join(f"{k} +{v / 7:,.0f}" for k, v in r["act_uv"])
         ach = (f'목표 가산 {pp(r["goal_y"] - r["proj_y"])}의 {tot / r["goal_add"] * 100:.0f}% · '
-               if r["goal_add"] else "")
+               if (has_goal and r["goal_add"]) else "")
         rows.append(f'<div class="dt-sr"><em>방문 기여도</em><b>{pp(tot / ap)}</b>'
                     f'<span>+{tot:,.0f}명/일 · AF 유입 기준 · {ach}{parts}</span></div>')
     if gc is not None and gb is not None and sc and sp and sp > sc:
